@@ -287,7 +287,7 @@ impl Editor {
                 self.rx = self.rows[self.cy].cx_to_rx[self.cx];
             }
             Key::PageDown => {
-                if self.rowoff < self.rows.len() - self.height {
+                if self.rowoff + self.height < self.rows.len() {
                     self.cy += cmp::min(self.height, self.rows.len() - 1 - self.cy);
                     self.rowoff += self.height;
 
