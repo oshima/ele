@@ -10,7 +10,7 @@ use crate::row::Row;
 pub struct Editor {
     stdin: io::Stdin,
     stdout: io::Stdout,
-    buffer: Vec<u8>,
+    bufout: Vec<u8>,
     width: usize,
     height: usize,
     cx: usize,
@@ -29,7 +29,7 @@ impl Editor {
         Self {
             stdin,
             stdout,
-            buffer: vec![],
+            bufout: vec![],
             width: 0,
             height: 0,
             cx: 0,
@@ -102,15 +102,26 @@ impl Editor {
         Ok(())
     }
 
-    pub fn refresh_screen(&mut self) -> io::Result<()> {
-        self.buffer.write(b"\x1b[?25l")?;
-        self.buffer.write(b"\x1b[H")?;
+    pub fn looop(&mut self) -> io::Result<()> {
+        loop {
+            self.refresh_screen()?;
+            match self.read_key()? {
+                Key::Quit => break,
+                key => self.process_keypress(key),
+            }
+        }
+        Ok(())
+    }
+
+    fn refresh_screen(&mut self) -> io::Result<()> {
+        self.bufout.write(b"\x1b[?25l")?;
+        self.bufout.write(b"\x1b[H")?;
 
         self.draw_rows()?;
         self.draw_status_bar()?;
         self.draw_message_bar()?;
 
-        self.buffer.write(
+        self.bufout.write(
             format!(
                 "\x1b[{};{}H",
                 self.cy - self.rowoff + 1,
@@ -118,13 +129,12 @@ impl Editor {
             )
             .as_bytes(),
         )?;
-        self.buffer.write(b"\x1b[?25h")?;
+        self.bufout.write(b"\x1b[?25h")?;
 
-        self.stdout.write(&self.buffer)?;
-        self.stdout.flush()?;
+        self.stdout.write(&self.bufout)?;
+        self.bufout.clear();
 
-        self.buffer.clear();
-        Ok(())
+        self.stdout.flush()
     }
 
     fn draw_rows(&mut self) -> io::Result<()> {
@@ -133,24 +143,24 @@ impl Editor {
                 let row = &self.rows[y];
                 if row.render.len() > self.coloff {
                     let len = cmp::min(row.render.len() - self.coloff, self.width);
-                    self.buffer
+                    self.bufout
                         .write(&row.render[self.coloff..(self.coloff + len)])?;
                 }
             } else {
-                self.buffer.write(b"~")?;
+                self.bufout.write(b"~")?;
 
                 if self.filename.is_empty() && y == self.height / 3 {
                     let welcome = "Kilo editor";
                     let len = cmp::min(welcome.len(), self.width);
                     let padding = (self.width - welcome.len()) / 2;
                     for _ in 0..padding {
-                        self.buffer.write(b" ")?;
+                        self.bufout.write(b" ")?;
                     }
-                    self.buffer.write(&welcome.as_bytes()[0..len])?;
+                    self.bufout.write(&welcome.as_bytes()[0..len])?;
                 }
             }
-            self.buffer.write(b"\x1b[K")?;
-            self.buffer.write(b"\r\n")?;
+            self.bufout.write(b"\x1b[K")?;
+            self.bufout.write(b"\r\n")?;
         }
         Ok(())
     }
@@ -161,17 +171,17 @@ impl Editor {
         let filename_len = cmp::min(self.filename.len(), self.width - pos_len);
         let padding = self.width - pos_len - filename_len;
 
-        self.buffer.write(b"\x1b[7m")?;
+        self.bufout.write(b"\x1b[7m")?;
 
-        self.buffer
+        self.bufout
             .write(&self.filename.as_bytes()[0..filename_len])?;
         for _ in 0..padding {
-            self.buffer.write(b" ")?;
+            self.bufout.write(b" ")?;
         }
-        self.buffer.write(&pos.as_bytes()[0..pos_len])?;
+        self.bufout.write(&pos.as_bytes()[0..pos_len])?;
 
-        self.buffer.write(b"\x1b[m")?;
-        self.buffer.write(b"\r\n")?;
+        self.bufout.write(b"\x1b[m")?;
+        self.bufout.write(b"\r\n")?;
         Ok(())
     }
 
@@ -179,14 +189,14 @@ impl Editor {
         if let Some(message) = &self.message {
             if message.timestamp.elapsed() < Duration::from_secs(5) {
                 let len = cmp::min(message.text.as_bytes().len(), self.width);
-                self.buffer.write(&message.text.as_bytes()[0..len])?;
+                self.bufout.write(&message.text.as_bytes()[0..len])?;
             }
         }
-        self.buffer.write(b"\x1b[K")?;
+        self.bufout.write(b"\x1b[K")?;
         Ok(())
     }
 
-    pub fn read_key(&mut self) -> io::Result<Key> {
+    fn read_key(&mut self) -> io::Result<Key> {
         let mut buf = [0; 4];
         while self.stdin.read(&mut buf)? == 0 {}
 
@@ -220,7 +230,7 @@ impl Editor {
         }
     }
 
-    pub fn process_keypress(&mut self, key: Key) {
+    fn process_keypress(&mut self, key: Key) {
         match key {
             Key::Escape => (),
             Key::ArrowLeft => {

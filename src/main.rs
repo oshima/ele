@@ -8,7 +8,6 @@ use std::env;
 use std::io;
 
 use crate::editor::Editor;
-use crate::key::Key;
 use crate::raw_mode::RawMode;
 
 fn main() -> io::Result<()> {
@@ -29,12 +28,5 @@ fn main() -> io::Result<()> {
         editor.open_file(&args[1])?;
     }
 
-    loop {
-        editor.refresh_screen()?;
-        match editor.read_key()? {
-            Key::Quit => break,
-            key => editor.process_keypress(key),
-        }
-    }
-    Ok(())
+    editor.looop()
 }
