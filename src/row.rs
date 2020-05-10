@@ -8,32 +8,67 @@ pub struct Row {
 }
 
 impl Row {
-    pub fn new(chars: &[u8]) -> Self {
+    pub fn new(chars: Vec<u8>) -> Self {
         let mut row = Self {
-            chars: chars.to_vec(),
+            chars,
             render: vec![],
             cx_to_rx: vec![],
             rx_to_cx: vec![],
         };
-        row.init();
+        row.update(0);
         row
     }
 
-    fn init(&mut self) {
-        for (cx, ch) in self.chars.iter().enumerate() {
-            self.cx_to_rx.push(self.render.len());
+    pub fn insert_char(&mut self, cx: usize, ch: u8) {
+        self.chars.insert(cx, ch);
+        self.update(cx);
+    }
+
+    pub fn delete_char(&mut self, cx: usize) {
+        self.chars.remove(cx);
+        self.update(cx);
+    }
+
+    pub fn append_chars(&mut self, chars: &mut Vec<u8>) {
+        let len = self.chars.len();
+        self.chars.append(chars);
+        self.update(len);
+    }
+
+    pub fn split_chars(&mut self, cx: usize) -> Vec<u8> {
+        let chars = self.chars.split_off(cx);
+        self.update(0);
+        chars
+    }
+
+    fn update(&mut self, from_cx: usize) {
+        let from_rx = if from_cx == 0 {
+            0
+        } else {
+            self.cx_to_rx[from_cx]
+        };
+
+        self.cx_to_rx.truncate(from_cx);
+        self.rx_to_cx.truncate(from_rx);
+        self.render.truncate(from_rx);
+
+        for (i, ch) in self.chars[from_cx..].iter().enumerate() {
+            self.cx_to_rx.push(self.rx_to_cx.len());
 
             if *ch == b'\t' {
                 for _ in 0..(TAB_WIDTH - self.render.len() % TAB_WIDTH) {
+                    self.rx_to_cx.push(from_cx + i);
                     self.render.push(b' ');
-                    self.rx_to_cx.push(cx);
                 }
             } else {
+                self.rx_to_cx.push(from_cx + i);
                 self.render.push(*ch);
-                self.rx_to_cx.push(cx);
             }
         }
-        self.cx_to_rx.push(self.render.len());
-        self.rx_to_cx.push(self.chars.len());
+
+        let next_cx = self.cx_to_rx.len();
+        let next_rx = self.rx_to_cx.len();
+        self.cx_to_rx.push(next_rx);
+        self.rx_to_cx.push(next_cx);
     }
 }

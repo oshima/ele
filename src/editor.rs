@@ -1,6 +1,6 @@
 use std::cmp;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::time::Duration;
 
 use crate::key::Key;
@@ -21,6 +21,7 @@ pub struct Editor {
     coloff: usize,
     filename: String,
     rows: Vec<Row>,
+    modified: bool,
     message: Option<Message>,
 }
 
@@ -40,6 +41,7 @@ impl Editor {
             coloff: 0,
             filename: String::new(),
             rows: vec![],
+            modified: false,
             message: None,
         }
     }
@@ -77,10 +79,10 @@ impl Editor {
     }
 
     pub fn new_file(&mut self) {
-        self.rows.push(Row::new(&[]));
+        self.rows.push(Row::new(vec![]));
     }
 
-    pub fn open_file(&mut self, filename: &str) -> io::Result<()> {
+    pub fn open(&mut self, filename: &str) -> io::Result<()> {
         self.filename = filename.to_string();
 
         let file = File::open(filename)?;
@@ -92,22 +94,34 @@ impl Editor {
 
         while reader.read_line(&mut buf)? > 0 {
             self.rows
-                .push(Row::new(buf.trim_end_matches(crlf).as_bytes()));
+                .push(Row::new(buf.trim_end_matches(crlf).as_bytes().to_vec()));
             ends_with_lf = buf.ends_with("\n");
             buf.clear();
         }
         if self.rows.is_empty() || ends_with_lf {
-            self.rows.push(Row::new(&[]));
+            self.rows.push(Row::new(vec![]));
         }
         Ok(())
     }
 
     pub fn looop(&mut self) -> io::Result<()> {
+        let mut quitting = false;
+
         loop {
             self.refresh_screen()?;
             match self.read_key()? {
-                Key::Quit => break,
-                key => self.process_keypress(key),
+                Key::Quit => {
+                    if !self.modified || quitting {
+                        break;
+                    } else {
+                        quitting = true;
+                        self.set_message("File has unsaved changes. Press Ctrl-Q to quit.");
+                    }
+                }
+                key => {
+                    quitting = false;
+                    self.process_keypress(key)?;
+                }
             }
         }
         Ok(())
@@ -166,19 +180,23 @@ impl Editor {
     }
 
     fn draw_status_bar(&mut self) -> io::Result<()> {
-        let pos = format!("Ln {}, Col {}", self.cy + 1, self.rx + 1);
-        let pos_len = cmp::min(pos.len(), self.width);
-        let filename_len = cmp::min(self.filename.len(), self.width - pos_len);
-        let padding = self.width - pos_len - filename_len;
+        let left = format!(
+            "{} {}",
+            self.filename,
+            if self.modified { "(modified)" } else { "" },
+        );
+        let right = format!("Ln {}, Col {}", self.cy + 1, self.rx + 1);
+        let right_len = cmp::min(right.len(), self.width);
+        let left_len = cmp::min(left.len(), self.width - right_len);
+        let padding = self.width - left_len - right_len;
 
         self.bufout.write(b"\x1b[7m")?;
 
-        self.bufout
-            .write(&self.filename.as_bytes()[0..filename_len])?;
+        self.bufout.write(&left.as_bytes()[0..left_len])?;
         for _ in 0..padding {
             self.bufout.write(b" ")?;
         }
-        self.bufout.write(&pos.as_bytes()[0..pos_len])?;
+        self.bufout.write(&right.as_bytes()[0..right_len])?;
 
         self.bufout.write(b"\x1b[m")?;
         self.bufout.write(b"\r\n")?;
@@ -201,14 +219,21 @@ impl Editor {
         while self.stdin.read(&mut buf)? == 0 {}
 
         match buf {
-            [1, ..] => Ok(Key::Home),       // ^A
-            [2, ..] => Ok(Key::ArrowLeft),  // ^B
-            [5, ..] => Ok(Key::End),        // ^E
-            [6, ..] => Ok(Key::ArrowRight), // ^F
-            [14, ..] => Ok(Key::ArrowDown), // ^N
-            [16, ..] => Ok(Key::ArrowUp),   // ^P
-            [17, ..] => Ok(Key::Quit),      // ^Q
-            [22, ..] => Ok(Key::PageDown),  // ^V
+            [1, ..] => Ok(Key::Home),        // ^A
+            [2, ..] => Ok(Key::ArrowLeft),   // ^B
+            [4, ..] => Ok(Key::Delete),      // ^D
+            [5, ..] => Ok(Key::End),         // ^E
+            [6, ..] => Ok(Key::ArrowRight),  // ^F
+            [8, ..] => Ok(Key::Backspace),   // ^H
+            [10, ..] => Ok(Key::Enter),      // ^J
+            [12, ..] => Ok(Key::Ignore),     // ^L
+            [13, ..] => Ok(Key::Enter),      // ^M, Enter
+            [14, ..] => Ok(Key::ArrowDown),  // ^N
+            [16, ..] => Ok(Key::ArrowUp),    // ^P
+            [17, ..] => Ok(Key::Quit),       // ^Q
+            [19, ..] => Ok(Key::Save),       // ^S
+            [22, ..] => Ok(Key::PageDown),   // ^V
+            [127, ..] => Ok(Key::Backspace), // Backspace
             [b'\x1b', b'v', ..] => Ok(Key::PageUp),
             [b'\x1b', b'[', b'A', ..] => Ok(Key::ArrowUp),
             [b'\x1b', b'[', b'B', ..] => Ok(Key::ArrowDown),
@@ -230,7 +255,7 @@ impl Editor {
         }
     }
 
-    fn process_keypress(&mut self, key: Key) {
+    fn process_keypress(&mut self, key: Key) -> io::Result<()> {
         match key {
             Key::Escape => (),
             Key::ArrowLeft => {
@@ -238,13 +263,11 @@ impl Editor {
                     self.cx -= 1;
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                     self.rx_cache = self.rx;
-                } else {
-                    if self.cy > 0 {
-                        self.cy -= 1;
-                        self.cx = self.rows[self.cy].chars.len();
-                        self.rx = self.rows[self.cy].cx_to_rx[self.cx];
-                        self.rx_cache = self.rx;
-                    }
+                } else if self.cy > 0 {
+                    self.cy -= 1;
+                    self.cx = self.rows[self.cy].chars.len();
+                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                    self.rx_cache = self.rx;
                 }
             }
             Key::ArrowRight => {
@@ -252,13 +275,11 @@ impl Editor {
                     self.cx += 1;
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                     self.rx_cache = self.rx;
-                } else {
-                    if self.cy < self.rows.len() - 1 {
-                        self.cy += 1;
-                        self.cx = 0;
-                        self.rx = 0;
-                        self.rx_cache = 0;
-                    }
+                } else if self.cy < self.rows.len() - 1 {
+                    self.cy += 1;
+                    self.cx = 0;
+                    self.rx = 0;
+                    self.rx_cache = 0;
                 }
             }
             Key::ArrowUp => {
@@ -277,7 +298,43 @@ impl Editor {
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                 }
             }
-            Key::Delete => (),
+            Key::Enter => {
+                let chars = self.rows[self.cy].split_chars(self.cx);
+                self.rows.insert(self.cy + 1, Row::new(chars));
+                self.cy += 1;
+                self.cx = 0;
+                self.rx = 0;
+                self.rx_cache = 0;
+                self.modified = true;
+            }
+            Key::Backspace => {
+                if self.cx > 0 {
+                    self.rows[self.cy].delete_char(self.cx - 1);
+                    self.cx -= 1;
+                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                    self.rx_cache = self.rx;
+                    self.modified = true;
+                } else if self.cy > 0 {
+                    let mut row = self.rows.remove(self.cy);
+                    let len = self.rows[self.cy - 1].chars.len();
+                    self.rows[self.cy - 1].append_chars(&mut row.chars);
+                    self.cy -= 1;
+                    self.cx = len;
+                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                    self.rx_cache = self.rx;
+                    self.modified = true;
+                }
+            }
+            Key::Delete => {
+                if self.cx < self.rows[self.cy].chars.len() {
+                    self.rows[self.cy].delete_char(self.cx);
+                    self.modified = true;
+                } else if self.cy < self.rows.len() - 1 {
+                    let mut row = self.rows.remove(self.cy + 1);
+                    self.rows[self.cy].append_chars(&mut row.chars);
+                    self.modified = true;
+                }
+            }
             Key::Home => {
                 self.cx = 0;
                 self.rx = 0;
@@ -306,11 +363,23 @@ impl Editor {
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                 }
             }
+            Key::Save => {
+                self.save()?;
+                self.modified = false;
+                self.set_message("Saved");
+            }
             Key::Quit => unreachable!(),
-            Key::Other(_) => (),
+            Key::Ignore => (),
+            Key::Other(ch) => {
+                self.rows[self.cy].insert_char(self.cx, ch);
+                self.cx += 1;
+                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                self.rx_cache = self.rx;
+                self.modified = true;
+            }
         }
-
         self.scroll();
+        Ok(())
     }
 
     fn scroll(&mut self) {
@@ -326,6 +395,23 @@ impl Editor {
         if self.rx >= self.coloff + self.width {
             self.coloff = self.rx - self.width + 1;
         }
+    }
+
+    fn save(&mut self) -> io::Result<()> {
+        if self.filename.is_empty() {
+            return Ok(());
+        }
+
+        let file = File::create(&self.filename)?;
+        let mut writer = BufWriter::new(file);
+
+        for (i, row) in self.rows.iter().enumerate() {
+            writer.write(&row.chars)?;
+            if i < self.rows.len() - 1 {
+                writer.write(b"\n")?;
+            }
+        }
+        Ok(())
     }
 }
 

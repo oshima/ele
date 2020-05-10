@@ -25,7 +25,7 @@ fn main() -> io::Result<()> {
     if args.len() < 2 {
         editor.new_file();
     } else {
-        editor.open_file(&args[1])?;
+        editor.open(&args[1])?;
     }
 
     editor.looop()
