@@ -160,18 +160,6 @@ impl Editor {
                     self.bufout
                         .write(&row.render[self.coloff..(self.coloff + len)])?;
                 }
-            } else {
-                self.bufout.write(b"~")?;
-
-                if self.filename.is_empty() && y == self.height / 3 {
-                    let welcome = "Kilo editor";
-                    let len = cmp::min(welcome.len(), self.width);
-                    let padding = (self.width - welcome.len()) / 2;
-                    for _ in 0..padding {
-                        self.bufout.write(b" ")?;
-                    }
-                    self.bufout.write(&welcome.as_bytes()[0..len])?;
-                }
             }
             self.bufout.write(b"\x1b[K")?;
             self.bufout.write(b"\r\n")?;
