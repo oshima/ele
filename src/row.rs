@@ -41,6 +41,18 @@ impl Row {
         chars
     }
 
+    pub fn truncate_chars(&mut self, cx: usize) {
+        self.chars.truncate(cx);
+        self.update(0);
+    }
+
+    pub fn truncate_prev_chars(&mut self, cx: usize) {
+        let mut chars = self.chars.split_off(cx);
+        self.chars.clear();
+        self.chars.append(&mut chars);
+        self.update(0);
+    }
+
     fn update(&mut self, from_cx: usize) {
         let from_rx = if from_cx == 0 {
             0

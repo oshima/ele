@@ -221,7 +221,7 @@ impl Editor {
         match buf {
             [1..=26, 0, 0, 0] => Ok(Key::Ctrl(b'a' + buf[0] - 1)),
             [127, 0, 0, 0] => Ok(Key::Backspace),
-            [b'\x1b', b'a'..=b'z', 0, 0] => Ok(Key::Alt(buf[1])),
+            [b'\x1b', _, 0, 0] => Ok(Key::Alt(buf[1])),
             [b'\x1b', b'[', b'A', 0] => Ok(Key::ArrowUp),
             [b'\x1b', b'[', b'B', 0] => Ok(Key::ArrowDown),
             [b'\x1b', b'[', b'C', 0] => Ok(Key::ArrowRight),
@@ -244,7 +244,7 @@ impl Editor {
 
     fn process_keypress(&mut self, key: Key) -> io::Result<()> {
         match key {
-            Key::ArrowLeft | Key::Ctrl(b'b')=> {
+            Key::ArrowLeft | Key::Ctrl(b'b') => {
                 if self.cx > 0 {
                     self.cx -= 1;
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
@@ -356,10 +356,31 @@ impl Editor {
                 self.rx_cache = 0;
                 self.modified = true;
             }
+            Key::Ctrl(b'k') => {
+                self.rows[self.cy].truncate_chars(self.cx);
+            }
             Key::Ctrl(b's') => {
                 self.save()?;
                 self.modified = false;
                 self.set_message("Saved");
+            }
+            Key::Ctrl(b'u') => {
+                self.rows[self.cy].truncate_prev_chars(self.cx);
+                self.cx = 0;
+                self.rx = 0;
+                self.rx_cache = 0;
+            }
+            Key::Alt(b'<') => {
+                self.cy = 0;
+                self.cx = 0;
+                self.rx = 0;
+                self.rx_cache = 0;
+            }
+            Key::Alt(b'>') => {
+                self.cy = self.rows.len() - 1;
+                self.cx = self.rows[self.cy].chars.len();
+                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                self.rx_cache = self.rx;
             }
             Key::Plain(ch) => {
                 self.rows[self.cy].insert_char(self.cx, ch);
