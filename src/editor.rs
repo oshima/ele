@@ -110,7 +110,7 @@ impl Editor {
         loop {
             self.refresh_screen()?;
             match self.read_key()? {
-                Key::Quit => {
+                Key::Ctrl(b'q') => {
                     if !self.modified || quitting {
                         break;
                     } else {
@@ -219,28 +219,15 @@ impl Editor {
         while self.stdin.read(&mut buf)? == 0 {}
 
         match buf {
-            [1, ..] => Ok(Key::Home),        // ^A
-            [2, ..] => Ok(Key::ArrowLeft),   // ^B
-            [4, ..] => Ok(Key::Delete),      // ^D
-            [5, ..] => Ok(Key::End),         // ^E
-            [6, ..] => Ok(Key::ArrowRight),  // ^F
-            [8, ..] => Ok(Key::Backspace),   // ^H
-            [10, ..] => Ok(Key::Enter),      // ^J
-            [12, ..] => Ok(Key::Ignore),     // ^L
-            [13, ..] => Ok(Key::Enter),      // ^M, Enter
-            [14, ..] => Ok(Key::ArrowDown),  // ^N
-            [16, ..] => Ok(Key::ArrowUp),    // ^P
-            [17, ..] => Ok(Key::Quit),       // ^Q
-            [19, ..] => Ok(Key::Save),       // ^S
-            [22, ..] => Ok(Key::PageDown),   // ^V
-            [127, ..] => Ok(Key::Backspace), // Backspace
-            [b'\x1b', b'v', ..] => Ok(Key::PageUp),
-            [b'\x1b', b'[', b'A', ..] => Ok(Key::ArrowUp),
-            [b'\x1b', b'[', b'B', ..] => Ok(Key::ArrowDown),
-            [b'\x1b', b'[', b'C', ..] => Ok(Key::ArrowRight),
-            [b'\x1b', b'[', b'D', ..] => Ok(Key::ArrowLeft),
-            [b'\x1b', b'[', b'F', ..] => Ok(Key::End),
-            [b'\x1b', b'[', b'H', ..] => Ok(Key::Home),
+            [1..=26, 0, 0, 0] => Ok(Key::Ctrl(b'a' + buf[0] - 1)),
+            [127, 0, 0, 0] => Ok(Key::Backspace),
+            [b'\x1b', b'a'..=b'z', 0, 0] => Ok(Key::Alt(buf[1])),
+            [b'\x1b', b'[', b'A', 0] => Ok(Key::ArrowUp),
+            [b'\x1b', b'[', b'B', 0] => Ok(Key::ArrowDown),
+            [b'\x1b', b'[', b'C', 0] => Ok(Key::ArrowRight),
+            [b'\x1b', b'[', b'D', 0] => Ok(Key::ArrowLeft),
+            [b'\x1b', b'[', b'F', 0] => Ok(Key::End),
+            [b'\x1b', b'[', b'H', 0] => Ok(Key::Home),
             [b'\x1b', b'[', b'O', b'F'] => Ok(Key::End),
             [b'\x1b', b'[', b'O', b'H'] => Ok(Key::Home),
             [b'\x1b', b'[', b'1', b'~'] => Ok(Key::Home),
@@ -251,14 +238,13 @@ impl Editor {
             [b'\x1b', b'[', b'7', b'~'] => Ok(Key::Home),
             [b'\x1b', b'[', b'8', b'~'] => Ok(Key::End),
             [b'\x1b', ..] => Ok(Key::Escape),
-            _ => Ok(Key::Other(buf[0])),
+            _ => Ok(Key::Plain(buf[0])),
         }
     }
 
     fn process_keypress(&mut self, key: Key) -> io::Result<()> {
         match key {
-            Key::Escape => (),
-            Key::ArrowLeft => {
+            Key::ArrowLeft | Key::Ctrl(b'b')=> {
                 if self.cx > 0 {
                     self.cx -= 1;
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
@@ -270,7 +256,7 @@ impl Editor {
                     self.rx_cache = self.rx;
                 }
             }
-            Key::ArrowRight => {
+            Key::ArrowRight | Key::Ctrl(b'f') => {
                 if self.cx < self.rows[self.cy].chars.len() {
                     self.cx += 1;
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
@@ -282,7 +268,7 @@ impl Editor {
                     self.rx_cache = 0;
                 }
             }
-            Key::ArrowUp => {
+            Key::ArrowUp | Key::Ctrl(b'p') => {
                 if self.cy > 0 {
                     self.cy -= 1;
                     self.rx = cmp::min(self.rx_cache, self.rows[self.cy].render.len());
@@ -290,7 +276,7 @@ impl Editor {
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                 }
             }
-            Key::ArrowDown => {
+            Key::ArrowDown | Key::Ctrl(b'n') => {
                 if self.cy < self.rows.len() - 1 {
                     self.cy += 1;
                     self.rx = cmp::min(self.rx_cache, self.rows[self.cy].render.len());
@@ -298,16 +284,35 @@ impl Editor {
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                 }
             }
-            Key::Enter => {
-                let chars = self.rows[self.cy].split_chars(self.cx);
-                self.rows.insert(self.cy + 1, Row::new(chars));
-                self.cy += 1;
+            Key::Home | Key::Ctrl(b'a') => {
                 self.cx = 0;
                 self.rx = 0;
                 self.rx_cache = 0;
-                self.modified = true;
             }
-            Key::Backspace => {
+            Key::End | Key::Ctrl(b'e') => {
+                self.cx = self.rows[self.cy].chars.len();
+                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                self.rx_cache = self.rx;
+            }
+            Key::PageUp | Key::Alt(b'v') => {
+                self.cy -= cmp::min(self.height, self.rowoff);
+                self.rowoff -= cmp::min(self.height, self.rowoff);
+
+                self.rx = cmp::min(self.rx_cache, self.rows[self.cy].render.len());
+                self.cx = self.rows[self.cy].rx_to_cx[self.rx];
+                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+            }
+            Key::PageDown | Key::Ctrl(b'v') => {
+                if self.rowoff + self.height < self.rows.len() {
+                    self.cy += cmp::min(self.height, self.rows.len() - 1 - self.cy);
+                    self.rowoff += self.height;
+
+                    self.rx = cmp::min(self.rx_cache, self.rows[self.cy].render.len());
+                    self.cx = self.rows[self.cy].rx_to_cx[self.rx];
+                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                }
+            }
+            Key::Backspace | Key::Ctrl(b'h') => {
                 if self.cx > 0 {
                     self.rows[self.cy].delete_char(self.cx - 1);
                     self.cx -= 1;
@@ -325,7 +330,7 @@ impl Editor {
                     self.modified = true;
                 }
             }
-            Key::Delete => {
+            Key::Delete | Key::Ctrl(b'd') => {
                 if self.cx < self.rows[self.cy].chars.len() {
                     self.rows[self.cy].delete_char(self.cx);
                     self.modified = true;
@@ -335,48 +340,35 @@ impl Editor {
                     self.modified = true;
                 }
             }
-            Key::Home => {
+            Key::Ctrl(b'i') => {
+                self.rows[self.cy].insert_char(self.cx, b'\t');
+                self.cx += 1;
+                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                self.rx_cache = self.rx;
+                self.modified = true;
+            }
+            Key::Ctrl(b'j') | Key::Ctrl(b'm') => {
+                let chars = self.rows[self.cy].split_chars(self.cx);
+                self.rows.insert(self.cy + 1, Row::new(chars));
+                self.cy += 1;
                 self.cx = 0;
                 self.rx = 0;
                 self.rx_cache = 0;
+                self.modified = true;
             }
-            Key::End => {
-                self.cx = self.rows[self.cy].chars.len();
-                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
-                self.rx_cache = self.rx;
-            }
-            Key::PageUp => {
-                self.cy -= cmp::min(self.height, self.rowoff);
-                self.rowoff -= cmp::min(self.height, self.rowoff);
-
-                self.rx = cmp::min(self.rx_cache, self.rows[self.cy].render.len());
-                self.cx = self.rows[self.cy].rx_to_cx[self.rx];
-                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
-            }
-            Key::PageDown => {
-                if self.rowoff + self.height < self.rows.len() {
-                    self.cy += cmp::min(self.height, self.rows.len() - 1 - self.cy);
-                    self.rowoff += self.height;
-
-                    self.rx = cmp::min(self.rx_cache, self.rows[self.cy].render.len());
-                    self.cx = self.rows[self.cy].rx_to_cx[self.rx];
-                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
-                }
-            }
-            Key::Save => {
+            Key::Ctrl(b's') => {
                 self.save()?;
                 self.modified = false;
                 self.set_message("Saved");
             }
-            Key::Quit => unreachable!(),
-            Key::Ignore => (),
-            Key::Other(ch) => {
+            Key::Plain(ch) => {
                 self.rows[self.cy].insert_char(self.cx, ch);
                 self.cx += 1;
                 self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                 self.rx_cache = self.rx;
                 self.modified = true;
             }
+            _ => (),
         }
         self.scroll();
         Ok(())
