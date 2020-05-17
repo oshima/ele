@@ -10,8 +10,8 @@ pub struct RawMode {
 }
 
 impl RawMode {
-    pub fn new(stdin: &io::Stdin) -> io::Result<Self> {
-        let fd = stdin.as_raw_fd();
+    pub fn new() -> io::Result<Self> {
+        let fd = io::stdin().as_raw_fd();
         let termios = Termios::from_fd(fd)?;
 
         Ok(Self { fd, termios })

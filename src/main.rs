@@ -1,3 +1,4 @@
+mod buffer;
 mod editor;
 mod key;
 mod message;
@@ -12,21 +13,16 @@ use crate::raw_mode::RawMode;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
-    let stdin = io::stdin();
-    let stdout = io::stdout();
 
-    let raw_mode = RawMode::new(&stdin)?;
+    let raw_mode = RawMode::new()?;
     raw_mode.enable()?;
 
-    let mut editor = Editor::new(stdin, stdout);
-    editor.get_window_size()?;
-    editor.set_message("HELP: Ctrl-Q = quit");
-
-    if args.len() < 2 {
-        editor.new_file();
+    let mut editor = if args.len() < 2 {
+        Editor::new(None)?
     } else {
-        editor.open(&args[1])?;
-    }
+        Editor::new(Some(args[1].to_string()))?
+    };
 
+    editor.set_message("HELP: Ctrl-Q = quit");
     editor.looop()
 }
