@@ -1,7 +1,7 @@
 mod buffer;
 mod editor;
 mod key;
-mod message;
+mod minibuffer;
 mod raw_mode;
 mod row;
 
@@ -22,7 +22,5 @@ fn main() -> io::Result<()> {
     } else {
         Editor::new(Some(args[1].to_string()))?
     };
-
-    editor.set_message("HELP: Ctrl-Q = quit");
     editor.looop()
 }

@@ -1,10 +1,8 @@
-use std::cmp;
 use std::io::{self, Read, Write};
-use std::time::Duration;
 
 use crate::buffer::Buffer;
 use crate::key::Key;
-use crate::message::Message;
+use crate::minibuffer::Minibuffer;
 
 pub struct Editor {
     stdin: io::Stdin,
@@ -13,7 +11,7 @@ pub struct Editor {
     width: usize,
     height: usize,
     buffer: Buffer,
-    message: Option<Message>,
+    minibuffer: Minibuffer,
 }
 
 impl Editor {
@@ -25,10 +23,16 @@ impl Editor {
             width: 0,
             height: 0,
             buffer: Buffer::new(filename)?,
-            message: None,
+            minibuffer: Minibuffer::new(),
         };
         editor.get_window_size()?;
-        editor.buffer.set_size(editor.width, editor.height - 1);
+        editor
+            .buffer
+            .set_position(0, 0, editor.width, editor.height - 1);
+        editor
+            .minibuffer
+            .set_position(0, editor.height - 1, editor.width, 1);
+        editor.minibuffer.set_message("Press Ctrl-Q to quit");
         Ok(editor)
     }
 
@@ -59,10 +63,6 @@ impl Editor {
         Ok(())
     }
 
-    pub fn set_message(&mut self, text: &str) {
-        self.message = Some(Message::new(text));
-    }
-
     pub fn looop(&mut self) -> io::Result<()> {
         let mut quitting = false;
 
@@ -74,11 +74,15 @@ impl Editor {
                         break;
                     } else {
                         quitting = true;
-                        self.set_message("File has unsaved changes. Press Ctrl-Q to quit.");
+                        self.minibuffer
+                            .set_message("File has unsaved changes. Press Ctrl-Q to quit");
                     }
                 }
                 key => {
-                    quitting = false;
+                    if quitting {
+                        quitting = false;
+                        self.minibuffer.set_message("");
+                    }
                     self.buffer.process_keypress(key)?;
                 }
             }
@@ -90,7 +94,7 @@ impl Editor {
         self.bufout.write(b"\x1b[?25l")?;
 
         self.buffer.draw(&mut self.bufout)?;
-        self.draw_message_bar()?; // TODO
+        self.minibuffer.draw(&mut self.bufout)?;
 
         self.buffer.draw_cursor(&mut self.bufout)?;
 
@@ -100,17 +104,6 @@ impl Editor {
         self.bufout.clear();
 
         self.stdout.flush()
-    }
-
-    fn draw_message_bar(&mut self) -> io::Result<()> {
-        if let Some(message) = &self.message {
-            if message.timestamp.elapsed() < Duration::from_secs(5) {
-                let len = cmp::min(message.text.as_bytes().len(), self.width);
-                self.bufout.write(&message.text.as_bytes()[0..len])?;
-            }
-        }
-        self.bufout.write(b"\x1b[K")?;
-        Ok(())
     }
 
     fn read_key(&mut self) -> io::Result<Key> {

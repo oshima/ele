@@ -66,7 +66,9 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn set_size(&mut self, width: usize, height: usize) {
+    pub fn set_position(&mut self, x: usize, y: usize, width: usize, height: usize) {
+        self.x = x;
+        self.y = y;
         self.width = width;
         self.height = height - 1; // subtract status bar
     }
@@ -116,7 +118,6 @@ impl Buffer {
         bufout.write(&right.as_bytes()[0..right_len])?;
 
         bufout.write(b"\x1b[m")?;
-        bufout.write(b"\r\n")?;
         Ok(())
     }
 
