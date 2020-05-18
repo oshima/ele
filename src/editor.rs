@@ -12,6 +12,8 @@ pub struct Editor {
     height: usize,
     buffer: Buffer,
     minibuffer: Minibuffer,
+    quitting: bool,
+    quitted: bool,
 }
 
 impl Editor {
@@ -24,6 +26,8 @@ impl Editor {
             height: 0,
             buffer: Buffer::new(filename)?,
             minibuffer: Minibuffer::new(),
+            quitting: false,
+            quitted: false,
         };
         editor.get_window_size()?;
         editor
@@ -64,27 +68,14 @@ impl Editor {
     }
 
     pub fn looop(&mut self) -> io::Result<()> {
-        let mut quitting = false;
-
         loop {
             self.refresh_screen()?;
-            match self.read_key()? {
-                Key::Ctrl(b'q') => {
-                    if !self.buffer.modified || quitting {
-                        break;
-                    } else {
-                        quitting = true;
-                        self.minibuffer
-                            .set_message("File has unsaved changes. Press Ctrl-Q to quit");
-                    }
-                }
-                key => {
-                    if quitting {
-                        quitting = false;
-                        self.minibuffer.set_message("");
-                    }
-                    self.buffer.process_keypress(key)?;
-                }
+
+            let key = self.read_key()?;
+            self.process_keypress(key)?;
+
+            if self.quitted {
+                break;
             }
         }
         Ok(())
@@ -132,6 +123,29 @@ impl Editor {
             [b'\x1b', ..] => Ok(Key::Escape),
             _ => Ok(Key::Plain(buf[0])),
         }
+    }
+
+    pub fn process_keypress(&mut self, key: Key) -> io::Result<()> {
+        match key {
+            Key::Ctrl(b'q') => {
+                if !self.buffer.modified || self.quitting {
+                    self.quitted = true;
+                } else {
+                    self.quitting = true;
+                    self.minibuffer
+                        .set_message("File has unsaved changes. Press Ctrl-Q to quit");
+                }
+            }
+            _ => {
+                if self.quitting {
+                    self.quitting = false;
+                    self.minibuffer.set_message("");
+                } else {
+                    self.buffer.process_keypress(key)?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
