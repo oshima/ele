@@ -4,16 +4,22 @@ use crate::buffer::Buffer;
 use crate::key::Key;
 use crate::minibuffer::Minibuffer;
 
+enum State {
+    Default,
+    Save,
+    Quit,
+    Quitted,
+}
+
 pub struct Editor {
     stdin: io::Stdin,
     stdout: io::Stdout,
     bufout: Vec<u8>,
     width: usize,
     height: usize,
+    state: State,
     buffer: Buffer,
     minibuffer: Minibuffer,
-    quitting: bool,
-    quitted: bool,
 }
 
 impl Editor {
@@ -24,10 +30,9 @@ impl Editor {
             bufout: vec![],
             width: 0,
             height: 0,
+            state: State::Default,
             buffer: Buffer::new(filename)?,
             minibuffer: Minibuffer::new(),
-            quitting: false,
-            quitted: false,
         };
         editor.get_window_size()?;
         editor
@@ -74,7 +79,7 @@ impl Editor {
             let key = self.read_key()?;
             self.process_keypress(key)?;
 
-            if self.quitted {
+            if let State::Quitted = self.state {
                 break;
             }
         }
@@ -87,13 +92,15 @@ impl Editor {
         self.buffer.draw(&mut self.bufout)?;
         self.minibuffer.draw(&mut self.bufout)?;
 
-        self.buffer.draw_cursor(&mut self.bufout)?;
+        match self.state {
+            State::Default => self.buffer.draw_cursor(&mut self.bufout)?,
+            _ => self.minibuffer.draw_cursor(&mut self.bufout)?,
+        }
 
         self.bufout.write(b"\x1b[?25h")?;
 
         self.stdout.write(&self.bufout)?;
         self.bufout.clear();
-
         self.stdout.flush()
     }
 
@@ -126,24 +133,58 @@ impl Editor {
     }
 
     pub fn process_keypress(&mut self, key: Key) -> io::Result<()> {
-        match key {
-            Key::Ctrl(b'q') => {
-                if !self.buffer.modified || self.quitting {
-                    self.quitted = true;
-                } else {
-                    self.quitting = true;
-                    self.minibuffer
-                        .set_message("File has unsaved changes. Press Ctrl-Q to quit");
+        match self.state {
+            State::Default => match key {
+                Key::Ctrl(b's') => {
+                    if self.buffer.filename.is_none() {
+                        self.minibuffer.set_prompt("Save as: ");
+                        self.state = State::Save;
+                    } else {
+                        self.buffer.save()?;
+                        self.minibuffer.set_message("Saved");
+                    }
                 }
-            }
-            _ => {
-                if self.quitting {
-                    self.quitting = false;
+                Key::Ctrl(b'q') => {
+                    if self.buffer.modified {
+                        self.minibuffer.set_prompt("Quit without saving? (Y/n): ");
+                        self.state = State::Quit;
+                    } else {
+                        self.state = State::Quitted;
+                    }
+                }
+                _ => self.buffer.process_keypress(key)?,
+            },
+            State::Save => match key {
+                Key::Ctrl(b'g') => {
                     self.minibuffer.set_message("");
-                } else {
-                    self.buffer.process_keypress(key)?;
+                    self.state = State::Default;
                 }
-            }
+                Key::Ctrl(b'j') | Key::Ctrl(b'm') => {
+                    let input = self.minibuffer.get_input();
+                    self.buffer.filename = Some(input);
+                    self.buffer.save()?;
+                    self.minibuffer.set_message("");
+                    self.state = State::Default;
+                }
+                _ => self.minibuffer.process_keypress(key)?,
+            },
+            State::Quit => match key {
+                Key::Ctrl(b'g') => {
+                    self.minibuffer.set_message("");
+                    self.state = State::Default;
+                }
+                Key::Ctrl(b'j') | Key::Ctrl(b'm') => {
+                    let input = self.minibuffer.get_input();
+                    if input.is_empty() || input.to_lowercase() == "y" {
+                        self.state = State::Quitted;
+                    } else {
+                        self.minibuffer.set_message("");
+                        self.state = State::Default;
+                    }
+                }
+                _ => self.minibuffer.process_keypress(key)?,
+            },
+            State::Quitted => unreachable!(),
         }
         Ok(())
     }

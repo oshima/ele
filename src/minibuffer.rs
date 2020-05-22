@@ -10,6 +10,7 @@ pub struct Minibuffer {
     width: usize,
     height: usize,
     cx: usize,
+    cx_min: usize,
     rx: usize,
     coloff: usize,
     row: Row,
@@ -23,6 +24,7 @@ impl Minibuffer {
             width: 0,
             height: 0,
             cx: 0,
+            cx_min: 0,
             rx: 0,
             coloff: 0,
             row: Row::new(vec![]),
@@ -39,6 +41,26 @@ impl Minibuffer {
     pub fn set_message(&mut self, text: &str) {
         self.row.truncate_chars(0);
         self.row.append_chars(&mut text.as_bytes().to_vec());
+        self.cx = 0;
+        self.cx_min = 0;
+        self.rx = 0;
+        self.coloff = 0;
+    }
+
+    pub fn set_prompt(&mut self, text: &str) {
+        self.row.truncate_chars(0);
+        self.row.append_chars(&mut text.as_bytes().to_vec());
+        self.cx = self.row.chars.len();
+        self.cx_min = self.cx;
+        self.rx = self.row.cx_to_rx[self.cx];
+        self.coloff = 0;
+    }
+
+    pub fn get_input(&self) -> String {
+        self.row.chars[self.cx_min..]
+            .iter()
+            .map(|ch| char::from(*ch))
+            .collect()
     }
 
     pub fn draw(&mut self, bufout: &mut Vec<u8>) -> io::Result<()> {
@@ -68,7 +90,7 @@ impl Minibuffer {
     pub fn process_keypress(&mut self, key: Key) -> io::Result<()> {
         match key {
             Key::ArrowLeft | Key::Ctrl(b'b') => {
-                if self.cx > 0 {
+                if self.cx > self.cx_min {
                     self.cx -= 1;
                     self.rx = self.row.cx_to_rx[self.cx];
                 }
@@ -79,16 +101,16 @@ impl Minibuffer {
                     self.rx = self.row.cx_to_rx[self.cx];
                 }
             }
-            Key::Home | Key::Ctrl(b'a') => {
-                self.cx = 0;
-                self.rx = 0;
+            Key::Home | Key::Ctrl(b'a') | Key::Alt(b'<') => {
+                self.cx = self.cx_min;
+                self.rx = self.row.cx_to_rx[self.cx];
             }
-            Key::End | Key::Ctrl(b'e') => {
+            Key::End | Key::Ctrl(b'e') | Key::Alt(b'>') => {
                 self.cx = self.row.chars.len();
                 self.rx = self.row.cx_to_rx[self.cx];
             }
             Key::Backspace | Key::Ctrl(b'h') => {
-                if self.cx > 0 {
+                if self.cx > self.cx_min {
                     self.row.delete_char(self.cx - 1);
                     self.cx -= 1;
                     self.rx = self.row.cx_to_rx[self.cx];
@@ -104,23 +126,12 @@ impl Minibuffer {
                 self.cx += 1;
                 self.rx = self.row.cx_to_rx[self.cx];
             }
-            Key::Ctrl(b'j') | Key::Ctrl(b'm') => {
-                // TODO
-            }
             Key::Ctrl(b'k') => {
                 self.row.truncate_chars(self.cx);
             }
             Key::Ctrl(b'u') => {
-                self.row.truncate_prev_chars(self.cx);
-                self.cx = 0;
-                self.rx = 0;
-            }
-            Key::Alt(b'<') => {
-                self.cx = 0;
-                self.rx = 0;
-            }
-            Key::Alt(b'>') => {
-                self.cx = self.row.chars.len();
+                self.row.remove_chars(self.cx_min, self.cx);
+                self.cx = self.cx_min;
                 self.rx = self.row.cx_to_rx[self.cx];
             }
             Key::Plain(ch) => {

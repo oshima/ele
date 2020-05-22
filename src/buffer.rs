@@ -6,7 +6,8 @@ use crate::key::Key;
 use crate::row::Row;
 
 pub struct Buffer {
-    filename: Option<String>,
+    pub filename: Option<String>,
+    pub modified: bool,
     x: usize,
     y: usize,
     width: usize,
@@ -18,13 +19,13 @@ pub struct Buffer {
     rowoff: usize,
     coloff: usize,
     rows: Vec<Row>,
-    pub modified: bool,
 }
 
 impl Buffer {
     pub fn new(filename: Option<String>) -> io::Result<Self> {
         let mut buffer = Self {
             filename,
+            modified: false,
             x: 0,
             y: 0,
             width: 0,
@@ -36,7 +37,6 @@ impl Buffer {
             rowoff: 0,
             coloff: 0,
             rows: vec![],
-            modified: false,
         };
         buffer.open_file()?;
         Ok(buffer)
@@ -250,13 +250,8 @@ impl Buffer {
             Key::Ctrl(b'k') => {
                 self.rows[self.cy].truncate_chars(self.cx);
             }
-            Key::Ctrl(b's') => {
-                self.save()?;
-                self.modified = false;
-                // self.set_message("Saved"); // TODO
-            }
             Key::Ctrl(b'u') => {
-                self.rows[self.cy].truncate_prev_chars(self.cx);
+                self.rows[self.cy].remove_chars(0, self.cx);
                 self.cx = 0;
                 self.rx = 0;
                 self.rx_cache = 0;
@@ -301,7 +296,7 @@ impl Buffer {
         }
     }
 
-    fn save(&mut self) -> io::Result<()> {
+    pub fn save(&mut self) -> io::Result<()> {
         if let Some(filename) = &self.filename {
             let file = File::create(filename)?;
             let mut writer = BufWriter::new(file);
@@ -312,8 +307,7 @@ impl Buffer {
                     writer.write(b"\n")?;
                 }
             }
-        } else {
-            // TODO
+            self.modified = false;
         }
         Ok(())
     }
