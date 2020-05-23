@@ -87,7 +87,7 @@ impl Minibuffer {
         Ok(())
     }
 
-    pub fn process_keypress(&mut self, key: Key) -> io::Result<()> {
+    pub fn process_keypress(&mut self, key: Key) {
         match key {
             Key::ArrowLeft | Key::Ctrl(b'b') => {
                 if self.cx > self.cx_min {
@@ -111,14 +111,14 @@ impl Minibuffer {
             }
             Key::Backspace | Key::Ctrl(b'h') => {
                 if self.cx > self.cx_min {
-                    self.row.delete_char(self.cx - 1);
+                    self.row.remove_char(self.cx - 1);
                     self.cx -= 1;
                     self.rx = self.row.cx_to_rx[self.cx];
                 }
             }
             Key::Delete | Key::Ctrl(b'd') => {
                 if self.cx < self.row.chars.len() {
-                    self.row.delete_char(self.cx);
+                    self.row.remove_char(self.cx);
                 }
             }
             Key::Ctrl(b'i') => {
@@ -142,7 +142,6 @@ impl Minibuffer {
             _ => (),
         }
         self.scroll();
-        Ok(())
     }
 
     fn scroll(&mut self) {

@@ -133,7 +133,7 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn process_keypress(&mut self, key: Key) -> io::Result<()> {
+    pub fn process_keypress(&mut self, key: Key) {
         match key {
             Key::ArrowLeft | Key::Ctrl(b'b') => {
                 if self.cx > 0 {
@@ -205,7 +205,7 @@ impl Buffer {
             }
             Key::Backspace | Key::Ctrl(b'h') => {
                 if self.cx > 0 {
-                    self.rows[self.cy].delete_char(self.cx - 1);
+                    self.rows[self.cy].remove_char(self.cx - 1);
                     self.cx -= 1;
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                     self.rx_cache = self.rx;
@@ -223,7 +223,7 @@ impl Buffer {
             }
             Key::Delete | Key::Ctrl(b'd') => {
                 if self.cx < self.rows[self.cy].chars.len() {
-                    self.rows[self.cy].delete_char(self.cx);
+                    self.rows[self.cy].remove_char(self.cx);
                     self.modified = true;
                 } else if self.cy < self.rows.len() - 1 {
                     let mut row = self.rows.remove(self.cy + 1);
@@ -278,7 +278,6 @@ impl Buffer {
             _ => (),
         }
         self.scroll();
-        Ok(())
     }
 
     fn scroll(&mut self) {

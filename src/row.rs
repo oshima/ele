@@ -24,7 +24,7 @@ impl Row {
         self.update();
     }
 
-    pub fn delete_char(&mut self, at: usize) {
+    pub fn remove_char(&mut self, at: usize) {
         self.chars.remove(at);
         self.update();
     }
@@ -34,10 +34,11 @@ impl Row {
         self.update();
     }
 
-    pub fn split_chars(&mut self, at: usize) -> Vec<u8> {
-        let chars = self.chars.split_off(at);
+    pub fn remove_chars(&mut self, from: usize, to: usize) {
+        let mut chars = self.chars.split_off(to);
+        self.chars.truncate(from);
+        self.chars.append(&mut chars);
         self.update();
-        chars
     }
 
     pub fn truncate_chars(&mut self, at: usize) {
@@ -45,11 +46,10 @@ impl Row {
         self.update();
     }
 
-    pub fn remove_chars(&mut self, from: usize, to: usize) {
-        let mut chars = self.chars.split_off(to);
-        self.chars.truncate(from);
-        self.chars.append(&mut chars);
+    pub fn split_chars(&mut self, at: usize) -> Vec<u8> {
+        let chars = self.chars.split_off(at);
         self.update();
+        chars
     }
 
     fn update(&mut self) {

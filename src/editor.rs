@@ -132,7 +132,7 @@ impl Editor {
         }
     }
 
-    pub fn process_keypress(&mut self, key: Key) -> io::Result<()> {
+    fn process_keypress(&mut self, key: Key) -> io::Result<()> {
         match self.state {
             State::Default => match key {
                 Key::Ctrl(b's') => {
@@ -152,7 +152,7 @@ impl Editor {
                         self.state = State::Quitted;
                     }
                 }
-                _ => self.buffer.process_keypress(key)?,
+                _ => self.buffer.process_keypress(key),
             },
             State::Save => match key {
                 Key::Ctrl(b'g') => {
@@ -166,7 +166,7 @@ impl Editor {
                     self.minibuffer.set_message("");
                     self.state = State::Default;
                 }
-                _ => self.minibuffer.process_keypress(key)?,
+                _ => self.minibuffer.process_keypress(key),
             },
             State::Quit => match key {
                 Key::Ctrl(b'g') => {
@@ -182,7 +182,7 @@ impl Editor {
                         self.state = State::Default;
                     }
                 }
-                _ => self.minibuffer.process_keypress(key)?,
+                _ => self.minibuffer.process_keypress(key),
             },
             State::Quitted => unreachable!(),
         }
