@@ -15,69 +15,61 @@ impl Row {
             cx_to_rx: vec![],
             rx_to_cx: vec![],
         };
-        row.update(0);
+        row.update();
         row
     }
 
-    pub fn insert_char(&mut self, cx: usize, ch: u8) {
-        self.chars.insert(cx, ch);
-        self.update(cx);
+    pub fn insert_char(&mut self, at: usize, ch: u8) {
+        self.chars.insert(at, ch);
+        self.update();
     }
 
-    pub fn delete_char(&mut self, cx: usize) {
-        self.chars.remove(cx);
-        self.update(cx);
+    pub fn delete_char(&mut self, at: usize) {
+        self.chars.remove(at);
+        self.update();
     }
 
     pub fn append_chars(&mut self, chars: &mut Vec<u8>) {
-        let len = self.chars.len();
         self.chars.append(chars);
-        self.update(len);
+        self.update();
     }
 
-    pub fn split_chars(&mut self, cx: usize) -> Vec<u8> {
-        let chars = self.chars.split_off(cx);
-        self.update(0);
+    pub fn split_chars(&mut self, at: usize) -> Vec<u8> {
+        let chars = self.chars.split_off(at);
+        self.update();
         chars
     }
 
-    pub fn truncate_chars(&mut self, cx: usize) {
-        self.chars.truncate(cx);
-        self.update(0);
+    pub fn truncate_chars(&mut self, at: usize) {
+        self.chars.truncate(at);
+        self.update();
     }
 
-    pub fn remove_chars(&mut self, from_cx: usize, to_cx: usize) {
-        let mut chars = self.chars.split_off(to_cx);
-        self.chars.truncate(from_cx);
+    pub fn remove_chars(&mut self, from: usize, to: usize) {
+        let mut chars = self.chars.split_off(to);
+        self.chars.truncate(from);
         self.chars.append(&mut chars);
-        self.update(0);
+        self.update();
     }
 
-    fn update(&mut self, from_cx: usize) {
-        let from_rx = if from_cx == 0 {
-            0
-        } else {
-            self.cx_to_rx[from_cx]
-        };
+    fn update(&mut self) {
+        self.cx_to_rx.clear();
+        self.rx_to_cx.clear();
+        self.render.clear();
 
-        self.cx_to_rx.truncate(from_cx);
-        self.rx_to_cx.truncate(from_rx);
-        self.render.truncate(from_rx);
-
-        for (i, ch) in self.chars[from_cx..].iter().enumerate() {
+        for (cx, ch) in self.chars.iter().enumerate() {
             self.cx_to_rx.push(self.rx_to_cx.len());
 
             if *ch == b'\t' {
                 for _ in 0..(TAB_WIDTH - self.render.len() % TAB_WIDTH) {
-                    self.rx_to_cx.push(from_cx + i);
+                    self.rx_to_cx.push(cx);
                     self.render.push(b' ');
                 }
             } else {
-                self.rx_to_cx.push(from_cx + i);
+                self.rx_to_cx.push(cx);
                 self.render.push(*ch);
             }
         }
-
         let next_cx = self.cx_to_rx.len();
         let next_rx = self.rx_to_cx.len();
         self.cx_to_rx.push(next_rx);
