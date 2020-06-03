@@ -89,52 +89,52 @@ impl Minibuffer {
 
     pub fn process_keypress(&mut self, key: Key) {
         match key {
-            Key::ArrowLeft | Key::Ctrl(b'b') => {
+            Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if self.cx > self.cx_min {
                     self.cx -= 1;
                     self.rx = self.row.cx_to_rx[self.cx];
                 }
             }
-            Key::ArrowRight | Key::Ctrl(b'f') => {
+            Key::ArrowRight | Key::Ctrl(b'F') => {
                 if self.cx < self.row.chars.len() {
                     self.cx += 1;
                     self.rx = self.row.cx_to_rx[self.cx];
                 }
             }
-            Key::Home | Key::Ctrl(b'a') | Key::Alt(b'<') => {
+            Key::Home | Key::Ctrl(b'A') | Key::Alt(b'<') => {
                 self.cx = self.cx_min;
                 self.rx = self.row.cx_to_rx[self.cx];
             }
-            Key::End | Key::Ctrl(b'e') | Key::Alt(b'>') => {
+            Key::End | Key::Ctrl(b'E') | Key::Alt(b'>') => {
                 self.cx = self.row.chars.len();
                 self.rx = self.row.cx_to_rx[self.cx];
             }
-            Key::Backspace | Key::Ctrl(b'h') => {
+            Key::Backspace | Key::Ctrl(b'H') => {
                 if self.cx > self.cx_min {
                     self.row.remove_char(self.cx - 1);
                     self.cx -= 1;
                     self.rx = self.row.cx_to_rx[self.cx];
                 }
             }
-            Key::Delete | Key::Ctrl(b'd') => {
+            Key::Delete | Key::Ctrl(b'D') => {
                 if self.cx < self.row.chars.len() {
                     self.row.remove_char(self.cx);
                 }
             }
-            Key::Ctrl(b'i') => {
+            Key::Ctrl(b'I') => {
                 self.row.insert_char(self.cx, b'\t');
                 self.cx += 1;
                 self.rx = self.row.cx_to_rx[self.cx];
             }
-            Key::Ctrl(b'k') => {
+            Key::Ctrl(b'K') => {
                 self.row.truncate_chars(self.cx);
             }
-            Key::Ctrl(b'u') => {
+            Key::Ctrl(b'U') => {
                 self.row.remove_chars(self.cx_min, self.cx);
                 self.cx = self.cx_min;
                 self.rx = self.row.cx_to_rx[self.cx];
             }
-            Key::Plain(ch) => {
+            Key::Ascii(ch) => {
                 self.row.insert_char(self.cx, ch);
                 self.cx += 1;
                 self.rx = self.row.cx_to_rx[self.cx];

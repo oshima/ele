@@ -135,7 +135,7 @@ impl Buffer {
 
     pub fn process_keypress(&mut self, key: Key) {
         match key {
-            Key::ArrowLeft | Key::Ctrl(b'b') => {
+            Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if self.cx > 0 {
                     self.cx -= 1;
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
@@ -147,7 +147,7 @@ impl Buffer {
                     self.rx_cache = self.rx;
                 }
             }
-            Key::ArrowRight | Key::Ctrl(b'f') => {
+            Key::ArrowRight | Key::Ctrl(b'F') => {
                 if self.cx < self.rows[self.cy].chars.len() {
                     self.cx += 1;
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
@@ -159,7 +159,7 @@ impl Buffer {
                     self.rx_cache = 0;
                 }
             }
-            Key::ArrowUp | Key::Ctrl(b'p') => {
+            Key::ArrowUp | Key::Ctrl(b'P') => {
                 if self.cy > 0 {
                     self.cy -= 1;
                     self.rx = cmp::min(self.rx_cache, self.rows[self.cy].render.len());
@@ -167,7 +167,7 @@ impl Buffer {
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                 }
             }
-            Key::ArrowDown | Key::Ctrl(b'n') => {
+            Key::ArrowDown | Key::Ctrl(b'N') => {
                 if self.cy < self.rows.len() - 1 {
                     self.cy += 1;
                     self.rx = cmp::min(self.rx_cache, self.rows[self.cy].render.len());
@@ -175,12 +175,12 @@ impl Buffer {
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                 }
             }
-            Key::Home | Key::Ctrl(b'a') => {
+            Key::Home | Key::Ctrl(b'A') => {
                 self.cx = 0;
                 self.rx = 0;
                 self.rx_cache = 0;
             }
-            Key::End | Key::Ctrl(b'e') => {
+            Key::End | Key::Ctrl(b'E') => {
                 self.cx = self.rows[self.cy].chars.len();
                 self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                 self.rx_cache = self.rx;
@@ -193,7 +193,7 @@ impl Buffer {
                 self.cx = self.rows[self.cy].rx_to_cx[self.rx];
                 self.rx = self.rows[self.cy].cx_to_rx[self.cx];
             }
-            Key::PageDown | Key::Ctrl(b'v') => {
+            Key::PageDown | Key::Ctrl(b'V') => {
                 if self.rowoff + self.height < self.rows.len() {
                     self.cy += cmp::min(self.height, self.rows.len() - 1 - self.cy);
                     self.rowoff += self.height;
@@ -203,7 +203,7 @@ impl Buffer {
                     self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                 }
             }
-            Key::Backspace | Key::Ctrl(b'h') => {
+            Key::Backspace | Key::Ctrl(b'H') => {
                 if self.cx > 0 {
                     self.rows[self.cy].remove_char(self.cx - 1);
                     self.cx -= 1;
@@ -221,7 +221,7 @@ impl Buffer {
                     self.modified = true;
                 }
             }
-            Key::Delete | Key::Ctrl(b'd') => {
+            Key::Delete | Key::Ctrl(b'D') => {
                 if self.cx < self.rows[self.cy].chars.len() {
                     self.rows[self.cy].remove_char(self.cx);
                     self.modified = true;
@@ -231,14 +231,14 @@ impl Buffer {
                     self.modified = true;
                 }
             }
-            Key::Ctrl(b'i') => {
+            Key::Ctrl(b'I') => {
                 self.rows[self.cy].insert_char(self.cx, b'\t');
                 self.cx += 1;
                 self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                 self.rx_cache = self.rx;
                 self.modified = true;
             }
-            Key::Ctrl(b'j') | Key::Ctrl(b'm') => {
+            Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
                 let chars = self.rows[self.cy].split_chars(self.cx);
                 self.rows.insert(self.cy + 1, Row::new(chars));
                 self.cy += 1;
@@ -247,10 +247,10 @@ impl Buffer {
                 self.rx_cache = 0;
                 self.modified = true;
             }
-            Key::Ctrl(b'k') => {
+            Key::Ctrl(b'K') => {
                 self.rows[self.cy].truncate_chars(self.cx);
             }
-            Key::Ctrl(b'u') => {
+            Key::Ctrl(b'U') => {
                 self.rows[self.cy].remove_chars(0, self.cx);
                 self.cx = 0;
                 self.rx = 0;
@@ -268,7 +268,7 @@ impl Buffer {
                 self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                 self.rx_cache = self.rx;
             }
-            Key::Plain(ch) => {
+            Key::Ascii(ch) => {
                 self.rows[self.cy].insert_char(self.cx, ch);
                 self.cx += 1;
                 self.rx = self.rows[self.cy].cx_to_rx[self.cx];

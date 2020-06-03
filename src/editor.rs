@@ -1,4 +1,5 @@
 use std::io::{self, Read, Write};
+use std::str;
 
 use crate::buffer::Buffer;
 use crate::key::Key;
@@ -105,37 +106,70 @@ impl Editor {
     }
 
     fn read_key(&mut self) -> io::Result<Key> {
-        let mut buf = [0; 4];
-        while self.stdin.read(&mut buf)? == 0 {}
+        let byte = self.read_byte()?;
 
-        match buf {
-            [1..=26, 0, 0, 0] => Ok(Key::Ctrl(b'a' + buf[0] - 1)),
-            [127, 0, 0, 0] => Ok(Key::Backspace),
-            [b'\x1b', _, 0, 0] => Ok(Key::Alt(buf[1])),
-            [b'\x1b', b'[', b'A', 0] => Ok(Key::ArrowUp),
-            [b'\x1b', b'[', b'B', 0] => Ok(Key::ArrowDown),
-            [b'\x1b', b'[', b'C', 0] => Ok(Key::ArrowRight),
-            [b'\x1b', b'[', b'D', 0] => Ok(Key::ArrowLeft),
-            [b'\x1b', b'[', b'F', 0] => Ok(Key::End),
-            [b'\x1b', b'[', b'H', 0] => Ok(Key::Home),
-            [b'\x1b', b'[', b'O', b'F'] => Ok(Key::End),
-            [b'\x1b', b'[', b'O', b'H'] => Ok(Key::Home),
-            [b'\x1b', b'[', b'1', b'~'] => Ok(Key::Home),
-            [b'\x1b', b'[', b'3', b'~'] => Ok(Key::Delete),
-            [b'\x1b', b'[', b'4', b'~'] => Ok(Key::End),
-            [b'\x1b', b'[', b'5', b'~'] => Ok(Key::PageUp),
-            [b'\x1b', b'[', b'6', b'~'] => Ok(Key::PageDown),
-            [b'\x1b', b'[', b'7', b'~'] => Ok(Key::Home),
-            [b'\x1b', b'[', b'8', b'~'] => Ok(Key::End),
-            [b'\x1b', ..] => Ok(Key::Escape),
-            _ => Ok(Key::Plain(buf[0])),
+        match byte {
+            0..=26 | 28..=31 => Ok(Key::Ctrl(b'@' + byte)),
+            27 => match self.read_escape_sequence()? {
+                [0, 0, 0] => Ok(Key::Escape),
+                [b, 0, 0] => Ok(Key::Alt(b)),
+                [b'[', b'A', 0] => Ok(Key::ArrowUp),
+                [b'[', b'B', 0] => Ok(Key::ArrowDown),
+                [b'[', b'C', 0] => Ok(Key::ArrowRight),
+                [b'[', b'D', 0] => Ok(Key::ArrowLeft),
+                [b'[', b'F', 0] => Ok(Key::End),
+                [b'[', b'H', 0] => Ok(Key::Home),
+                [b'[', b'O', b'F'] => Ok(Key::End),
+                [b'[', b'O', b'H'] => Ok(Key::Home),
+                [b'[', b'1', b'~'] => Ok(Key::Home),
+                [b'[', b'3', b'~'] => Ok(Key::Delete),
+                [b'[', b'4', b'~'] => Ok(Key::End),
+                [b'[', b'5', b'~'] => Ok(Key::PageUp),
+                [b'[', b'6', b'~'] => Ok(Key::PageDown),
+                [b'[', b'7', b'~'] => Ok(Key::Home),
+                [b'[', b'8', b'~'] => Ok(Key::End),
+                _ => Ok(Key::Unknown),
+            },
+            32..=126 => Ok(Key::Ascii(byte)),
+            127 => Ok(Key::Backspace),
+            _ => match self.read_utf8(byte)? {
+                Some(c) => Ok(Key::Utf8(c)),
+                None => Ok(Key::Unknown),
+            },
         }
+    }
+
+    #[inline]
+    fn read_byte(&mut self) -> io::Result<u8> {
+        let mut buf = [0];
+        while self.stdin.read(&mut buf)? == 0 {}
+        Ok(buf[0])
+    }
+
+    #[inline]
+    fn read_escape_sequence(&mut self) -> io::Result<[u8; 3]> {
+        let mut buf = [0; 3];
+        self.stdin.read(&mut buf)?; // can result in a timeout
+        Ok(buf)
+    }
+
+    fn read_utf8(&mut self, first_byte: u8) -> io::Result<Option<char>> {
+        let mut buf = [first_byte, 0, 0, 0];
+
+        for i in 1..buf.len() {
+            buf[i] = self.read_byte()?;
+
+            if let Ok(s) = str::from_utf8(&buf[0..=i]) {
+                return Ok(s.chars().next());
+            }
+        }
+        Ok(None)
     }
 
     fn process_keypress(&mut self, key: Key) -> io::Result<()> {
         match self.state {
             State::Default => match key {
-                Key::Ctrl(b's') => {
+                Key::Ctrl(b'S') => {
                     if self.buffer.filename.is_none() {
                         self.minibuffer.set_prompt("Save as: ");
                         self.state = State::Save;
@@ -144,7 +178,7 @@ impl Editor {
                         self.minibuffer.set_message("Saved");
                     }
                 }
-                Key::Ctrl(b'q') => {
+                Key::Ctrl(b'Q') => {
                     if self.buffer.modified {
                         self.minibuffer.set_prompt("Quit without saving? (Y/n): ");
                         self.state = State::Quit;
@@ -155,11 +189,11 @@ impl Editor {
                 _ => self.buffer.process_keypress(key),
             },
             State::Save => match key {
-                Key::Ctrl(b'g') => {
+                Key::Ctrl(b'G') => {
                     self.minibuffer.set_message("");
                     self.state = State::Default;
                 }
-                Key::Ctrl(b'j') | Key::Ctrl(b'm') => {
+                Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
                     let input = self.minibuffer.get_input();
                     self.buffer.filename = Some(input);
                     self.buffer.save()?;
@@ -169,11 +203,11 @@ impl Editor {
                 _ => self.minibuffer.process_keypress(key),
             },
             State::Quit => match key {
-                Key::Ctrl(b'g') => {
+                Key::Ctrl(b'G') => {
                     self.minibuffer.set_message("");
                     self.state = State::Default;
                 }
-                Key::Ctrl(b'j') | Key::Ctrl(b'm') => {
+                Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
                     let input = self.minibuffer.get_input();
                     if input.is_empty() || input.to_lowercase() == "y" {
                         self.state = State::Quitted;
