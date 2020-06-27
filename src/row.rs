@@ -24,10 +24,10 @@ impl Row {
             render: String::new(),
             max_cx: 0,
             max_rx: 0,
-            cx_to_rx: vec![],
-            rx_to_cx: vec![],
-            cx_to_idx: vec![],
-            rx_to_idx: vec![],
+            cx_to_rx: Vec::new(),
+            rx_to_cx: Vec::new(),
+            cx_to_idx: Vec::new(),
+            rx_to_idx: Vec::new(),
         };
         row.update();
         row

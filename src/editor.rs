@@ -28,7 +28,7 @@ impl Editor {
         let mut editor = Self {
             stdin: io::stdin(),
             stdout: io::stdout(),
-            canvas: vec![],
+            canvas: Vec::new(),
             width: 0,
             height: 0,
             state: State::Default,
