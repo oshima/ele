@@ -8,8 +8,8 @@ pub struct Minibuffer {
     y: usize,
     width: usize,
     height: usize,
+    prompt_len: usize,
     cx: usize,
-    cx_min: usize,
     rx: usize,
     coloff: usize,
     row: Row,
@@ -22,8 +22,8 @@ impl Minibuffer {
             y: 0,
             width: 0,
             height: 0,
+            prompt_len: 0,
             cx: 0,
-            cx_min: 0,
             rx: 0,
             coloff: 0,
             row: Row::new(String::new()),
@@ -40,8 +40,8 @@ impl Minibuffer {
     pub fn set_message(&mut self, string: &str) {
         self.row.clear();
         self.row.push_str(string);
+        self.prompt_len = 0;
         self.cx = 0;
-        self.cx_min = 0;
         self.rx = 0;
         self.coloff = 0;
     }
@@ -49,14 +49,14 @@ impl Minibuffer {
     pub fn set_prompt(&mut self, string: &str) {
         self.row.clear();
         self.row.push_str(string);
+        self.prompt_len = self.row.max_cx;
         self.cx = self.row.max_cx;
-        self.cx_min = self.cx;
         self.rx = self.row.cx_to_rx[self.cx];
         self.coloff = 0;
     }
 
     pub fn get_input(&self) -> String {
-        self.row.string[self.cx_min..].to_string()
+        self.row.string[self.prompt_len..].to_string()
     }
 
     pub fn draw(&mut self, bufout: &mut Vec<u8>) -> io::Result<()> {
@@ -82,7 +82,7 @@ impl Minibuffer {
     pub fn process_keypress(&mut self, key: Key) {
         match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
-                if self.cx > self.cx_min {
+                if self.cx > 0 {
                     self.cx -= 1;
                     self.rx = self.row.cx_to_rx[self.cx];
                 }
@@ -94,47 +94,59 @@ impl Minibuffer {
                 }
             }
             Key::Home | Key::Ctrl(b'A') | Key::Alt(b'<') => {
-                self.cx = self.cx_min;
+                self.cx = self.prompt_len;
                 self.rx = self.row.cx_to_rx[self.cx];
+                self.coloff = 0;
             }
             Key::End | Key::Ctrl(b'E') | Key::Alt(b'>') => {
                 self.cx = self.row.max_cx;
                 self.rx = self.row.cx_to_rx[self.cx];
             }
             Key::Backspace | Key::Ctrl(b'H') => {
-                if self.cx > self.cx_min {
+                if self.cx > self.prompt_len {
                     self.row.remove(self.cx - 1);
                     self.cx -= 1;
                     self.rx = self.row.cx_to_rx[self.cx];
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
-                if self.cx < self.row.max_cx {
+                if self.cx >= self.prompt_len && self.cx < self.row.max_cx {
                     self.row.remove(self.cx);
                 }
             }
             Key::Ctrl(b'I') => {
-                self.row.insert(self.cx, '\t');
-                self.cx += 1;
-                self.rx = self.row.cx_to_rx[self.cx];
+                if self.cx >= self.prompt_len {
+                    self.row.insert(self.cx, '\t');
+                    self.cx += 1;
+                    self.rx = self.row.cx_to_rx[self.cx];
+                }
             }
             Key::Ctrl(b'K') => {
-                self.row.truncate(self.cx);
+                if self.cx >= self.prompt_len {
+                    self.row.truncate(self.cx);
+                }
             }
             Key::Ctrl(b'U') => {
-                self.row.remove_str(self.cx_min, self.cx);
-                self.cx = self.cx_min;
-                self.rx = self.row.cx_to_rx[self.cx];
+                if self.cx > self.prompt_len {
+                    self.row.remove_str(self.prompt_len, self.cx);
+                    self.cx = self.prompt_len;
+                    self.rx = self.row.cx_to_rx[self.cx];
+                    self.coloff = 0;
+                }
             }
             Key::Ascii(byte) => {
-                self.row.insert(self.cx, byte as char);
-                self.cx += 1;
-                self.rx = self.row.cx_to_rx[self.cx];
+                if self.cx >= self.prompt_len {
+                    self.row.insert(self.cx, byte as char);
+                    self.cx += 1;
+                    self.rx = self.row.cx_to_rx[self.cx];
+                }
             }
             Key::Utf8(ch) => {
-                self.row.insert(self.cx, ch);
-                self.cx += 1;
-                self.rx = self.row.cx_to_rx[self.cx];
+                if self.cx >= self.prompt_len {
+                    self.row.insert(self.cx, ch);
+                    self.cx += 1;
+                    self.rx = self.row.cx_to_rx[self.cx];
+                }
             }
             _ => (),
         }
