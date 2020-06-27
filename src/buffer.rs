@@ -83,7 +83,7 @@ impl Buffer {
     fn draw_rows(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
         for y in self.rowoff..(self.rowoff + self.height) {
             if y < self.rows.len() {
-                self.rows[y].draw(self.coloff, self.coloff + self.width, canvas)?;
+                self.rows[y].draw(self.coloff, self.width, canvas)?;
             }
             canvas.write(b"\x1b[K")?;
             canvas.write(b"\r\n")?;

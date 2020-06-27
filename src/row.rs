@@ -111,26 +111,25 @@ impl Row {
         self.rx_to_idx.push(self.render.len());
     }
 
-    pub fn draw(&self, start_rx: usize, end_rx: usize, canvas: &mut Vec<u8>) -> io::Result<()> {
-        if start_rx >= self.max_rx {
+    pub fn draw(&self, coloff: usize, width: usize, canvas: &mut Vec<u8>) -> io::Result<()> {
+        if coloff >= self.max_rx {
             return Ok(());
         }
+
+        let mut start_rx = coloff;
+        let mut end_rx = cmp::min(coloff + width, self.max_rx);
 
         let truncate_start =
             start_rx > 0 && self.rx_to_idx[start_rx] == self.rx_to_idx[start_rx - 1];
         let truncate_end =
             end_rx <= self.max_rx && self.rx_to_idx[end_rx - 1] == self.rx_to_idx[end_rx];
 
-        let start_rx = if truncate_start {
-            start_rx + 1
-        } else {
-            start_rx
-        };
-        let end_rx = if truncate_end {
-            end_rx - 1
-        } else {
-            cmp::min(end_rx, self.max_rx)
-        };
+        if truncate_start {
+            start_rx += 1;
+        }
+        if truncate_end {
+            end_rx -= 1;
+        }
 
         let start_idx = self.rx_to_idx[start_rx];
         let end_idx = self.rx_to_idx[end_rx];
