@@ -264,14 +264,7 @@ impl Buffer {
                 self.rx = self.rows[self.cy].cx_to_rx[self.cx];
                 self.rx_cache = self.rx;
             }
-            Key::Ascii(byte) => {
-                self.rows[self.cy].insert(self.cx, byte as char);
-                self.cx += 1;
-                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
-                self.rx_cache = self.rx;
-                self.modified = true;
-            }
-            Key::Utf8(ch) => {
+            Key::Char(ch) => {
                 self.rows[self.cy].insert(self.cx, ch);
                 self.cx += 1;
                 self.rx = self.rows[self.cy].cx_to_rx[self.cx];

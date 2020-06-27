@@ -12,7 +12,6 @@ pub enum Key {
     Escape,
     Ctrl(u8),
     Alt(u8),
-    Ascii(u8),
-    Utf8(char),
+    Char(char),
     Unknown,
 }

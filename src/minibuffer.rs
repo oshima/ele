@@ -134,14 +134,7 @@ impl Minibuffer {
                     self.coloff = 0;
                 }
             }
-            Key::Ascii(byte) => {
-                if self.cx >= self.prompt_len {
-                    self.row.insert(self.cx, byte as char);
-                    self.cx += 1;
-                    self.rx = self.row.cx_to_rx[self.cx];
-                }
-            }
-            Key::Utf8(ch) => {
+            Key::Char(ch) => {
                 if self.cx >= self.prompt_len {
                     self.row.insert(self.cx, ch);
                     self.cx += 1;

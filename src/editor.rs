@@ -130,10 +130,10 @@ impl Editor {
                 [b'[', b'8', b'~'] => Ok(Key::End),
                 _ => Ok(Key::Unknown),
             },
-            32..=126 => Ok(Key::Ascii(byte)),
+            32..=126 => Ok(Key::Char(byte as char)),
             127 => Ok(Key::Backspace),
             _ => match self.read_utf8(byte)? {
-                Some(c) => Ok(Key::Utf8(c)),
+                Some(ch) => Ok(Key::Char(ch)),
                 None => Ok(Key::Unknown),
             },
         }
