@@ -73,25 +73,25 @@ impl Buffer {
         self.height = height - 1; // subtract status bar
     }
 
-    pub fn draw(&mut self, bufout: &mut Vec<u8>) -> io::Result<()> {
-        bufout.write(format!("\x1b[{};{}H", self.y + 1, self.x + 1).as_bytes())?;
-        self.draw_rows(bufout)?;
-        self.draw_status_bar(bufout)?;
+    pub fn draw(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
+        canvas.write(format!("\x1b[{};{}H", self.y + 1, self.x + 1).as_bytes())?;
+        self.draw_rows(canvas)?;
+        self.draw_status_bar(canvas)?;
         Ok(())
     }
 
-    fn draw_rows(&mut self, bufout: &mut Vec<u8>) -> io::Result<()> {
+    fn draw_rows(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
         for y in self.rowoff..(self.rowoff + self.height) {
             if y < self.rows.len() {
-                self.rows[y].draw(self.coloff, self.coloff + self.width, bufout)?;
+                self.rows[y].draw(self.coloff, self.coloff + self.width, canvas)?;
             }
-            bufout.write(b"\x1b[K")?;
-            bufout.write(b"\r\n")?;
+            canvas.write(b"\x1b[K")?;
+            canvas.write(b"\r\n")?;
         }
         Ok(())
     }
 
-    fn draw_status_bar(&mut self, bufout: &mut Vec<u8>) -> io::Result<()> {
+    fn draw_status_bar(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
         let left = format!(
             "{} {}",
             match &self.filename {
@@ -105,20 +105,20 @@ impl Buffer {
         let left_len = cmp::min(left.len(), self.width - right_len);
         let padding = self.width - left_len - right_len;
 
-        bufout.write(b"\x1b[7m")?;
+        canvas.write(b"\x1b[7m")?;
 
-        bufout.write(&left.as_bytes()[0..left_len])?;
+        canvas.write(&left.as_bytes()[0..left_len])?;
         for _ in 0..padding {
-            bufout.write(b" ")?;
+            canvas.write(b" ")?;
         }
-        bufout.write(&right.as_bytes()[0..right_len])?;
+        canvas.write(&right.as_bytes()[0..right_len])?;
 
-        bufout.write(b"\x1b[m")?;
+        canvas.write(b"\x1b[m")?;
         Ok(())
     }
 
-    pub fn draw_cursor(&mut self, bufout: &mut Vec<u8>) -> io::Result<()> {
-        bufout.write(
+    pub fn draw_cursor(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
+        canvas.write(
             format!(
                 "\x1b[{};{}H",
                 self.y + self.cy - self.rowoff + 1,

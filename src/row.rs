@@ -111,7 +111,7 @@ impl Row {
         self.rx_to_idx.push(self.render.len());
     }
 
-    pub fn draw(&self, start_rx: usize, end_rx: usize, bufout: &mut Vec<u8>) -> io::Result<()> {
+    pub fn draw(&self, start_rx: usize, end_rx: usize, canvas: &mut Vec<u8>) -> io::Result<()> {
         if start_rx >= self.max_rx {
             return Ok(());
         }
@@ -136,11 +136,11 @@ impl Row {
         let end_idx = self.rx_to_idx[end_rx];
 
         if truncate_start {
-            bufout.write(b"\x1b[34m~\x1b[39m")?;
+            canvas.write(b"\x1b[34m~\x1b[39m")?;
         }
-        bufout.write(&self.render[start_idx..end_idx].as_bytes())?;
+        canvas.write(&self.render[start_idx..end_idx].as_bytes())?;
         if truncate_end {
-            bufout.write(b"\x1b[34m~\x1b[39m")?;
+            canvas.write(b"\x1b[34m~\x1b[39m")?;
         }
         Ok(())
     }

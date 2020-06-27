@@ -15,7 +15,7 @@ enum State {
 pub struct Editor {
     stdin: io::Stdin,
     stdout: io::Stdout,
-    bufout: Vec<u8>,
+    canvas: Vec<u8>,
     width: usize,
     height: usize,
     state: State,
@@ -28,7 +28,7 @@ impl Editor {
         let mut editor = Self {
             stdin: io::stdin(),
             stdout: io::stdout(),
-            bufout: vec![],
+            canvas: vec![],
             width: 0,
             height: 0,
             state: State::Default,
@@ -88,20 +88,20 @@ impl Editor {
     }
 
     fn refresh_screen(&mut self) -> io::Result<()> {
-        self.bufout.write(b"\x1b[?25l")?;
+        self.canvas.write(b"\x1b[?25l")?;
 
-        self.buffer.draw(&mut self.bufout)?;
-        self.minibuffer.draw(&mut self.bufout)?;
+        self.buffer.draw(&mut self.canvas)?;
+        self.minibuffer.draw(&mut self.canvas)?;
 
         match self.state {
-            State::Default => self.buffer.draw_cursor(&mut self.bufout)?,
-            _ => self.minibuffer.draw_cursor(&mut self.bufout)?,
+            State::Default => self.buffer.draw_cursor(&mut self.canvas)?,
+            _ => self.minibuffer.draw_cursor(&mut self.canvas)?,
         }
 
-        self.bufout.write(b"\x1b[?25h")?;
+        self.canvas.write(b"\x1b[?25h")?;
 
-        self.stdout.write(&self.bufout)?;
-        self.bufout.clear();
+        self.stdout.write(&self.canvas)?;
+        self.canvas.clear();
         self.stdout.flush()
     }
 

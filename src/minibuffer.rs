@@ -59,16 +59,16 @@ impl Minibuffer {
         self.row.string[self.prompt_len..].to_string()
     }
 
-    pub fn draw(&mut self, bufout: &mut Vec<u8>) -> io::Result<()> {
-        bufout.write(format!("\x1b[{};{}H", self.y + 1, self.x + 1).as_bytes())?;
+    pub fn draw(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
+        canvas.write(format!("\x1b[{};{}H", self.y + 1, self.x + 1).as_bytes())?;
         self.row
-            .draw(self.coloff, self.coloff + self.width, bufout)?;
-        bufout.write(b"\x1b[K")?;
+            .draw(self.coloff, self.coloff + self.width, canvas)?;
+        canvas.write(b"\x1b[K")?;
         Ok(())
     }
 
-    pub fn draw_cursor(&mut self, bufout: &mut Vec<u8>) -> io::Result<()> {
-        bufout.write(
+    pub fn draw_cursor(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
+        canvas.write(
             format!(
                 "\x1b[{};{}H",
                 self.y + 1,
