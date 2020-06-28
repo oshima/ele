@@ -7,6 +7,7 @@ use crate::minibuffer::Minibuffer;
 
 enum State {
     Default,
+    CtrlX,
     Save,
     Quit,
     Quitted,
@@ -42,7 +43,6 @@ impl Editor {
         editor
             .minibuffer
             .set_position(0, editor.height - 1, editor.width, 1);
-        editor.minibuffer.set_message("Press Ctrl-Q to quit");
         Ok(editor)
     }
 
@@ -94,7 +94,7 @@ impl Editor {
         self.minibuffer.draw(&mut self.canvas)?;
 
         match self.state {
-            State::Default => self.buffer.draw_cursor(&mut self.canvas)?,
+            State::Default | State::CtrlX => self.buffer.draw_cursor(&mut self.canvas)?,
             _ => self.minibuffer.draw_cursor(&mut self.canvas)?,
         }
 
@@ -169,6 +169,13 @@ impl Editor {
     fn process_keypress(&mut self, key: Key) -> io::Result<()> {
         match self.state {
             State::Default => match key {
+                Key::Ctrl(b'X') => {
+                    self.minibuffer.set_message("C-x [C-s: save] [C-c: quit]");
+                    self.state = State::CtrlX;
+                },
+                _ => self.buffer.process_keypress(key),
+            },
+            State::CtrlX => match key {
                 Key::Ctrl(b'S') => {
                     if self.buffer.filename.is_none() {
                         self.minibuffer.set_prompt("Save as: ");
@@ -178,7 +185,7 @@ impl Editor {
                         self.minibuffer.set_message("Saved");
                     }
                 }
-                Key::Ctrl(b'Q') => {
+                Key::Ctrl(b'C') => {
                     if self.buffer.modified {
                         self.minibuffer.set_prompt("Quit without saving? (Y/n): ");
                         self.state = State::Quit;
@@ -186,7 +193,10 @@ impl Editor {
                         self.state = State::Quitted;
                     }
                 }
-                _ => self.buffer.process_keypress(key),
+                _ => {
+                    self.minibuffer.set_message("");
+                    self.state = State::Default;
+                },
             },
             State::Save => match key {
                 Key::Ctrl(b'G') => {
