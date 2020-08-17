@@ -11,8 +11,6 @@ const TAB_WIDTH: usize = 4;
 pub struct Row {
     pub string: String,
     pub render: String,
-    pub max_cx: usize,
-    pub max_rx: usize,
     pub cx_to_rx: UintVec,
     pub rx_to_cx: UintVec,
     pub cx_to_idx: UintVec,
@@ -24,8 +22,6 @@ impl Row {
         let mut row = Self {
             string,
             render: String::new(),
-            max_cx: 0,
-            max_rx: 0,
             cx_to_rx: UintVec::new(),
             rx_to_cx: UintVec::new(),
             cx_to_idx: UintVec::new(),
@@ -33,6 +29,16 @@ impl Row {
         };
         row.update();
         row
+    }
+
+    #[inline]
+    pub fn max_cx(&self) -> usize {
+        self.cx_to_idx.len() - 1
+    }
+
+    #[inline]
+    pub fn max_rx(&self) -> usize {
+        self.rx_to_idx.len() - 1
     }
 
     pub fn insert(&mut self, cx: usize, ch: char) {
@@ -87,7 +93,7 @@ impl Row {
         self.rx_to_idx.clear();
 
         for (cx, (idx, ch)) in self.string.char_indices().enumerate() {
-            self.cx_to_rx.push(self.rx_to_cx.len());
+            self.cx_to_rx.push(self.rx_to_idx.len());
             self.cx_to_idx.push(idx);
 
             if ch == '\t' {
@@ -97,7 +103,7 @@ impl Row {
                     self.render.push(' ');
                 }
             } else {
-                for _ in 0..UnicodeWidthChar::width(ch).unwrap_or(0) {
+                for _ in 0..ch.width().unwrap_or(0) {
                     self.rx_to_cx.push(cx);
                     self.rx_to_idx.push(self.render.len());
                 }
@@ -105,26 +111,24 @@ impl Row {
             }
         }
 
-        self.max_cx = self.cx_to_rx.len();
-        self.max_rx = self.rx_to_cx.len();
-        self.cx_to_rx.push(self.max_rx);
-        self.rx_to_cx.push(self.max_cx);
+        self.cx_to_rx.push(self.rx_to_idx.len());
+        self.rx_to_cx.push(self.cx_to_idx.len());
         self.cx_to_idx.push(self.string.len());
         self.rx_to_idx.push(self.render.len());
     }
 
     pub fn draw(&self, coloff: usize, width: usize, canvas: &mut Vec<u8>) -> io::Result<()> {
-        if coloff >= self.max_rx {
+        if coloff >= self.max_rx() {
             return Ok(());
         }
 
         let mut start_rx = coloff;
-        let mut end_rx = cmp::min(coloff + width, self.max_rx);
+        let mut end_rx = cmp::min(coloff + width, self.max_rx());
 
         let truncate_start =
             start_rx > 0 && self.rx_to_idx.get(start_rx) == self.rx_to_idx.get(start_rx - 1);
         let truncate_end =
-            end_rx <= self.max_rx && self.rx_to_idx.get(end_rx - 1) == self.rx_to_idx.get(end_rx);
+            end_rx <= self.max_rx() && self.rx_to_idx.get(end_rx - 1) == self.rx_to_idx.get(end_rx);
 
         if truncate_start {
             start_rx += 1;

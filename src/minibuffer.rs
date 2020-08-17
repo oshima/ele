@@ -49,8 +49,8 @@ impl Minibuffer {
     pub fn set_prompt(&mut self, string: &str) {
         self.row.clear();
         self.row.push_str(string);
-        self.prompt_len = self.row.max_cx;
-        self.cx = self.row.max_cx;
+        self.prompt_len = self.row.max_cx();
+        self.cx = self.row.max_cx();
         self.rx = self.row.cx_to_rx.get(self.cx);
         self.coloff = 0;
     }
@@ -87,7 +87,7 @@ impl Minibuffer {
                 }
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
-                if self.cx < self.row.max_cx {
+                if self.cx < self.row.max_cx() {
                     self.cx += 1;
                     self.rx = self.row.cx_to_rx.get(self.cx);
                 }
@@ -98,7 +98,7 @@ impl Minibuffer {
                 self.coloff = 0;
             }
             Key::End | Key::Ctrl(b'E') | Key::Alt(b'>') => {
-                self.cx = self.row.max_cx;
+                self.cx = self.row.max_cx();
                 self.rx = self.row.cx_to_rx.get(self.cx);
             }
             Key::Backspace | Key::Ctrl(b'H') => {
@@ -109,7 +109,7 @@ impl Minibuffer {
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
-                if self.cx >= self.prompt_len && self.cx < self.row.max_cx {
+                if self.cx >= self.prompt_len && self.cx < self.row.max_cx() {
                     self.row.remove(self.cx);
                 }
             }
@@ -155,7 +155,7 @@ impl Minibuffer {
 
         // don't truncate full-width character on the right edge of the screen
         if self.rx == self.coloff + self.width - 1
-            && self.rx < self.row.max_rx
+            && self.rx < self.row.max_rx()
             && self.row.rx_to_idx.get(self.rx) == self.row.rx_to_idx.get(self.rx + 1)
         {
             self.coloff += 1;
