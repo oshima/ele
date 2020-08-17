@@ -4,6 +4,8 @@ use std::cmp;
 use std::io::{self, Write};
 use unicode_width::UnicodeWidthChar;
 
+use crate::uint_vec::UintVec;
+
 const TAB_WIDTH: usize = 4;
 
 pub struct Row {
@@ -11,10 +13,10 @@ pub struct Row {
     pub render: String,
     pub max_cx: usize,
     pub max_rx: usize,
-    pub cx_to_rx: Vec<usize>,
-    pub rx_to_cx: Vec<usize>,
-    pub cx_to_idx: Vec<usize>,
-    pub rx_to_idx: Vec<usize>,
+    pub cx_to_rx: UintVec,
+    pub rx_to_cx: UintVec,
+    pub cx_to_idx: UintVec,
+    pub rx_to_idx: UintVec,
 }
 
 impl Row {
@@ -24,23 +26,23 @@ impl Row {
             render: String::new(),
             max_cx: 0,
             max_rx: 0,
-            cx_to_rx: Vec::new(),
-            rx_to_cx: Vec::new(),
-            cx_to_idx: Vec::new(),
-            rx_to_idx: Vec::new(),
+            cx_to_rx: UintVec::new(),
+            rx_to_cx: UintVec::new(),
+            cx_to_idx: UintVec::new(),
+            rx_to_idx: UintVec::new(),
         };
         row.update();
         row
     }
 
     pub fn insert(&mut self, cx: usize, ch: char) {
-        let idx = self.cx_to_idx[cx];
+        let idx = self.cx_to_idx.get(cx);
         self.string.insert(idx, ch);
         self.update();
     }
 
     pub fn remove(&mut self, cx: usize) {
-        let idx = self.cx_to_idx[cx];
+        let idx = self.cx_to_idx.get(cx);
         self.string.remove(idx);
         self.update();
     }
@@ -51,13 +53,13 @@ impl Row {
     }
 
     pub fn truncate(&mut self, cx: usize) {
-        let idx = self.cx_to_idx[cx];
+        let idx = self.cx_to_idx.get(cx);
         self.string.truncate(idx);
         self.update();
     }
 
     pub fn split_off(&mut self, cx: usize) -> String {
-        let idx = self.cx_to_idx[cx];
+        let idx = self.cx_to_idx.get(cx);
         let string = self.string.split_off(idx);
         self.update();
         string
@@ -69,8 +71,8 @@ impl Row {
     }
 
     pub fn remove_str(&mut self, from_cx: usize, to_cx: usize) {
-        let from_idx = self.cx_to_idx[from_cx];
-        let to_idx = self.cx_to_idx[to_cx];
+        let from_idx = self.cx_to_idx.get(from_cx);
+        let to_idx = self.cx_to_idx.get(to_cx);
         let string = self.string.split_off(to_idx);
         self.string.truncate(from_idx);
         self.string.push_str(&string);
@@ -120,9 +122,9 @@ impl Row {
         let mut end_rx = cmp::min(coloff + width, self.max_rx);
 
         let truncate_start =
-            start_rx > 0 && self.rx_to_idx[start_rx] == self.rx_to_idx[start_rx - 1];
+            start_rx > 0 && self.rx_to_idx.get(start_rx) == self.rx_to_idx.get(start_rx - 1);
         let truncate_end =
-            end_rx <= self.max_rx && self.rx_to_idx[end_rx - 1] == self.rx_to_idx[end_rx];
+            end_rx <= self.max_rx && self.rx_to_idx.get(end_rx - 1) == self.rx_to_idx.get(end_rx);
 
         if truncate_start {
             start_rx += 1;
@@ -131,8 +133,8 @@ impl Row {
             end_rx -= 1;
         }
 
-        let start_idx = self.rx_to_idx[start_rx];
-        let end_idx = self.rx_to_idx[end_rx];
+        let start_idx = self.rx_to_idx.get(start_rx);
+        let end_idx = self.rx_to_idx.get(end_rx);
 
         if truncate_start {
             canvas.write(b"\x1b[34m~\x1b[39m")?;

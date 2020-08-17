@@ -172,7 +172,7 @@ impl Editor {
                 Key::Ctrl(b'X') => {
                     self.minibuffer.set_message("C-x [C-s: save] [C-c: quit]");
                     self.state = State::CtrlX;
-                },
+                }
                 _ => self.buffer.process_keypress(key),
             },
             State::CtrlX => match key {
@@ -196,7 +196,7 @@ impl Editor {
                 _ => {
                     self.minibuffer.set_message("");
                     self.state = State::Default;
-                },
+                }
             },
             State::Save => match key {
                 Key::Ctrl(b'G') => {

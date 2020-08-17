@@ -4,6 +4,7 @@ mod key;
 mod minibuffer;
 mod raw_mode;
 mod row;
+mod uint_vec;
 
 use std::env;
 use std::io;

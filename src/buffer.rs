@@ -131,19 +131,19 @@ impl Buffer {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if self.cx > 0 {
                     self.cx -= 1;
-                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                     self.saved_rx = self.rx;
                 } else if self.cy > 0 {
                     self.cy -= 1;
                     self.cx = self.rows[self.cy].max_cx;
-                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                     self.saved_rx = self.rx;
                 }
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
                 if self.cx < self.rows[self.cy].max_cx {
                     self.cx += 1;
-                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                     self.saved_rx = self.rx;
                 } else if self.cy < self.rows.len() - 1 {
                     self.cy += 1;
@@ -156,16 +156,16 @@ impl Buffer {
                 if self.cy > 0 {
                     self.cy -= 1;
                     self.rx = cmp::min(self.saved_rx, self.rows[self.cy].max_rx);
-                    self.cx = self.rows[self.cy].rx_to_cx[self.rx];
-                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                    self.cx = self.rows[self.cy].rx_to_cx.get(self.rx);
+                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                 }
             }
             Key::ArrowDown | Key::Ctrl(b'N') => {
                 if self.cy < self.rows.len() - 1 {
                     self.cy += 1;
                     self.rx = cmp::min(self.saved_rx, self.rows[self.cy].max_rx);
-                    self.cx = self.rows[self.cy].rx_to_cx[self.rx];
-                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                    self.cx = self.rows[self.cy].rx_to_cx.get(self.rx);
+                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                 }
             }
             Key::Home | Key::Ctrl(b'A') => {
@@ -175,7 +175,7 @@ impl Buffer {
             }
             Key::End | Key::Ctrl(b'E') => {
                 self.cx = self.rows[self.cy].max_cx;
-                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                 self.saved_rx = self.rx;
             }
             Key::PageUp | Key::Alt(b'v') => {
@@ -183,8 +183,8 @@ impl Buffer {
                 self.rowoff -= cmp::min(self.height, self.rowoff);
 
                 self.rx = cmp::min(self.saved_rx, self.rows[self.cy].max_rx);
-                self.cx = self.rows[self.cy].rx_to_cx[self.rx];
-                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                self.cx = self.rows[self.cy].rx_to_cx.get(self.rx);
+                self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
             }
             Key::PageDown | Key::Ctrl(b'V') => {
                 if self.rowoff + self.height < self.rows.len() {
@@ -192,15 +192,15 @@ impl Buffer {
                     self.rowoff += self.height;
 
                     self.rx = cmp::min(self.saved_rx, self.rows[self.cy].max_rx);
-                    self.cx = self.rows[self.cy].rx_to_cx[self.rx];
-                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                    self.cx = self.rows[self.cy].rx_to_cx.get(self.rx);
+                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                 }
             }
             Key::Backspace | Key::Ctrl(b'H') => {
                 if self.cx > 0 {
                     self.rows[self.cy].remove(self.cx - 1);
                     self.cx -= 1;
-                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                     self.saved_rx = self.rx;
                     self.modified = true;
                 } else if self.cy > 0 {
@@ -209,7 +209,7 @@ impl Buffer {
                     self.rows[self.cy - 1].push_str(&row.string);
                     self.cy -= 1;
                     self.cx = max_cx;
-                    self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                     self.saved_rx = self.rx;
                     self.modified = true;
                 }
@@ -227,7 +227,7 @@ impl Buffer {
             Key::Ctrl(b'I') => {
                 self.rows[self.cy].insert(self.cx, '\t');
                 self.cx += 1;
-                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                 self.saved_rx = self.rx;
                 self.modified = true;
             }
@@ -258,13 +258,13 @@ impl Buffer {
             Key::Alt(b'>') => {
                 self.cy = self.rows.len() - 1;
                 self.cx = self.rows[self.cy].max_cx;
-                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                 self.saved_rx = self.rx;
             }
             Key::Char(ch) => {
                 self.rows[self.cy].insert(self.cx, ch);
                 self.cx += 1;
-                self.rx = self.rows[self.cy].cx_to_rx[self.cx];
+                self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                 self.saved_rx = self.rx;
                 self.modified = true;
             }
@@ -291,7 +291,7 @@ impl Buffer {
         let row = &self.rows[self.cy];
         if self.rx == self.coloff + self.width - 1
             && self.rx < row.max_rx
-            && row.rx_to_idx[self.rx] == row.rx_to_idx[self.rx + 1]
+            && row.rx_to_idx.get(self.rx) == row.rx_to_idx.get(self.rx + 1)
         {
             self.coloff += 1;
         }

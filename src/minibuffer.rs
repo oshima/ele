@@ -51,7 +51,7 @@ impl Minibuffer {
         self.row.push_str(string);
         self.prompt_len = self.row.max_cx;
         self.cx = self.row.max_cx;
-        self.rx = self.row.cx_to_rx[self.cx];
+        self.rx = self.row.cx_to_rx.get(self.cx);
         self.coloff = 0;
     }
 
@@ -83,29 +83,29 @@ impl Minibuffer {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if self.cx > 0 {
                     self.cx -= 1;
-                    self.rx = self.row.cx_to_rx[self.cx];
+                    self.rx = self.row.cx_to_rx.get(self.cx);
                 }
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
                 if self.cx < self.row.max_cx {
                     self.cx += 1;
-                    self.rx = self.row.cx_to_rx[self.cx];
+                    self.rx = self.row.cx_to_rx.get(self.cx);
                 }
             }
             Key::Home | Key::Ctrl(b'A') | Key::Alt(b'<') => {
                 self.cx = self.prompt_len;
-                self.rx = self.row.cx_to_rx[self.cx];
+                self.rx = self.row.cx_to_rx.get(self.cx);
                 self.coloff = 0;
             }
             Key::End | Key::Ctrl(b'E') | Key::Alt(b'>') => {
                 self.cx = self.row.max_cx;
-                self.rx = self.row.cx_to_rx[self.cx];
+                self.rx = self.row.cx_to_rx.get(self.cx);
             }
             Key::Backspace | Key::Ctrl(b'H') => {
                 if self.cx > self.prompt_len {
                     self.row.remove(self.cx - 1);
                     self.cx -= 1;
-                    self.rx = self.row.cx_to_rx[self.cx];
+                    self.rx = self.row.cx_to_rx.get(self.cx);
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
@@ -117,7 +117,7 @@ impl Minibuffer {
                 if self.cx >= self.prompt_len {
                     self.row.insert(self.cx, '\t');
                     self.cx += 1;
-                    self.rx = self.row.cx_to_rx[self.cx];
+                    self.rx = self.row.cx_to_rx.get(self.cx);
                 }
             }
             Key::Ctrl(b'K') => {
@@ -129,7 +129,7 @@ impl Minibuffer {
                 if self.cx > self.prompt_len {
                     self.row.remove_str(self.prompt_len, self.cx);
                     self.cx = self.prompt_len;
-                    self.rx = self.row.cx_to_rx[self.cx];
+                    self.rx = self.row.cx_to_rx.get(self.cx);
                     self.coloff = 0;
                 }
             }
@@ -137,7 +137,7 @@ impl Minibuffer {
                 if self.cx >= self.prompt_len {
                     self.row.insert(self.cx, ch);
                     self.cx += 1;
-                    self.rx = self.row.cx_to_rx[self.cx];
+                    self.rx = self.row.cx_to_rx.get(self.cx);
                 }
             }
             _ => (),
@@ -156,7 +156,7 @@ impl Minibuffer {
         // don't truncate full-width character on the right edge of the screen
         if self.rx == self.coloff + self.width - 1
             && self.rx < self.row.max_rx
-            && self.row.rx_to_idx[self.rx] == self.row.rx_to_idx[self.rx + 1]
+            && self.row.rx_to_idx.get(self.rx) == self.row.rx_to_idx.get(self.rx + 1)
         {
             self.coloff += 1;
         }
