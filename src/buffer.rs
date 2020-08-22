@@ -285,15 +285,13 @@ impl Buffer {
         }
         if self.rx >= self.coloff + self.width {
             self.coloff = self.rx - self.width + 1;
-        }
 
-        // don't truncate full-width character on the right edge of the screen
-        let row = &self.rows[self.cy];
-        if self.rx == self.coloff + self.width - 1
-            && self.rx < row.max_rx()
-            && row.rx_to_idx.get(self.rx) == row.rx_to_idx.get(self.rx + 1)
-        {
-            self.coloff += 1;
+            let row = &self.rows[self.cy];
+            if self.rx < row.max_rx()
+                && row.rx_to_idx.get(self.rx) == row.rx_to_idx.get(self.rx + 1)
+            {
+                self.coloff += 1;
+            }
         }
     }
 

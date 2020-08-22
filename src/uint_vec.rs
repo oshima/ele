@@ -31,25 +31,24 @@ impl UintVec {
 
     pub fn get(&self, i: usize) -> usize {
         let u8_vec_len = self.u8_vec.as_ref().map_or(0, |v| v.len());
-        let u16_vec_len = self.u16_vec.as_ref().map_or(0, |v| v.len());
-        let u32_vec_len = self.u32_vec.as_ref().map_or(0, |v| v.len());
-        let u64_vec_len = self.u64_vec.as_ref().map_or(0, |v| v.len());
-
         if i < u8_vec_len {
             return self.u8_vec.as_ref().unwrap()[i] as usize;
         }
         let i = i - u8_vec_len;
 
+        let u16_vec_len = self.u16_vec.as_ref().map_or(0, |v| v.len());
         if i < u16_vec_len {
             return self.u16_vec.as_ref().unwrap()[i] as usize;
         }
         let i = i - u16_vec_len;
 
+        let u32_vec_len = self.u32_vec.as_ref().map_or(0, |v| v.len());
         if i < u32_vec_len {
             return self.u32_vec.as_ref().unwrap()[i] as usize;
         }
         let i = i - u32_vec_len;
 
+        let u64_vec_len = self.u64_vec.as_ref().map_or(0, |v| v.len());
         if i < u64_vec_len {
             return self.u64_vec.as_ref().unwrap()[i] as usize;
         }

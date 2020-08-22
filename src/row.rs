@@ -118,7 +118,7 @@ impl Row {
     }
 
     pub fn draw(&self, coloff: usize, width: usize, canvas: &mut Vec<u8>) -> io::Result<()> {
-        if coloff >= self.max_rx() {
+        if self.max_rx() <= coloff {
             return Ok(());
         }
 

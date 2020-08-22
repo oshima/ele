@@ -151,14 +151,12 @@ impl Minibuffer {
         }
         if self.rx >= self.coloff + self.width {
             self.coloff = self.rx - self.width + 1;
-        }
 
-        // don't truncate full-width character on the right edge of the screen
-        if self.rx == self.coloff + self.width - 1
-            && self.rx < self.row.max_rx()
-            && self.row.rx_to_idx.get(self.rx) == self.row.rx_to_idx.get(self.rx + 1)
-        {
-            self.coloff += 1;
+            if self.rx < self.row.max_rx()
+                && self.row.rx_to_idx.get(self.rx) == self.row.rx_to_idx.get(self.rx + 1)
+            {
+                self.coloff += 1;
+            }
         }
     }
 }
