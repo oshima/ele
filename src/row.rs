@@ -117,7 +117,7 @@ impl Row {
         self.rx_to_idx.push(self.render.len());
     }
 
-    pub fn draw(&self, coloff: usize, width: usize, canvas: &mut Vec<u8>) -> io::Result<()> {
+    pub fn draw(&self, canvas: &mut Vec<u8>, coloff: usize, width: usize) -> io::Result<()> {
         if self.max_rx() <= coloff {
             return Ok(());
         }

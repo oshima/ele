@@ -13,10 +13,10 @@ pub struct Buffer {
     width: usize,
     height: usize,
     cx: usize,
-    cy: usize,
     rx: usize,
-    redraw_cy: Option<usize>,
+    cy: usize,
     saved_rx: usize,
+    redraw_cy: Option<usize>,
     rowoff: usize,
     coloff: usize,
     rows: Vec<Row>,
@@ -32,10 +32,10 @@ impl Buffer {
             width: 0,
             height: 0,
             cx: 0,
-            cy: 0,
             rx: 0,
-            redraw_cy: Some(0),
+            cy: 0,
             saved_rx: 0,
+            redraw_cy: Some(0),
             rowoff: 0,
             coloff: 0,
             rows: Vec::new(),
@@ -77,13 +77,13 @@ impl Buffer {
 
     pub fn draw(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
         if let Some(cy) = self.redraw_cy {
-            self.draw_rows(cy, canvas)?;
+            self.draw_rows(canvas, cy)?;
         }
         self.draw_status_bar(canvas)?;
         Ok(())
     }
 
-    fn draw_rows(&mut self, from_cy: usize, canvas: &mut Vec<u8>) -> io::Result<()> {
+    fn draw_rows(&mut self, canvas: &mut Vec<u8>, from_cy: usize) -> io::Result<()> {
         canvas.write(
             format!(
                 "\x1b[{};{}H",
@@ -95,7 +95,7 @@ impl Buffer {
 
         for y in from_cy..(self.rowoff + self.height) {
             if y < self.rows.len() {
-                self.rows[y].draw(self.coloff, self.width, canvas)?;
+                self.rows[y].draw(canvas, self.coloff, self.width)?;
             }
             canvas.write(b"\x1b[K")?;
             canvas.write(b"\r\n")?;
@@ -163,7 +163,7 @@ impl Buffer {
                     self.cy += 1;
                     self.cx = 0;
                     self.rx = 0;
-                    self.saved_rx = 0;
+                    self.saved_rx = self.rx;
                 }
                 self.redraw_cy = None;
             }
@@ -188,7 +188,7 @@ impl Buffer {
             Key::Home | Key::Ctrl(b'A') => {
                 self.cx = 0;
                 self.rx = 0;
-                self.saved_rx = 0;
+                self.saved_rx = self.rx;
                 self.redraw_cy = None;
             }
             Key::End | Key::Ctrl(b'E') => {
@@ -198,21 +198,27 @@ impl Buffer {
                 self.redraw_cy = None;
             }
             Key::PageUp | Key::Alt(b'v') => {
-                self.cy -= cmp::min(self.height, self.rowoff);
-                self.rowoff -= cmp::min(self.height, self.rowoff);
-                self.rx = cmp::min(self.saved_rx, self.rows[self.cy].max_rx());
-                self.cx = self.rows[self.cy].rx_to_cx.get(self.rx);
-                self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
-                self.redraw_cy = Some(self.rowoff);
+                if self.rowoff > 0 {
+                    self.cy -= cmp::min(self.height, self.rowoff);
+                    self.rowoff -= cmp::min(self.height, self.rowoff);
+                    self.rx = cmp::min(self.saved_rx, self.rows[self.cy].max_rx());
+                    self.cx = self.rows[self.cy].rx_to_cx.get(self.rx);
+                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                    self.redraw_cy = Some(self.rowoff);
+                } else {
+                    self.redraw_cy = None;
+                }
             }
             Key::PageDown | Key::Ctrl(b'V') => {
-                if self.rowoff + self.height < self.rows.len() {
-                    self.cy += cmp::min(self.height, self.rows.len() - 1 - self.cy);
+                if self.rowoff < self.rows.len() - self.height {
+                    self.cy += cmp::min(self.height, self.rows.len() - self.cy - 1);
                     self.rowoff += self.height;
                     self.rx = cmp::min(self.saved_rx, self.rows[self.cy].max_rx());
                     self.cx = self.rows[self.cy].rx_to_cx.get(self.rx);
                     self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
                     self.redraw_cy = Some(self.rowoff);
+                } else {
+                    self.redraw_cy = None;
                 }
             }
             Key::Backspace | Key::Ctrl(b'H') => {
@@ -220,8 +226,9 @@ impl Buffer {
                     self.rows[self.cy].remove(self.cx - 1);
                     self.cx -= 1;
                     self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
-                    self.saved_rx = self.rx;
                     self.modified = true;
+                    self.saved_rx = self.rx;
+                    self.redraw_cy = Some(self.cy);
                 } else if self.cy > 0 {
                     let row = self.rows.remove(self.cy);
                     let max_cx = self.rows[self.cy - 1].max_cx();
@@ -229,28 +236,33 @@ impl Buffer {
                     self.cy -= 1;
                     self.cx = max_cx;
                     self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
-                    self.saved_rx = self.rx;
                     self.modified = true;
+                    self.saved_rx = self.rx;
+                    self.redraw_cy = Some(self.cy);
+                } else {
+                    self.redraw_cy = None;
                 }
-                self.redraw_cy = Some(self.cy);
             }
             Key::Delete | Key::Ctrl(b'D') => {
                 if self.cx < self.rows[self.cy].max_cx() {
                     self.rows[self.cy].remove(self.cx);
                     self.modified = true;
+                    self.redraw_cy = Some(self.cy);
                 } else if self.cy < self.rows.len() - 1 {
                     let row = self.rows.remove(self.cy + 1);
                     self.rows[self.cy].push_str(&row.string);
                     self.modified = true;
+                    self.redraw_cy = Some(self.cy);
+                } else {
+                    self.redraw_cy = None;
                 }
-                self.redraw_cy = Some(self.cy);
             }
             Key::Ctrl(b'I') => {
                 self.rows[self.cy].insert(self.cx, '\t');
                 self.cx += 1;
                 self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
-                self.saved_rx = self.rx;
                 self.modified = true;
+                self.saved_rx = self.rx;
                 self.redraw_cy = Some(self.cy);
             }
             Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
@@ -259,26 +271,28 @@ impl Buffer {
                 self.cy += 1;
                 self.cx = 0;
                 self.rx = 0;
-                self.saved_rx = 0;
                 self.modified = true;
+                self.saved_rx = self.rx;
                 self.redraw_cy = Some(self.cy - 1);
             }
             Key::Ctrl(b'K') => {
                 self.rows[self.cy].truncate(self.cx);
+                self.modified = true;
                 self.redraw_cy = Some(self.cy);
             }
             Key::Ctrl(b'U') => {
                 self.rows[self.cy].remove_str(0, self.cx);
                 self.cx = 0;
                 self.rx = 0;
-                self.saved_rx = 0;
+                self.modified = true;
+                self.saved_rx = self.rx;
                 self.redraw_cy = Some(self.cy);
             }
             Key::Alt(b'<') => {
                 self.cy = 0;
                 self.cx = 0;
                 self.rx = 0;
-                self.saved_rx = 0;
+                self.saved_rx = self.rx;
                 self.redraw_cy = None;
             }
             Key::Alt(b'>') => {
@@ -292,8 +306,8 @@ impl Buffer {
                 self.rows[self.cy].insert(self.cx, ch);
                 self.cx += 1;
                 self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
-                self.saved_rx = self.rx;
                 self.modified = true;
+                self.saved_rx = self.rx;
                 self.redraw_cy = Some(self.cy);
             }
             _ => (),

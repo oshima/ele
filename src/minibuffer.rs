@@ -61,7 +61,7 @@ impl Minibuffer {
 
     pub fn draw(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
         canvas.write(format!("\x1b[{};{}H", self.y + 1, self.x + 1).as_bytes())?;
-        self.row.draw(self.coloff, self.width, canvas)?;
+        self.row.draw(canvas, self.coloff, self.width)?;
         canvas.write(b"\x1b[K")?;
         Ok(())
     }
