@@ -30,7 +30,7 @@ impl Minibuffer {
         }
     }
 
-    pub fn set_position(&mut self, x: usize, y: usize, width: usize, height: usize) {
+    pub fn locate(&mut self, x: usize, y: usize, width: usize, height: usize) {
         self.x = x;
         self.y = y;
         self.width = width;
@@ -51,7 +51,7 @@ impl Minibuffer {
         self.row.push_str(string);
         self.prompt_len = self.row.max_cx();
         self.cx = self.row.max_cx();
-        self.rx = self.row.cx_to_rx.get(self.cx);
+        self.rx = self.row.max_rx();
         self.coloff = 0;
     }
 

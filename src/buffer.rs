@@ -40,11 +40,11 @@ impl Buffer {
             coloff: 0,
             rows: Vec::new(),
         };
-        buffer.open_file()?;
+        buffer.init()?;
         Ok(buffer)
     }
 
-    fn open_file(&mut self) -> io::Result<()> {
+    fn init(&mut self) -> io::Result<()> {
         if let Some(filename) = &self.filename {
             let file = File::open(filename)?;
             let mut reader = BufReader::new(file);
@@ -68,7 +68,23 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn set_position(&mut self, x: usize, y: usize, width: usize, height: usize) {
+    pub fn save(&mut self) -> io::Result<()> {
+        if let Some(filename) = &self.filename {
+            let file = File::create(filename)?;
+            let mut writer = BufWriter::new(file);
+
+            for (i, row) in self.rows.iter().enumerate() {
+                writer.write(row.string.as_bytes())?;
+                if i < self.rows.len() - 1 {
+                    writer.write(b"\n")?;
+                }
+            }
+            self.modified = false;
+        }
+        Ok(())
+    }
+
+    pub fn locate(&mut self, x: usize, y: usize, width: usize, height: usize) {
         self.x = x;
         self.y = y;
         self.width = width;
@@ -339,21 +355,5 @@ impl Buffer {
                 self.coloff += 1;
             }
         }
-    }
-
-    pub fn save(&mut self) -> io::Result<()> {
-        if let Some(filename) = &self.filename {
-            let file = File::create(filename)?;
-            let mut writer = BufWriter::new(file);
-
-            for (i, row) in self.rows.iter().enumerate() {
-                writer.write(row.string.as_bytes())?;
-                if i < self.rows.len() - 1 {
-                    writer.write(b"\n")?;
-                }
-            }
-            self.modified = false;
-        }
-        Ok(())
     }
 }

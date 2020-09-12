@@ -17,8 +17,6 @@ pub struct Editor {
     stdin: io::Stdin,
     stdout: io::Stdout,
     canvas: Vec<u8>,
-    width: usize,
-    height: usize,
     state: State,
     buffer: Buffer,
     minibuffer: Minibuffer,
@@ -30,39 +28,34 @@ impl Editor {
             stdin: io::stdin(),
             stdout: io::stdout(),
             canvas: Vec::new(),
-            width: 0,
-            height: 0,
             state: State::Default,
             buffer: Buffer::new(filename)?,
             minibuffer: Minibuffer::new(),
         };
-        editor.get_window_size()?;
-        editor
-            .buffer
-            .set_position(0, 0, editor.width, editor.height - 1);
-        editor
-            .minibuffer
-            .set_position(0, editor.height - 1, editor.width, 1);
+        let (width, height) = editor.get_window_size()?;
+        editor.buffer.locate(0, 0, width, height - 1);
+        editor.minibuffer.locate(0, height - 1, width, 1);
         Ok(editor)
     }
 
-    fn get_window_size(&mut self) -> io::Result<()> {
+    fn get_window_size(&mut self) -> io::Result<(usize, usize)> {
         self.stdout.write(b"\x1b[999C\x1b[999B")?;
         self.stdout.write(b"\x1b[6n")?;
         self.stdout.flush()?;
 
         let mut buf = [0];
         let mut num = 0;
+        let (mut width, mut height) = (0, 0);
 
         while self.stdin.read(&mut buf)? == 1 {
             match buf[0] {
                 b'\x1b' | b'[' => (),
                 b';' => {
-                    self.height = num;
+                    height = num;
                     num = 0;
                 }
                 b'R' => {
-                    self.width = num;
+                    width = num;
                     break;
                 }
                 ch => {
@@ -70,7 +63,7 @@ impl Editor {
                 }
             }
         }
-        Ok(())
+        Ok((width, height))
     }
 
     pub fn looop(&mut self) -> io::Result<()> {
