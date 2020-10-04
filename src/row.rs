@@ -4,6 +4,7 @@ use std::cmp;
 use std::io::{self, Write};
 use unicode_width::UnicodeWidthChar;
 
+use crate::syntax::Hl;
 use crate::uint_vec::UintVec;
 
 const TAB_WIDTH: usize = 4;
@@ -15,6 +16,7 @@ pub struct Row {
     pub rx_to_cx: UintVec,
     pub cx_to_idx: UintVec,
     pub rx_to_idx: UintVec,
+    pub hls: Vec<Hl>,
 }
 
 impl Row {
@@ -26,6 +28,7 @@ impl Row {
             rx_to_cx: UintVec::new(),
             cx_to_idx: UintVec::new(),
             rx_to_idx: UintVec::new(),
+            hls: Vec::new(),
         };
         row.update();
         row
@@ -141,12 +144,39 @@ impl Row {
         let end_idx = self.rx_to_idx.get(end_rx);
 
         if truncate_start {
-            canvas.write(b"\x1b[34m~\x1b[39m")?;
+            canvas.write(b"\x1b[34m~")?;
         }
-        canvas.write(&self.render[start_idx..end_idx].as_bytes())?;
+
+        let mut hl_start = start_idx;
+
+        while hl_start < end_idx {
+            let hl = self.hls[hl_start];
+            let mut hl_end = hl_start + 1;
+
+            while hl_end < end_idx && self.hls[hl_end] == hl {
+                hl_end += 1;
+            }
+
+            match hl {
+                Hl::Default => canvas.write(b"\x1b[m")?,
+                Hl::Keyword => canvas.write(b"\x1b[35m")?,
+                Hl::Type => canvas.write(b"\x1b[33m")?,
+                Hl::Module => canvas.write(b"\x1b[36m")?,
+                Hl::Variable => canvas.write(b"\x1b[31m")?,
+                Hl::Function => canvas.write(b"\x1b[34m")?,
+                Hl::Macro => canvas.write(b"\x1b[36m")?,
+                Hl::String => canvas.write(b"\x1b[32m")?,
+                Hl::Comment => canvas.write(b"\x1b[36m")?,
+            };
+            canvas.write(self.render[hl_start..hl_end].as_bytes())?;
+
+            hl_start = hl_end;
+        }
+
         if truncate_end {
-            canvas.write(b"\x1b[34m~\x1b[39m")?;
+            canvas.write(b"\x1b[34m~")?;
         }
+        canvas.write(b"\x1b[m")?;
         Ok(())
     }
 }

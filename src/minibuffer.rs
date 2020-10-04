@@ -2,6 +2,7 @@ use std::io::{self, Write};
 
 use crate::key::Key;
 use crate::row::Row;
+use crate::syntax::Hl;
 
 pub struct Minibuffer {
     x: usize,
@@ -61,7 +62,15 @@ impl Minibuffer {
 
     pub fn draw(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
         canvas.write(format!("\x1b[{};{}H", self.y + 1, self.x + 1).as_bytes())?;
+
+        self.row.hls.clear();
+        self.row.hls.resize(self.row.render.len(), Hl::Default);
+        for i in 0..self.row.cx_to_rx.get(self.prompt_len) {
+            self.row.hls[i] = Hl::Function;
+        }
+
         self.row.draw(canvas, self.coloff, self.width)?;
+
         canvas.write(b"\x1b[K")?;
         Ok(())
     }

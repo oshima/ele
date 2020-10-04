@@ -4,10 +4,12 @@ use std::io::{self, BufRead, BufReader, BufWriter, Write};
 
 use crate::key::Key;
 use crate::row::Row;
+use crate::syntax::Syntax;
 
 pub struct Buffer {
     pub filename: Option<String>,
     pub modified: bool,
+    syntax: Box<dyn Syntax>,
     x: usize,
     y: usize,
     width: usize,
@@ -25,6 +27,7 @@ pub struct Buffer {
 impl Buffer {
     pub fn new(filename: Option<String>) -> io::Result<Self> {
         let mut buffer = Self {
+            syntax: Syntax::detect(&filename),
             filename,
             modified: false,
             x: 0,
@@ -81,6 +84,8 @@ impl Buffer {
             }
             self.modified = false;
         }
+        self.syntax = Syntax::detect(&self.filename);
+        self.redraw_cy = Some(self.rowoff);
         Ok(())
     }
 
@@ -111,6 +116,7 @@ impl Buffer {
 
         for y in from_cy..(self.rowoff + self.height) {
             if y < self.rows.len() {
+                self.syntax.highlight(&mut self.rows[y]);
                 self.rows[y].draw(canvas, self.coloff, self.width)?;
             }
             canvas.write(b"\x1b[K")?;
@@ -125,7 +131,12 @@ impl Buffer {
             self.filename.as_deref().unwrap_or("*newfile*"),
             if self.modified { "(modified)" } else { "" },
         );
-        let right = format!("Ln {}, Col {}", self.cy + 1, self.rx + 1);
+        let right = format!(
+            "Ln {}, Col {} {}",
+            self.cy + 1,
+            self.rx + 1,
+            self.syntax.name(),
+        );
         let right_len = cmp::min(right.len(), self.width);
         let left_len = cmp::min(left.len(), self.width - right_len);
         let padding = self.width - left_len - right_len;
