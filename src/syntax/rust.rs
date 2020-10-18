@@ -93,8 +93,11 @@ impl<'a> Iterator for Tokens<'a> {
                     self.chars.next();
                     loop {
                         match self.chars.next() {
-                            Some((_, '*')) => match self.chars.next() {
-                                Some((_, '/')) => break Comment,
+                            Some((_, '*')) => match self.chars.peek() {
+                                Some(&(_, '/')) => {
+                                    self.chars.next();
+                                    break Comment
+                                },
                                 _ => (),
                             },
                             Some(_) => (),
@@ -147,9 +150,12 @@ impl<'a> Iterator for Tokens<'a> {
             },
 
             // punctuation
-            '!' => Bang,
-            '?' => Question,
             '(' => Paren,
+            '?' => Question,
+            '!' => match self.chars.peek() {
+                Some(&(_, '=')) => Punct,
+                _ => Bang,
+            },
             ':' => match self.chars.peek() {
                 Some(&(_, ':')) => {
                     self.chars.next();
