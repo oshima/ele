@@ -176,7 +176,7 @@ impl Buffer {
                 } else if self.cy > 0 {
                     self.cy -= 1;
                     self.cx = self.rows[self.cy].max_cx();
-                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                    self.rx = self.rows[self.cy].max_rx();
                     self.saved_rx = self.rx;
                 }
                 self.redraw_cy = None;
@@ -220,7 +220,7 @@ impl Buffer {
             }
             Key::End | Key::Ctrl(b'E') => {
                 self.cx = self.rows[self.cy].max_cx();
-                self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                self.rx = self.rows[self.cy].max_rx();
                 self.saved_rx = self.rx;
                 self.redraw_cy = None;
             }
@@ -258,11 +258,10 @@ impl Buffer {
                     self.redraw_cy = Some(self.cy);
                 } else if self.cy > 0 {
                     let row = self.rows.remove(self.cy);
-                    let max_cx = self.rows[self.cy - 1].max_cx();
-                    self.rows[self.cy - 1].push_str(&row.string);
                     self.cy -= 1;
-                    self.cx = max_cx;
-                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                    self.cx = self.rows[self.cy].max_cx();
+                    self.rx = self.rows[self.cy].max_rx();
+                    self.rows[self.cy].push_str(&row.string);
                     self.modified = true;
                     self.saved_rx = self.rx;
                     self.redraw_cy = Some(self.cy);
@@ -325,7 +324,7 @@ impl Buffer {
             Key::Alt(b'>') => {
                 self.cy = self.rows.len() - 1;
                 self.cx = self.rows[self.cy].max_cx();
-                self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                self.rx = self.rows[self.cy].max_rx();
                 self.saved_rx = self.rx;
                 self.redraw_cy = None;
             }

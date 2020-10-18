@@ -108,7 +108,7 @@ impl Minibuffer {
             }
             Key::End | Key::Ctrl(b'E') | Key::Alt(b'>') => {
                 self.cx = self.row.max_cx();
-                self.rx = self.row.cx_to_rx.get(self.cx);
+                self.rx = self.row.max_rx();
             }
             Key::Backspace | Key::Ctrl(b'H') => {
                 if self.cx > self.prompt_len {
