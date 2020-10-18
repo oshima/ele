@@ -80,10 +80,10 @@ impl Row {
     }
 
     pub fn remove_str(&mut self, from_cx: usize, to_cx: usize) {
-        let from_idx = self.cx_to_idx.get(from_cx);
-        let to_idx = self.cx_to_idx.get(to_cx);
-        let string = self.string.split_off(to_idx);
-        self.string.truncate(from_idx);
+        let from = self.cx_to_idx.get(from_cx);
+        let to = self.cx_to_idx.get(to_cx);
+        let string = self.string.split_off(to);
+        self.string.truncate(from);
         self.string.push_str(&string);
         self.update();
     }
@@ -140,23 +140,22 @@ impl Row {
             end_rx -= 1;
         }
 
-        let start_idx = self.rx_to_idx.get(start_rx);
-        let end_idx = self.rx_to_idx.get(end_rx);
+        let start = self.rx_to_idx.get(start_rx);
+        let end = self.rx_to_idx.get(end_rx);
 
         if truncate_start {
             canvas.write(b"\x1b[34m~")?;
         }
 
-        let mut hl_start = start_idx;
+        let mut hl_start = start;
 
-        while hl_start < end_idx {
+        while hl_start < end {
             let hl = self.hls[hl_start];
             let mut hl_end = hl_start + 1;
 
-            while hl_end < end_idx && self.hls[hl_end] == hl {
+            while hl_end < end && self.hls[hl_end] == hl {
                 hl_end += 1;
             }
-
             match hl {
                 Hl::Default => canvas.write(b"\x1b[m")?,
                 Hl::Keyword => canvas.write(b"\x1b[35m")?,
@@ -169,7 +168,6 @@ impl Row {
                 Hl::Comment => canvas.write(b"\x1b[36m")?,
             };
             canvas.write(self.render[hl_start..hl_end].as_bytes())?;
-
             hl_start = hl_end;
         }
 

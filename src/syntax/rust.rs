@@ -96,8 +96,8 @@ impl<'a> Iterator for Tokens<'a> {
                             Some((_, '*')) => match self.chars.peek() {
                                 Some(&(_, '/')) => {
                                     self.chars.next();
-                                    break Comment
-                                },
+                                    break Comment;
+                                }
                                 _ => (),
                             },
                             Some(_) => (),
