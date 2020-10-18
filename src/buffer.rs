@@ -125,7 +125,7 @@ impl Buffer {
         Ok(())
     }
 
-    fn draw_status_bar(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
+    fn draw_status_bar(&self, canvas: &mut Vec<u8>) -> io::Result<()> {
         let left = format!(
             "{} {}",
             self.filename.as_deref().unwrap_or("*newfile*"),
@@ -154,7 +154,7 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn draw_cursor(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
+    pub fn draw_cursor(&self, canvas: &mut Vec<u8>) -> io::Result<()> {
         canvas.write(
             format!(
                 "\x1b[{};{}H",
@@ -237,7 +237,7 @@ impl Buffer {
                 }
             }
             Key::PageDown | Key::Ctrl(b'V') => {
-                if self.rowoff < self.rows.len() - self.height {
+                if self.rowoff + self.height < self.rows.len() {
                     self.cy += cmp::min(self.height, self.rows.len() - self.cy - 1);
                     self.rowoff += self.height;
                     self.rx = cmp::min(self.saved_rx, self.rows[self.cy].max_rx());

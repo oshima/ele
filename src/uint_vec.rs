@@ -63,8 +63,6 @@ impl UintVec {
                 self.u32_vec.as_mut().unwrap().push(n as u32);
             } else if self.u16_vec.as_ref().map_or(0, |v| v.len()) > 0 {
                 self.u16_vec.as_mut().unwrap().push(n as u16);
-            } else if self.u8_vec.as_ref().map_or(0, |v| v.len()) > 0 {
-                self.u8_vec.as_mut().unwrap().push(n as u8);
             } else {
                 self.u8_vec
                     .get_or_insert(Box::new(Vec::new()))
@@ -75,8 +73,6 @@ impl UintVec {
                 self.u64_vec.as_mut().unwrap().push(n as u64);
             } else if self.u32_vec.as_ref().map_or(0, |v| v.len()) > 0 {
                 self.u32_vec.as_mut().unwrap().push(n as u32);
-            } else if self.u16_vec.as_ref().map_or(0, |v| v.len()) > 0 {
-                self.u16_vec.as_mut().unwrap().push(n as u16);
             } else {
                 self.u16_vec
                     .get_or_insert(Box::new(Vec::new()))
@@ -85,21 +81,15 @@ impl UintVec {
         } else if n <= u32::MAX as usize {
             if self.u64_vec.as_ref().map_or(0, |v| v.len()) > 0 {
                 self.u64_vec.as_mut().unwrap().push(n as u64);
-            } else if self.u32_vec.as_ref().map_or(0, |v| v.len()) > 0 {
-                self.u32_vec.as_mut().unwrap().push(n as u32);
             } else {
                 self.u32_vec
                     .get_or_insert(Box::new(Vec::new()))
                     .push(n as u32);
             }
         } else if n <= u64::MAX as usize {
-            if self.u64_vec.as_ref().map_or(0, |v| v.len()) > 0 {
-                self.u64_vec.as_mut().unwrap().push(n as u64);
-            } else {
-                self.u64_vec
-                    .get_or_insert(Box::new(Vec::new()))
-                    .push(n as u64);
-            }
+            self.u64_vec
+                .get_or_insert(Box::new(Vec::new()))
+                .push(n as u64);
         }
     }
 }

@@ -1,5 +1,5 @@
-pub mod plain;
-pub mod rust;
+mod plain;
+mod rust;
 
 use crate::row::Row;
 use crate::syntax::plain::Plain;

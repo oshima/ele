@@ -75,7 +75,7 @@ impl Minibuffer {
         Ok(())
     }
 
-    pub fn draw_cursor(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
+    pub fn draw_cursor(&self, canvas: &mut Vec<u8>) -> io::Result<()> {
         canvas.write(
             format!(
                 "\x1b[{};{}H",
