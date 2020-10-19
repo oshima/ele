@@ -88,6 +88,15 @@ impl Row {
         self.update();
     }
 
+    pub fn beginning_of_code(&self) -> usize {
+        self.string
+            .chars()
+            .enumerate()
+            .find(|(_, ch)| !ch.is_ascii_whitespace())
+            .map(|(i, _)| i)
+            .unwrap_or(0)
+    }
+
     fn update(&mut self) {
         self.render.clear();
         self.cx_to_rx.clear();

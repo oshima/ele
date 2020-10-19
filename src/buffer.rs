@@ -213,8 +213,14 @@ impl Buffer {
                 self.redraw_cy = None;
             }
             Key::Home | Key::Ctrl(b'A') => {
-                self.cx = 0;
-                self.rx = 0;
+                let cx = self.rows[self.cy].beginning_of_code();
+                if self.cx == cx {
+                    self.cx = 0;
+                    self.rx = 0;
+                } else {
+                    self.cx = cx;
+                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                }
                 self.saved_rx = self.rx;
                 self.redraw_cy = None;
             }
