@@ -7,7 +7,7 @@ use crate::syntax::rust::Rust;
 
 pub trait Syntax {
     fn name(&self) -> &'static str;
-    fn highlight(&self, row: &mut Row);
+    fn highlight(&self, rows: &mut [Row]);
 }
 
 impl dyn Syntax {
@@ -36,3 +36,5 @@ pub enum Hl {
     String,
     Comment,
 }
+
+pub type HlContext = u8;

@@ -4,7 +4,7 @@ use std::cmp;
 use std::io::{self, Write};
 use unicode_width::UnicodeWidthChar;
 
-use crate::syntax::Hl;
+use crate::syntax::{Hl, HlContext};
 use crate::uint_vec::UintVec;
 
 const TAB_WIDTH: usize = 4;
@@ -16,6 +16,7 @@ pub struct Row {
     pub rx_to_cx: UintVec,
     pub cx_to_idx: UintVec,
     pub rx_to_idx: UintVec,
+    pub hl_context: HlContext,
     pub hls: Vec<Hl>,
 }
 
@@ -28,6 +29,7 @@ impl Row {
             rx_to_cx: UintVec::new(),
             cx_to_idx: UintVec::new(),
             rx_to_idx: UintVec::new(),
+            hl_context: 0,
             hls: Vec::new(),
         };
         row.update();

@@ -1,9 +1,14 @@
-use std::iter::{Iterator, Peekable};
+use std::iter::{Chain, Iterator, Peekable};
 use std::str::CharIndices;
 
 use self::TokenKind::*;
 use crate::row::Row;
-use crate::syntax::{Hl, Syntax};
+use crate::syntax::{Hl, HlContext, Syntax};
+
+const UNDEFINED: HlContext = 0b00000000;
+const NORMAL: HlContext = 0b00000001;
+const IN_COMMENT: HlContext = 0b00000010;
+const IN_STRING: HlContext = 0b00000100;
 
 struct Token {
     kind: TokenKind,
@@ -41,14 +46,22 @@ enum TokenKind {
 
 struct Tokens<'a> {
     text: &'a str,
-    chars: Peekable<CharIndices<'a>>,
+    chars: Peekable<Chain<CharIndices<'a>, CharIndices<'a>>>,
 }
 
 impl<'a> Tokens<'a> {
-    fn from(text: &'a str) -> Self {
+    fn from(text: &'a str, hl_context: HlContext) -> Self {
+        let context = if hl_context & IN_COMMENT != 0 {
+            "/*"
+        } else if hl_context & IN_STRING != 0 {
+            "\""
+        } else {
+            ""
+        };
+
         Self {
             text,
-            chars: text.char_indices().peekable(),
+            chars: context.char_indices().chain(text.char_indices()).peekable(),
         }
     }
 }
@@ -213,11 +226,31 @@ impl Syntax for Rust {
         "Rust"
     }
 
-    fn highlight(&self, row: &mut Row) {
+    fn highlight(&self, rows: &mut [Row]) {
+        let mut new_context = UNDEFINED;
+
+        for (i, row) in rows.iter_mut().enumerate() {
+            if i == 0 {
+                if row.hl_context == UNDEFINED {
+                    row.hl_context = NORMAL;
+                }
+            } else {
+                if row.hl_context == new_context {
+                    break;
+                }
+                row.hl_context = new_context;
+            }
+            new_context = self.highlight_row(row);
+        }
+    }
+}
+
+impl Rust {
+    fn highlight_row(&self, row: &mut Row) -> HlContext {
         row.hls.clear();
         row.hls.resize(row.render.len(), Hl::Default);
 
-        let mut tokens = Tokens::from(&row.render).peekable();
+        let mut tokens = Tokens::from(&row.render, row.hl_context).peekable();
         let mut prev_token: Option<Token> = None;
 
         while let Some(token) = tokens.next() {
@@ -257,6 +290,12 @@ impl Syntax for Rust {
             }
 
             prev_token = Some(token);
+        }
+
+        match prev_token.map(|t| t.kind) {
+            Some(OpenComment) => IN_COMMENT,
+            Some(OpenStr) => IN_STRING,
+            _ => NORMAL,
         }
     }
 }
