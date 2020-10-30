@@ -9,6 +9,7 @@ const UNDEFINED: HlContext = 0b00000000;
 const NORMAL: HlContext = 0b00000001;
 const IN_COMMENT: HlContext = 0b00000010;
 const IN_STRING: HlContext = 0b00000100;
+const IN_ATTRIBUTE: HlContext = 0b00001000;
 
 struct Token {
     kind: TokenKind,
@@ -33,6 +34,7 @@ enum TokenKind {
     Lifetime,
     Mod,
     Mut,
+    OpenAttribute,
     OpenComment,
     OpenStr,
     Paren,
@@ -55,6 +57,8 @@ impl<'a> Tokens<'a> {
             "/*"
         } else if hl_context & IN_STRING != 0 {
             "\""
+        } else if hl_context & IN_ATTRIBUTE != 0 {
+            "#["
         } else {
             ""
         };
@@ -80,15 +84,19 @@ impl<'a> Iterator for Tokens<'a> {
             // attribute
             '#' => match self.chars.peek() {
                 Some(&(_, '[')) => {
-                    self.chars.find(|t| t.1 == ']');
-                    Attribute
+                    match self.chars.find(|t| t.1 == ']') {
+                        Some(_) => Attribute,
+                        None => OpenAttribute,
+                    }
                 }
                 Some(&(_, '!')) => {
                     self.chars.next();
                     match self.chars.peek() {
                         Some(&(_, '[')) => {
-                            self.chars.find(|t| t.1 == ']');
-                            Attribute
+                            match self.chars.find(|t| t.1 == ']') {
+                                Some(_) => Attribute,
+                                None => OpenAttribute,
+                            }
                         }
                         _ => Punct,
                     }
@@ -255,7 +263,7 @@ impl Rust {
 
         while let Some(token) = tokens.next() {
             let hl = match token.kind {
-                Attribute => Hl::Macro,
+                Attribute | OpenAttribute => Hl::Macro,
                 Char | OpenStr | Str => Hl::String,
                 Comment | OpenComment => Hl::Comment,
                 Const | Fn | For | Keyword | Let | Mod | Mut | Static => Hl::Keyword,
@@ -295,6 +303,7 @@ impl Rust {
         match prev_token.map(|t| t.kind) {
             Some(OpenComment) => IN_COMMENT,
             Some(OpenStr) => IN_STRING,
+            Some(OpenAttribute) => IN_ATTRIBUTE,
             _ => NORMAL,
         }
     }
