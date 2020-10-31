@@ -7,8 +7,8 @@ use crate::syntax::{Hl, HlContext, Syntax};
 
 const UNDEFINED: HlContext = 0b00000000;
 const NORMAL: HlContext = 0b00000001;
-const IN_STRING: HlContext = 0b00000010;
-const IN_ATTRIBUTE: HlContext = 0b00000100;
+const IN_ATTRIBUTE: HlContext = 0b00000010;
+const IN_STRING: HlContext = 0b00000100;
 const IN_COMMENT: HlContext = 0b11111000;
 
 struct Token {
@@ -19,12 +19,13 @@ struct Token {
 
 #[derive(Clone, Copy)]
 enum TokenKind {
-    Attribute,
+    Attribute { open: bool },
+    Str { open: bool },
+    Comment { depth: u8 },
     Bang,
     Char,
     Colon,
     ColonColon,
-    Comment,
     Const,
     Fn,
     For,
@@ -34,15 +35,11 @@ enum TokenKind {
     Lifetime,
     Mod,
     Mut,
-    OpenAttribute,
-    OpenComment(u8),
-    OpenStr,
     Paren,
     PrimitiveType,
     Punct,
     Question,
     Static,
-    Str,
     UpperIdent,
 }
 
@@ -74,19 +71,15 @@ impl<'a> Iterator for Tokens<'a> {
             // attribute
             '#' => match self.chars.peek() {
                 Some(&(_, '[')) => {
-                    match self.chars.find(|t| t.1 == ']') {
-                        Some(_) => Attribute,
-                        None => OpenAttribute,
-                    }
+                    let open = self.chars.find(|t| t.1 == ']').is_none();
+                    Attribute { open }
                 }
                 Some(&(_, '!')) => {
                     self.chars.next();
                     match self.chars.peek() {
                         Some(&(_, '[')) => {
-                            match self.chars.find(|t| t.1 == ']') {
-                                Some(_) => Attribute,
-                                None => OpenAttribute,
-                            }
+                            let open = self.chars.find(|t| t.1 == ']').is_none();
+                            Attribute { open }
                         }
                         _ => Punct,
                     }
@@ -94,11 +87,23 @@ impl<'a> Iterator for Tokens<'a> {
                 _ => Punct,
             },
 
+            // string literal
+            '"' => loop {
+                match self.chars.next() {
+                    Some((_, '"')) => break Str { open: false },
+                    Some((_, '\\')) => {
+                        self.chars.next();
+                    }
+                    Some(_) => (),
+                    None => break Str { open: true },
+                }
+            },
+
             // comment
             '/' => match self.chars.peek() {
                 Some(&(_, '/')) => {
                     while let Some(_) = self.chars.next() {}
-                    Comment
+                    Comment { depth: 0 }
                 }
                 Some(&(_, '*')) => {
                     self.chars.next();
@@ -111,35 +116,23 @@ impl<'a> Iterator for Tokens<'a> {
                                     depth += 1;
                                 }
                                 _ => (),
-                            }
+                            },
                             Some((_, '*')) => match self.chars.peek() {
                                 Some(&(_, '/')) => {
                                     self.chars.next();
                                     depth -= 1;
                                     if depth == 0 {
-                                        break Comment;
+                                        break Comment { depth };
                                     }
                                 }
                                 _ => (),
                             },
                             Some(_) => (),
-                            None => break OpenComment(depth),
+                            None => break Comment { depth },
                         }
                     }
                 }
                 _ => Punct,
-            },
-
-            // string literal
-            '"' => loop {
-                match self.chars.next() {
-                    Some((_, '"')) => break Str,
-                    Some((_, '\\')) => {
-                        self.chars.next();
-                    }
-                    Some(_) => (),
-                    None => break OpenStr,
-                }
             },
 
             // char literal or lifetime
@@ -264,10 +257,10 @@ impl Rust {
             let depth = row.hl_context >> IN_COMMENT.trailing_zeros();
             string = "/*".repeat(depth as usize);
             &string
-        } else if row.hl_context & IN_STRING != 0 {
-            "\""
         } else if row.hl_context & IN_ATTRIBUTE != 0 {
             "#["
+        } else if row.hl_context & IN_STRING != 0 {
+            "\""
         } else {
             ""
         };
@@ -277,9 +270,9 @@ impl Rust {
 
         while let Some(token) = tokens.next() {
             let hl = match token.kind {
-                Attribute | OpenAttribute => Hl::Macro,
-                Char | OpenStr | Str => Hl::String,
-                Comment | OpenComment(_) => Hl::Comment,
+                Attribute { .. } => Hl::Macro,
+                Char | Str { .. } => Hl::String,
+                Comment { .. } => Hl::Comment,
                 Const | Fn | For | Keyword | Let | Mod | Mut | Static => Hl::Keyword,
                 Lifetime => Hl::Variable,
                 PrimitiveType => Hl::Type,
@@ -315,9 +308,11 @@ impl Rust {
         }
 
         match prev_token.map(|t| t.kind) {
-            Some(OpenComment(depth)) => depth << IN_COMMENT.trailing_zeros(),
-            Some(OpenStr) => IN_STRING,
-            Some(OpenAttribute) => IN_ATTRIBUTE,
+            Some(Attribute { open: true }) => IN_ATTRIBUTE,
+            Some(Str { open: true }) => IN_STRING,
+            Some(Comment { depth }) if depth > 0 => {
+                depth << IN_COMMENT.trailing_zeros()
+            },
             _ => NORMAL,
         }
     }
