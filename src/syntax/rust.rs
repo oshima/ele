@@ -61,8 +61,8 @@ impl Rust {
         while let Some(token) = tokens.next() {
             let hl = match token.kind {
                 Attribute { .. } => Hl::Macro,
-                Char | Str { .. } => Hl::String,
-                Comment { .. } => Hl::Comment,
+                BlockComment { .. } | LineComment => Hl::Comment,
+                CharLit | StrLit { .. } => Hl::String,
                 Const | Fn | For | Keyword | Let | Mod | Mut | Static => Hl::Keyword,
                 Lifetime => Hl::Variable,
                 PrimitiveType => Hl::Type,
@@ -99,8 +99,8 @@ impl Rust {
 
         match prev_token.map(|t| t.kind) {
             Some(Attribute { open: true }) => IN_ATTRIBUTE,
-            Some(Str { open: true }) => IN_STRING,
-            Some(Comment { depth }) if depth > 0 => depth << IN_COMMENT.trailing_zeros(),
+            Some(StrLit { open: true }) => IN_STRING,
+            Some(BlockComment { depth }) if depth > 0 => depth << IN_COMMENT.trailing_zeros(),
             _ => NORMAL,
         }
     }
@@ -115,10 +115,10 @@ struct Token {
 #[derive(Clone, Copy)]
 enum TokenKind {
     Attribute { open: bool },
-    Str { open: bool },
-    Comment { depth: u8 },
+    StrLit { open: bool },
+    BlockComment { depth: u8 },
     Bang,
-    Char,
+    CharLit,
     Colon,
     ColonColon,
     Const,
@@ -128,6 +128,7 @@ enum TokenKind {
     Keyword,
     Let,
     Lifetime,
+    LineComment,
     Mod,
     Mut,
     Paren,
@@ -165,17 +166,11 @@ impl<'a> Iterator for Tokens<'a> {
         let kind = match ch {
             // attribute
             '#' => match self.chars.peek() {
-                Some(&(_, '[')) => {
-                    let open = self.chars.find(|t| t.1 == ']').is_none();
-                    Attribute { open }
-                }
+                Some(&(_, '[')) => self.attribute(),
                 Some(&(_, '!')) => {
                     self.chars.next();
                     match self.chars.peek() {
-                        Some(&(_, '[')) => {
-                            let open = self.chars.find(|t| t.1 == ']').is_none();
-                            Attribute { open }
-                        }
+                        Some(&(_, '[')) => self.attribute(),
                         _ => Punct,
                     }
                 }
@@ -183,79 +178,19 @@ impl<'a> Iterator for Tokens<'a> {
             },
 
             // string literal
-            '"' => loop {
-                match self.chars.next() {
-                    Some((_, '"')) => break Str { open: false },
-                    Some((_, '\\')) => {
-                        self.chars.next();
-                    }
-                    Some(_) => (),
-                    None => break Str { open: true },
-                }
-            },
+            '"' => self.str_lit(),
 
             // comment
             '/' => match self.chars.peek() {
-                Some(&(_, '/')) => {
-                    while let Some(_) = self.chars.next() {}
-                    Comment { depth: 0 }
-                }
-                Some(&(_, '*')) => {
-                    self.chars.next();
-                    let mut depth = 1;
-                    loop {
-                        match self.chars.next() {
-                            Some((_, '/')) => match self.chars.peek() {
-                                Some(&(_, '*')) => {
-                                    self.chars.next();
-                                    depth += 1;
-                                }
-                                _ => (),
-                            },
-                            Some((_, '*')) => match self.chars.peek() {
-                                Some(&(_, '/')) => {
-                                    self.chars.next();
-                                    depth -= 1;
-                                    if depth == 0 {
-                                        break Comment { depth };
-                                    }
-                                }
-                                _ => (),
-                            },
-                            Some(_) => (),
-                            None => break Comment { depth },
-                        }
-                    }
-                }
+                Some(&(_, '/')) => self.line_comment(),
+                Some(&(_, '*')) => self.block_comment(),
                 _ => Punct,
             },
 
             // char literal or lifetime
             '\'' => match self.chars.peek() {
-                Some(&(_, ch)) if is_delim(ch) => loop {
-                    match self.chars.next() {
-                        Some((_, '\'')) | None => break Char,
-                        Some((_, '\\')) => {
-                            self.chars.next();
-                        }
-                        _ => (),
-                    }
-                },
-                Some(_) => {
-                    self.chars.next();
-                    loop {
-                        match self.chars.peek() {
-                            Some(&(_, '\'')) => {
-                                self.chars.next();
-                                break Char;
-                            }
-                            Some(&(_, ch)) if !is_delim(ch) => {
-                                self.chars.next();
-                            }
-                            _ => break Lifetime,
-                        }
-                    }
-                }
+                Some(&(_, ch)) if is_delim(ch) => self.char_lit(),
+                Some(_) => self.char_lit_or_lifetime(),
                 None => Punct,
             },
 
@@ -275,43 +210,128 @@ impl<'a> Iterator for Tokens<'a> {
             },
             ch if is_delim(ch) => Punct,
 
-            // keyword or identifier
-            ch => loop {
-                let (end, is_last_char) = match self.chars.peek() {
-                    Some(&(idx, ch)) => (idx, is_delim(ch)),
-                    None => (self.text.len(), true),
-                };
-                if !is_last_char {
-                    self.chars.next();
-                    continue;
-                }
-                if ch.is_ascii_uppercase() {
-                    break UpperIdent;
-                }
-                break match &self.text[start..end] {
-                    "const" => Const,
-                    "fn" => Fn,
-                    "for" => For,
-                    "let" => Let,
-                    "mod" => Mod,
-                    "mut" => Mut,
-                    "static" => Static,
-                    "as" | "async" | "await" | "box" | "break" | "continue" | "crate" | "do"
-                    | "dyn" | "else" | "enum" | "extern" | "false" | "if" | "impl" | "in"
-                    | "loop" | "match" | "move" | "priv" | "pub" | "ref" | "return" | "self"
-                    | "struct" | "super" | "trait" | "true" | "try" | "type" | "use"
-                    | "virtual" | "where" | "while" | "yield" => Keyword,
-                    "bool" | "char" | "f32" | "f64" | "i8" | "i16" | "i32" | "i64" | "i128"
-                    | "isize" | "str" | "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => {
-                        PrimitiveType
-                    }
-                    _ => Ident,
-                };
-            },
+            // identifier
+            ch => self.ident(start, ch),
         };
 
         let end = self.chars.peek().map_or(self.text.len(), |t| t.0);
 
         Some(Token { kind, start, end })
+    }
+}
+
+impl<'a> Tokens<'a> {
+    fn attribute(&mut self) -> TokenKind {
+        let open = self.chars.find(|t| t.1 == ']').is_none();
+        Attribute { open }
+    }
+
+    fn str_lit(&mut self) -> TokenKind {
+        loop {
+            match self.chars.next() {
+                Some((_, '"')) => break StrLit { open: false },
+                Some((_, '\\')) => {
+                    self.chars.next();
+                }
+                Some(_) => (),
+                None => break StrLit { open: true },
+            }
+        }
+    }
+
+    fn line_comment(&mut self) -> TokenKind {
+        while let Some(_) = self.chars.next() {}
+        LineComment
+    }
+
+    fn block_comment(&mut self) -> TokenKind {
+        self.chars.next();
+        let mut depth = 1;
+        loop {
+            match self.chars.next() {
+                Some((_, '/')) => match self.chars.peek() {
+                    Some(&(_, '*')) => {
+                        self.chars.next();
+                        depth += 1;
+                    }
+                    _ => (),
+                },
+                Some((_, '*')) => match self.chars.peek() {
+                    Some(&(_, '/')) => {
+                        self.chars.next();
+                        depth -= 1;
+                        if depth == 0 {
+                            break BlockComment { depth };
+                        }
+                    }
+                    _ => (),
+                },
+                Some(_) => (),
+                None => break BlockComment { depth },
+            }
+        }
+    }
+
+    fn char_lit(&mut self) -> TokenKind {
+        loop {
+            match self.chars.next() {
+                Some((_, '\'')) | None => break CharLit,
+                Some((_, '\\')) => {
+                    self.chars.next();
+                }
+                _ => (),
+            }
+        }
+    }
+
+    fn char_lit_or_lifetime(&mut self) -> TokenKind {
+        self.chars.next();
+        loop {
+            match self.chars.peek() {
+                Some(&(_, '\'')) => {
+                    self.chars.next();
+                    break CharLit;
+                }
+                Some(&(_, ch)) if !is_delim(ch) => {
+                    self.chars.next();
+                }
+                _ => break Lifetime,
+            }
+        }
+    }
+
+    fn ident(&mut self, start: usize, ch: char) -> TokenKind {
+        loop {
+            let (end, is_last_char) = match self.chars.peek() {
+                Some(&(idx, ch)) => (idx, is_delim(ch)),
+                None => (self.text.len(), true),
+            };
+            if !is_last_char {
+                self.chars.next();
+                continue;
+            }
+            if ch.is_ascii_uppercase() {
+                break UpperIdent;
+            }
+            break match &self.text[start..end] {
+                "const" => Const,
+                "fn" => Fn,
+                "for" => For,
+                "let" => Let,
+                "mod" => Mod,
+                "mut" => Mut,
+                "static" => Static,
+                "as" | "async" | "await" | "box" | "break" | "continue" | "crate" | "do"
+                | "dyn" | "else" | "enum" | "extern" | "false" | "if" | "impl" | "in" | "loop"
+                | "match" | "move" | "priv" | "pub" | "ref" | "return" | "self" | "struct"
+                | "super" | "trait" | "true" | "try" | "type" | "use" | "virtual" | "where"
+                | "while" | "yield" => Keyword,
+                "bool" | "char" | "f32" | "f64" | "i8" | "i16" | "i32" | "i64" | "i128"
+                | "isize" | "str" | "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => {
+                    PrimitiveType
+                }
+                _ => Ident,
+            };
+        }
     }
 }
