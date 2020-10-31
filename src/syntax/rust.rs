@@ -7,9 +7,9 @@ use crate::syntax::{Hl, HlContext, Syntax};
 
 const UNDEFINED: HlContext = 0b00000000;
 const NORMAL: HlContext = 0b00000001;
-const IN_COMMENT: HlContext = 0b00000010;
-const IN_STRING: HlContext = 0b00000100;
-const IN_ATTRIBUTE: HlContext = 0b00001000;
+const IN_STRING: HlContext = 0b00000010;
+const IN_ATTRIBUTE: HlContext = 0b00000100;
+const IN_COMMENT: HlContext = 0b11111000;
 
 struct Token {
     kind: TokenKind,
@@ -35,7 +35,7 @@ enum TokenKind {
     Mod,
     Mut,
     OpenAttribute,
-    OpenComment,
+    OpenComment(u8),
     OpenStr,
     Paren,
     PrimitiveType,
@@ -52,17 +52,7 @@ struct Tokens<'a> {
 }
 
 impl<'a> Tokens<'a> {
-    fn from(text: &'a str, hl_context: HlContext) -> Self {
-        let context = if hl_context & IN_COMMENT != 0 {
-            "/*"
-        } else if hl_context & IN_STRING != 0 {
-            "\""
-        } else if hl_context & IN_ATTRIBUTE != 0 {
-            "#["
-        } else {
-            ""
-        };
-
+    fn from(text: &'a str, context: &'a str) -> Self {
         Self {
             text,
             chars: context.char_indices().chain(text.char_indices()).peekable(),
@@ -112,17 +102,28 @@ impl<'a> Iterator for Tokens<'a> {
                 }
                 Some(&(_, '*')) => {
                     self.chars.next();
+                    let mut depth = 1;
                     loop {
                         match self.chars.next() {
+                            Some((_, '/')) => match self.chars.peek() {
+                                Some(&(_, '*')) => {
+                                    self.chars.next();
+                                    depth += 1;
+                                }
+                                _ => (),
+                            }
                             Some((_, '*')) => match self.chars.peek() {
                                 Some(&(_, '/')) => {
                                     self.chars.next();
-                                    break Comment;
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        break Comment;
+                                    }
                                 }
                                 _ => (),
                             },
                             Some(_) => (),
-                            None => break OpenComment,
+                            None => break OpenComment(depth),
                         }
                     }
                 }
@@ -258,14 +259,27 @@ impl Rust {
         row.hls.clear();
         row.hls.resize(row.render.len(), Hl::Default);
 
-        let mut tokens = Tokens::from(&row.render, row.hl_context).peekable();
+        let string;
+        let context = if row.hl_context & IN_COMMENT != 0 {
+            let depth = row.hl_context >> IN_COMMENT.trailing_zeros();
+            string = "/*".repeat(depth as usize);
+            &string
+        } else if row.hl_context & IN_STRING != 0 {
+            "\""
+        } else if row.hl_context & IN_ATTRIBUTE != 0 {
+            "#["
+        } else {
+            ""
+        };
+
+        let mut tokens = Tokens::from(&row.render, context).peekable();
         let mut prev_token: Option<Token> = None;
 
         while let Some(token) = tokens.next() {
             let hl = match token.kind {
                 Attribute | OpenAttribute => Hl::Macro,
                 Char | OpenStr | Str => Hl::String,
-                Comment | OpenComment => Hl::Comment,
+                Comment | OpenComment(_) => Hl::Comment,
                 Const | Fn | For | Keyword | Let | Mod | Mut | Static => Hl::Keyword,
                 Lifetime => Hl::Variable,
                 PrimitiveType => Hl::Type,
@@ -301,7 +315,7 @@ impl Rust {
         }
 
         match prev_token.map(|t| t.kind) {
-            Some(OpenComment) => IN_COMMENT,
+            Some(OpenComment(depth)) => depth << IN_COMMENT.trailing_zeros(),
             Some(OpenStr) => IN_STRING,
             Some(OpenAttribute) => IN_ATTRIBUTE,
             _ => NORMAL,
