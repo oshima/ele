@@ -3,14 +3,7 @@ use std::str::CharIndices;
 
 use self::TokenKind::*;
 use crate::row::Row;
-use crate::syntax::{Hl, HlContext, Syntax};
-
-const UNDEFINED: HlContext = 0b_____00000000_00000000;
-const NORMAL: HlContext = 0b________00000000_00000001;
-const IN_ATTRIBUTE: HlContext = 0b__00000000_00000010;
-const IN_STRING: HlContext = 0b_____00000000_00000100;
-const IN_RAW_STRING: HlContext = 0b_00000000_11111000;
-const IN_COMMENT: HlContext = 0b____00011111_00000000;
+use crate::syntax::{Hl, Syntax};
 
 pub struct Rust;
 
@@ -20,12 +13,12 @@ impl Syntax for Rust {
     }
 
     fn highlight(&self, rows: &mut [Row]) {
-        let mut new_context = UNDEFINED;
+        let mut new_context = None;
 
         for (i, row) in rows.iter_mut().enumerate() {
             if i == 0 {
-                if row.hl_context == UNDEFINED {
-                    row.hl_context = NORMAL;
+                if row.hl_context.is_none() {
+                    row.hl_context = Some(String::new());
                 }
             } else {
                 if row.hl_context == new_context {
@@ -39,28 +32,12 @@ impl Syntax for Rust {
 }
 
 impl Rust {
-    fn highlight_row(&self, row: &mut Row) -> HlContext {
+    fn highlight_row(&self, row: &mut Row) -> Option<String> {
         row.hls.clear();
         row.hls.resize(row.render.len(), Hl::Default);
 
-        let string;
-        let context = if row.hl_context & IN_ATTRIBUTE != 0 {
-            "#["
-        } else if row.hl_context & IN_STRING != 0 {
-            "\""
-        } else if row.hl_context & IN_RAW_STRING != 0 {
-            let n_hashes = (row.hl_context >> IN_RAW_STRING.trailing_zeros()) - 1;
-            string = format!("r{}\"", "#".repeat(n_hashes as usize));
-            &string
-        } else if row.hl_context & IN_COMMENT != 0 {
-            let depth = row.hl_context >> IN_COMMENT.trailing_zeros();
-            string = "/*".repeat(depth as usize);
-            &string
-        } else {
-            ""
-        };
-
-        let mut tokens = Tokens::from(&row.render, context).peekable();
+        let mut tokens =
+            Tokens::from(&row.render, row.hl_context.as_deref().unwrap_or("")).peekable();
         let mut prev_token: Option<Token> = None;
 
         while let Some(token) = tokens.next() {
@@ -103,16 +80,14 @@ impl Rust {
         }
 
         match prev_token.map(|t| t.kind) {
-            Some(Attribute { open: true }) => IN_ATTRIBUTE,
-            Some(StrLit { open: true }) => IN_STRING,
+            Some(Attribute { open: true }) => Some(String::from("#[")),
+            Some(StrLit { open: true }) => Some(String::from("\"")),
             Some(RawStrLit {
                 open: true,
                 n_hashes,
-            }) => (n_hashes + 1) << IN_RAW_STRING.trailing_zeros() & IN_RAW_STRING,
-            Some(BlockComment { open: true, depth }) => {
-                depth << IN_COMMENT.trailing_zeros() & IN_COMMENT
-            }
-            _ => NORMAL,
+            }) => Some(format!("r{}\"", "#".repeat(n_hashes))),
+            Some(BlockComment { open: true, depth }) => Some("/*".repeat(depth)),
+            _ => Some(String::new()),
         }
     }
 }
@@ -127,8 +102,8 @@ struct Token {
 enum TokenKind {
     Attribute { open: bool },
     StrLit { open: bool },
-    RawStrLit { open: bool, n_hashes: u16 },
-    BlockComment { open: bool, depth: u16 },
+    RawStrLit { open: bool, n_hashes: usize },
+    BlockComment { open: bool, depth: usize },
     Bang,
     CharLit,
     Colon,

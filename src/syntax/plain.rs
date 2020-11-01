@@ -1,8 +1,5 @@
 use crate::row::Row;
-use crate::syntax::{Hl, HlContext, Syntax};
-
-const UNDEFINED: HlContext = 0;
-const NORMAL: HlContext = 1;
+use crate::syntax::{Hl, Syntax};
 
 pub struct Plain;
 
@@ -13,10 +10,10 @@ impl Syntax for Plain {
 
     fn highlight(&self, rows: &mut [Row]) {
         for (i, row) in rows.iter_mut().enumerate() {
-            if i > 0 && row.hl_context != UNDEFINED {
+            if i > 0 && row.hl_context.is_some() {
                 break;
             }
-            row.hl_context = NORMAL;
+            row.hl_context = Some(String::new());
             row.hls.clear();
             row.hls.resize(row.render.len(), Hl::Default);
         }
