@@ -5,11 +5,12 @@ use self::TokenKind::*;
 use crate::row::Row;
 use crate::syntax::{Hl, HlContext, Syntax};
 
-const UNDEFINED: HlContext = 0b00000000;
-const NORMAL: HlContext = 0b00000001;
-const IN_ATTRIBUTE: HlContext = 0b00000010;
-const IN_STRING: HlContext = 0b00000100;
-const IN_COMMENT: HlContext = 0b11111000;
+const UNDEFINED: HlContext = 0b_____00000000_00000000;
+const NORMAL: HlContext = 0b________00000000_00000001;
+const IN_ATTRIBUTE: HlContext = 0b__00000000_00000010;
+const IN_STRING: HlContext = 0b_____00000000_00000100;
+const IN_RAW_STRING: HlContext = 0b_00000000_11111000;
+const IN_COMMENT: HlContext = 0b____00011111_00000000;
 
 pub struct Rust;
 
@@ -43,14 +44,18 @@ impl Rust {
         row.hls.resize(row.render.len(), Hl::Default);
 
         let string;
-        let context = if row.hl_context & IN_COMMENT != 0 {
-            let depth = row.hl_context >> IN_COMMENT.trailing_zeros();
-            string = "/*".repeat(depth as usize);
-            &string
-        } else if row.hl_context & IN_ATTRIBUTE != 0 {
+        let context = if row.hl_context & IN_ATTRIBUTE != 0 {
             "#["
         } else if row.hl_context & IN_STRING != 0 {
             "\""
+        } else if row.hl_context & IN_RAW_STRING != 0 {
+            let n_hashes = (row.hl_context >> IN_RAW_STRING.trailing_zeros()) - 1;
+            string = format!("r{}\"", "#".repeat(n_hashes as usize));
+            &string
+        } else if row.hl_context & IN_COMMENT != 0 {
+            let depth = row.hl_context >> IN_COMMENT.trailing_zeros();
+            string = "/*".repeat(depth as usize);
+            &string
         } else {
             ""
         };
@@ -62,7 +67,7 @@ impl Rust {
             let hl = match token.kind {
                 Attribute { .. } => Hl::Macro,
                 BlockComment { .. } | LineComment => Hl::Comment,
-                CharLit | StrLit { .. } => Hl::String,
+                CharLit | RawStrLit { .. } | StrLit { .. } => Hl::String,
                 Const | Fn | For | Keyword | Let | Mod | Mut | Static => Hl::Keyword,
                 Lifetime => Hl::Variable,
                 PrimitiveType => Hl::Type,
@@ -100,7 +105,13 @@ impl Rust {
         match prev_token.map(|t| t.kind) {
             Some(Attribute { open: true }) => IN_ATTRIBUTE,
             Some(StrLit { open: true }) => IN_STRING,
-            Some(BlockComment { depth }) if depth > 0 => depth << IN_COMMENT.trailing_zeros(),
+            Some(RawStrLit {
+                open: true,
+                n_hashes,
+            }) => (n_hashes + 1) << IN_RAW_STRING.trailing_zeros() & IN_RAW_STRING,
+            Some(BlockComment { open: true, depth }) => {
+                depth << IN_COMMENT.trailing_zeros() & IN_COMMENT
+            }
             _ => NORMAL,
         }
     }
@@ -116,7 +127,8 @@ struct Token {
 enum TokenKind {
     Attribute { open: bool },
     StrLit { open: bool },
-    BlockComment { depth: u8 },
+    RawStrLit { open: bool, n_hashes: u16 },
+    BlockComment { open: bool, depth: u16 },
     Bang,
     CharLit,
     Colon,
@@ -180,6 +192,12 @@ impl<'a> Iterator for Tokens<'a> {
             // string literal
             '"' => self.str_lit(),
 
+            // raw string literal
+            'r' => match self.chars.peek() {
+                Some(&(_, '"')) | Some(&(_, '#')) => self.raw_str_lit(),
+                _ => self.ident(start, ch),
+            },
+
             // comment
             '/' => match self.chars.peek() {
                 Some(&(_, '/')) => self.line_comment(),
@@ -239,6 +257,42 @@ impl<'a> Tokens<'a> {
         }
     }
 
+    fn raw_str_lit(&mut self) -> TokenKind {
+        let mut n_hashes = 0;
+        while let Some(&(_, '#')) = self.chars.peek() {
+            self.chars.next();
+            n_hashes += 1;
+        }
+        match self.chars.peek() {
+            Some(&(_, '"')) => self.chars.next(),
+            _ => return Punct,
+        };
+        loop {
+            match self.chars.next() {
+                Some((_, '"')) => {
+                    let mut close_hashes = 0;
+                    while let Some(&(_, '#')) = self.chars.peek() {
+                        self.chars.next();
+                        close_hashes += 1;
+                    }
+                    if close_hashes == n_hashes {
+                        break RawStrLit {
+                            open: false,
+                            n_hashes,
+                        };
+                    }
+                }
+                Some(_) => (),
+                None => {
+                    break RawStrLit {
+                        open: true,
+                        n_hashes,
+                    }
+                }
+            }
+        }
+    }
+
     fn line_comment(&mut self) -> TokenKind {
         while let Some(_) = self.chars.next() {}
         LineComment
@@ -261,13 +315,13 @@ impl<'a> Tokens<'a> {
                         self.chars.next();
                         depth -= 1;
                         if depth == 0 {
-                            break BlockComment { depth };
+                            break BlockComment { open: false, depth };
                         }
                     }
                     _ => (),
                 },
                 Some(_) => (),
-                None => break BlockComment { depth },
+                None => break BlockComment { open: true, depth },
             }
         }
     }

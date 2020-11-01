@@ -1,8 +1,8 @@
 use crate::row::Row;
 use crate::syntax::{Hl, HlContext, Syntax};
 
-const UNDEFINED: HlContext = 0b00000000;
-const NORMAL: HlContext = 0b00000001;
+const UNDEFINED: HlContext = 0;
+const NORMAL: HlContext = 1;
 
 pub struct Plain;
 

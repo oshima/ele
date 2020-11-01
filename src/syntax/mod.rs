@@ -37,4 +37,4 @@ pub enum Hl {
     Comment,
 }
 
-pub type HlContext = u8;
+pub type HlContext = u16;
