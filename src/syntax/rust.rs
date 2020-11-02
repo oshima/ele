@@ -36,8 +36,8 @@ impl Rust {
         row.hls.clear();
         row.hls.resize(row.render.len(), Hl::Default);
 
-        let mut tokens =
-            Tokens::from(&row.render, row.hl_context.as_deref().unwrap_or("")).peekable();
+        let context = row.hl_context.as_deref().unwrap_or("");
+        let mut tokens = Tokens::from(&row.render, context).peekable();
         let mut prev_token: Option<Token> = None;
 
         while let Some(token) = tokens.next() {
@@ -247,6 +247,9 @@ impl<'a> Tokens<'a> {
                 Some((_, '"')) => {
                     let mut close_hashes = 0;
                     while let Some(&(_, '#')) = self.chars.peek() {
+                        if close_hashes == n_hashes {
+                            break;
+                        }
                         self.chars.next();
                         close_hashes += 1;
                     }
