@@ -57,7 +57,7 @@ impl Rust {
                     Some(Const) | Some(Static) => Hl::Variable,
                     _ => Hl::Type,
                 },
-                Ident => match prev_token.map(|t| t.kind) {
+                Ident | RawIdent => match prev_token.map(|t| t.kind) {
                     Some(Fn) => Hl::Function,
                     Some(For) | Some(Let) | Some(Mut) => Hl::Variable,
                     Some(Mod) => Hl::Module,
@@ -122,6 +122,7 @@ enum TokenKind {
     PrimitiveType,
     Punct,
     Question,
+    RawIdent,
     Static,
     UpperIdent,
 }
@@ -167,9 +168,13 @@ impl<'a> Iterator for Tokens<'a> {
             // string literal
             '"' => self.str_lit(),
 
-            // raw string literal
+            // raw string literal or raw identifier
             'r' => match self.chars.peek() {
-                Some(&(_, '"')) | Some(&(_, '#')) => self.raw_str_lit(),
+                Some(&(_, '"')) => self.raw_str_lit(),
+                Some(&(_, '#')) => match self.chars.clone().nth(1) {
+                    Some((_, ch)) if !is_delim(ch) => self.raw_ident(),
+                    _ => self.raw_str_lit(),
+                }
                 _ => self.ident(start, ch),
             },
 
@@ -267,6 +272,18 @@ impl<'a> Tokens<'a> {
                         n_hashes,
                     }
                 }
+            }
+        }
+    }
+
+    fn raw_ident(&mut self) -> TokenKind {
+        self.chars.next();
+        loop {
+            match self.chars.peek() {
+                Some(&(_, ch)) if !is_delim(ch) => {
+                    self.chars.next();
+                },
+                _ => return RawIdent,
             }
         }
     }
