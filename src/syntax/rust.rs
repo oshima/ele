@@ -81,12 +81,12 @@ impl Rust {
 
         match prev_token.map(|t| t.kind) {
             Some(Attribute { open: true }) => Some(String::from("#[")),
-            Some(StrLit { open: true }) => Some(String::from("\"")),
+            Some(BlockComment { open: true, depth }) => Some("/*".repeat(depth)),
             Some(RawStrLit {
                 open: true,
                 n_hashes,
             }) => Some(format!("r{}\"", "#".repeat(n_hashes))),
-            Some(BlockComment { open: true, depth }) => Some("/*".repeat(depth)),
+            Some(StrLit { open: true }) => Some(String::from("\"")),
             _ => Some(String::new()),
         }
     }
@@ -101,10 +101,8 @@ struct Token {
 #[derive(Clone, Copy)]
 enum TokenKind {
     Attribute { open: bool },
-    StrLit { open: bool },
-    RawStrLit { open: bool, n_hashes: usize },
-    BlockComment { open: bool, depth: usize },
     Bang,
+    BlockComment { open: bool, depth: usize },
     CharLit,
     Colon,
     ColonColon,
@@ -123,7 +121,9 @@ enum TokenKind {
     Punct,
     Question,
     RawIdent,
+    RawStrLit { open: bool, n_hashes: usize },
     Static,
+    StrLit { open: bool },
     UpperIdent,
 }
 
@@ -158,21 +158,8 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(&(_, '!')) => match self.chars.clone().nth(1) {
                     Some((_, '[')) => self.attribute(),
                     _ => Punct,
-                }
+                },
                 _ => Punct,
-            },
-
-            // string literal
-            '"' => self.str_lit(),
-
-            // raw string literal or raw identifier
-            'r' => match self.chars.peek() {
-                Some(&(_, '"')) => self.raw_str_lit(),
-                Some(&(_, '#')) => match self.chars.clone().nth(1) {
-                    Some((_, ch)) if !is_delim(ch) => self.raw_ident(),
-                    _ => self.raw_str_lit(),
-                }
-                _ => self.ident(start, ch),
             },
 
             // comment
@@ -182,11 +169,24 @@ impl<'a> Iterator for Tokens<'a> {
                 _ => Punct,
             },
 
-            // char literal or lifetime
+            // char or lifetime
             '\'' => match self.chars.peek() {
                 Some(&(_, ch)) if is_delim(ch) => self.char_lit(),
                 Some(_) => self.char_lit_or_lifetime(),
                 None => Punct,
+            },
+
+            // string
+            '"' => self.str_lit(),
+
+            // raw string or raw identifier
+            'r' => match self.chars.peek() {
+                Some(&(_, '"')) => self.raw_str_lit(),
+                Some(&(_, '#')) => match self.chars.clone().nth(1) {
+                    Some((_, ch)) if !is_delim(ch) => self.raw_ident(),
+                    _ => self.raw_str_lit(),
+                },
+                _ => self.ident(start, ch),
             },
 
             // byte, byte string or raw byte string
@@ -198,14 +198,14 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(&(_, '"')) => {
                     self.chars.next();
                     self.str_lit()
-                },
+                }
                 Some(&(_, 'r')) => match self.chars.clone().nth(1) {
                     Some((_, '"')) | Some((_, '#')) => {
                         self.chars.next();
                         self.raw_str_lit()
-                    },
+                    }
                     _ => self.ident(start, ch),
-                }
+                },
                 _ => self.ident(start, ch),
             },
 
@@ -239,6 +239,67 @@ impl<'a> Tokens<'a> {
     fn attribute(&mut self) -> TokenKind {
         let open = self.chars.find(|t| t.1 == ']').is_none();
         Attribute { open }
+    }
+
+    fn line_comment(&mut self) -> TokenKind {
+        while let Some(_) = self.chars.next() {}
+        LineComment
+    }
+
+    fn block_comment(&mut self) -> TokenKind {
+        self.chars.next();
+        let mut depth = 1;
+        loop {
+            match self.chars.next() {
+                Some((_, '/')) => match self.chars.peek() {
+                    Some(&(_, '*')) => {
+                        self.chars.next();
+                        depth += 1;
+                    }
+                    _ => (),
+                },
+                Some((_, '*')) => match self.chars.peek() {
+                    Some(&(_, '/')) => {
+                        self.chars.next();
+                        depth -= 1;
+                        if depth == 0 {
+                            break BlockComment { open: false, depth };
+                        }
+                    }
+                    _ => (),
+                },
+                Some(_) => (),
+                None => break BlockComment { open: true, depth },
+            }
+        }
+    }
+
+    fn char_lit(&mut self) -> TokenKind {
+        loop {
+            match self.chars.next() {
+                Some((_, '\'')) | None => break CharLit,
+                Some((_, '\\')) => {
+                    self.chars.next();
+                }
+                _ => (),
+            }
+        }
+    }
+
+    fn char_lit_or_lifetime(&mut self) -> TokenKind {
+        self.chars.next();
+        loop {
+            match self.chars.peek() {
+                Some(&(_, '\'')) => {
+                    self.chars.next();
+                    break CharLit;
+                }
+                Some(&(_, ch)) if !is_delim(ch) => {
+                    self.chars.next();
+                }
+                _ => break Lifetime,
+            }
+        }
     }
 
     fn str_lit(&mut self) -> TokenKind {
@@ -299,69 +360,8 @@ impl<'a> Tokens<'a> {
             match self.chars.peek() {
                 Some(&(_, ch)) if !is_delim(ch) => {
                     self.chars.next();
-                },
+                }
                 _ => return RawIdent,
-            }
-        }
-    }
-
-    fn line_comment(&mut self) -> TokenKind {
-        while let Some(_) = self.chars.next() {}
-        LineComment
-    }
-
-    fn block_comment(&mut self) -> TokenKind {
-        self.chars.next();
-        let mut depth = 1;
-        loop {
-            match self.chars.next() {
-                Some((_, '/')) => match self.chars.peek() {
-                    Some(&(_, '*')) => {
-                        self.chars.next();
-                        depth += 1;
-                    }
-                    _ => (),
-                },
-                Some((_, '*')) => match self.chars.peek() {
-                    Some(&(_, '/')) => {
-                        self.chars.next();
-                        depth -= 1;
-                        if depth == 0 {
-                            break BlockComment { open: false, depth };
-                        }
-                    }
-                    _ => (),
-                },
-                Some(_) => (),
-                None => break BlockComment { open: true, depth },
-            }
-        }
-    }
-
-    fn char_lit(&mut self) -> TokenKind {
-        loop {
-            match self.chars.next() {
-                Some((_, '\'')) | None => break CharLit,
-                Some((_, '\\')) => {
-                    self.chars.next();
-                }
-                _ => (),
-            }
-        }
-    }
-
-    fn char_lit_or_lifetime(&mut self) -> TokenKind {
-        self.chars.next();
-        loop {
-            match self.chars.peek() {
-                Some(&(_, '\'')) => {
-                    self.chars.next();
-                    break CharLit;
-                }
-                Some(&(_, ch)) if !is_delim(ch) => {
-                    self.chars.next();
-                }
-                _ => break Lifetime,
             }
         }
     }
