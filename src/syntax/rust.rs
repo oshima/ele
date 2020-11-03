@@ -189,6 +189,26 @@ impl<'a> Iterator for Tokens<'a> {
                 None => Punct,
             },
 
+            // byte, byte string or raw byte string
+            'b' => match self.chars.peek() {
+                Some(&(_, '\'')) => {
+                    self.chars.next();
+                    self.char_lit()
+                }
+                Some(&(_, '"')) => {
+                    self.chars.next();
+                    self.str_lit()
+                },
+                Some(&(_, 'r')) => match self.chars.clone().nth(1) {
+                    Some((_, '"')) | Some((_, '#')) => {
+                        self.chars.next();
+                        self.raw_str_lit()
+                    },
+                    _ => self.ident(start, ch),
+                }
+                _ => self.ident(start, ch),
+            },
+
             // punctuation
             '(' => Paren,
             '?' => Question,
