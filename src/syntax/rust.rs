@@ -155,12 +155,9 @@ impl<'a> Iterator for Tokens<'a> {
             // attribute
             '#' => match self.chars.peek() {
                 Some(&(_, '[')) => self.attribute(),
-                Some(&(_, '!')) => {
-                    self.chars.next();
-                    match self.chars.peek() {
-                        Some(&(_, '[')) => self.attribute(),
-                        _ => Punct,
-                    }
+                Some(&(_, '!')) => match self.chars.clone().nth(1) {
+                    Some((_, '[')) => self.attribute(),
+                    _ => Punct,
                 }
                 _ => Punct,
             },
