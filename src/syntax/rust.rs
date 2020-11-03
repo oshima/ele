@@ -186,7 +186,7 @@ impl<'a> Iterator for Tokens<'a> {
                     Some((_, ch)) if !is_delim(ch) => self.raw_ident(),
                     _ => self.raw_str_lit(),
                 },
-                _ => self.ident(start, ch),
+                _ => self.ident(start),
             },
 
             // byte, byte string or raw byte string
@@ -204,9 +204,9 @@ impl<'a> Iterator for Tokens<'a> {
                         self.chars.next();
                         self.raw_str_lit()
                     }
-                    _ => self.ident(start, ch),
+                    _ => self.ident(start),
                 },
-                _ => self.ident(start, ch),
+                _ => self.ident(start),
             },
 
             // punctuation
@@ -226,7 +226,8 @@ impl<'a> Iterator for Tokens<'a> {
             ch if is_delim(ch) => Punct,
 
             // identifier
-            ch => self.ident(start, ch),
+            ch if ch.is_ascii_uppercase() => self.upper_ident(),
+            _ => self.ident(start),
         };
 
         let end = self.chars.peek().map_or(self.text.len(), |t| t.0);
@@ -366,7 +367,18 @@ impl<'a> Tokens<'a> {
         }
     }
 
-    fn ident(&mut self, start: usize, ch: char) -> TokenKind {
+    fn upper_ident(&mut self) -> TokenKind {
+        loop {
+            match self.chars.peek() {
+                Some(&(_, ch)) if !is_delim(ch) => {
+                    self.chars.next();
+                }
+                _ => return UpperIdent,
+            }
+        }
+    }
+
+    fn ident(&mut self, start: usize) -> TokenKind {
         loop {
             let (end, is_last_char) = match self.chars.peek() {
                 Some(&(idx, ch)) => (idx, is_delim(ch)),
@@ -375,9 +387,6 @@ impl<'a> Tokens<'a> {
             if !is_last_char {
                 self.chars.next();
                 continue;
-            }
-            if ch.is_ascii_uppercase() {
-                break UpperIdent;
             }
             break match &self.text[start..end] {
                 "const" => Const,
