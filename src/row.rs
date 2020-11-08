@@ -3,7 +3,7 @@ extern crate unicode_width;
 use std::io::{self, Write};
 use unicode_width::UnicodeWidthChar;
 
-use crate::syntax::Hl;
+use crate::syntax::{Hl, HlContext};
 use crate::uint_vec::UintVec;
 
 const TAB_WIDTH: usize = 4;
@@ -12,7 +12,7 @@ const TOMBSTONE: usize = 0;
 pub struct Row {
     pub string: String,
     pub x_to_idx: UintVec,
-    pub hl_context: Option<String>,
+    pub hl_context: HlContext,
     pub hls: Vec<Hl>,
 }
 
@@ -21,7 +21,7 @@ impl Row {
         let mut row = Self {
             string,
             x_to_idx: UintVec::new(),
-            hl_context: None,
+            hl_context: 0,
             hls: Vec::new(),
         };
         row.update();

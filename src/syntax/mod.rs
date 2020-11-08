@@ -36,3 +36,5 @@ pub enum Hl {
     String,
     Comment,
 }
+
+pub type HlContext = u32;
