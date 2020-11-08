@@ -3,7 +3,14 @@ use std::str::CharIndices;
 
 use self::TokenKind::*;
 use crate::row::Row;
-use crate::syntax::{Hl, Syntax};
+use crate::syntax::{Hl, HlContext, Syntax};
+
+const UNDEFINED: HlContext = 0x00000000;
+const NORMAL: HlContext = 0x00000001;
+const IN_ATTRIBUTE: HlContext = 0x00000002;
+const IN_STRING: HlContext = 0x00000004;
+const IN_RAW_STRING: HlContext = 0x0000ff00;
+const IN_COMMENT: HlContext = 0x00ff0000;
 
 pub struct Rust;
 
@@ -13,12 +20,12 @@ impl Syntax for Rust {
     }
 
     fn highlight(&self, rows: &mut [Row]) {
-        let mut new_context = None;
+        let mut new_context = UNDEFINED;
 
         for (i, row) in rows.iter_mut().enumerate() {
             if i == 0 {
-                if row.hl_context.is_none() {
-                    row.hl_context = Some(String::new());
+                if row.hl_context == UNDEFINED {
+                    row.hl_context = NORMAL;
                 }
             } else {
                 if row.hl_context == new_context {
@@ -32,12 +39,12 @@ impl Syntax for Rust {
 }
 
 impl Rust {
-    fn highlight_row(&self, row: &mut Row) -> Option<String> {
+    fn highlight_row(&self, row: &mut Row) -> HlContext {
         row.hls.clear();
-        row.hls.resize(row.render.len(), Hl::Default);
+        row.hls.resize(row.string.len(), Hl::Default);
 
-        let context = row.hl_context.as_deref().unwrap_or("");
-        let mut tokens = Tokens::from(&row.render, context).peekable();
+        let context = self.decode_context(row.hl_context);
+        let mut tokens = Tokens::from(&row.string, &context).peekable();
         let mut prev_token: Option<Token> = None;
 
         while let Some(token) = tokens.next() {
@@ -79,15 +86,37 @@ impl Rust {
             prev_token = Some(token);
         }
 
-        match prev_token.map(|t| t.kind) {
-            Some(Attribute { open: true }) => Some(String::from("#[")),
-            Some(BlockComment { open: true, depth }) => Some("/*".repeat(depth)),
+        self.encode_context(prev_token.map(|t| t.kind))
+    }
+
+    fn decode_context(&self, hl_context: HlContext) -> String {
+        if hl_context & IN_ATTRIBUTE != 0 {
+            "#[".to_string()
+        } else if hl_context & IN_STRING != 0 {
+            "\"".to_string()
+        } else if hl_context & IN_RAW_STRING != 0 {
+            let n_hashes = (hl_context >> IN_RAW_STRING.trailing_zeros()) - 1;
+            format!("r{}\"", "#".repeat(n_hashes as usize))
+        } else if hl_context & IN_COMMENT != 0 {
+            let depth = hl_context >> IN_COMMENT.trailing_zeros();
+            "/*".repeat(depth as usize)
+        } else {
+            "".to_string()
+        }
+    }
+
+    fn encode_context(&self, token_kind: Option<TokenKind>) -> HlContext {
+        match token_kind {
+            Some(Attribute { open: true }) => IN_ATTRIBUTE,
+            Some(StrLit { open: true }) => IN_STRING,
             Some(RawStrLit {
                 open: true,
                 n_hashes,
-            }) => Some(format!("r{}\"", "#".repeat(n_hashes))),
-            Some(StrLit { open: true }) => Some(String::from("\"")),
-            _ => Some(String::new()),
+            }) => (n_hashes as HlContext + 1) << IN_RAW_STRING.trailing_zeros(),
+            Some(BlockComment { open: true, depth }) => {
+                (depth as HlContext) << IN_COMMENT.trailing_zeros()
+            }
+            _ => NORMAL,
         }
     }
 }
@@ -102,7 +131,7 @@ struct Token {
 enum TokenKind {
     Attribute { open: bool },
     Bang,
-    BlockComment { open: bool, depth: usize },
+    BlockComment { open: bool, depth: u8 },
     CharLit,
     Colon,
     ColonColon,
@@ -121,7 +150,7 @@ enum TokenKind {
     Punct,
     Question,
     RawIdent,
-    RawStrLit { open: bool, n_hashes: usize },
+    RawStrLit { open: bool, n_hashes: u8 },
     Static,
     StrLit { open: bool },
     UpperIdent,
@@ -142,14 +171,14 @@ impl<'a> Tokens<'a> {
 }
 
 fn is_delim(ch: char) -> bool {
-    ch == ' ' || ch != '_' && ch.is_ascii_punctuation()
+    ch.is_ascii_whitespace() || ch != '_' && ch.is_ascii_punctuation()
 }
 
 impl<'a> Iterator for Tokens<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (start, ch) = self.chars.find(|t| t.1 != ' ')?;
+        let (start, ch) = self.chars.find(|t| !t.1.is_ascii_whitespace())?;
 
         let kind = match ch {
             // attribute

@@ -11,7 +11,6 @@ pub struct Minibuffer {
     height: usize,
     prompt_len: usize,
     cx: usize,
-    rx: usize,
     coloff: usize,
     row: Row,
 }
@@ -25,7 +24,6 @@ impl Minibuffer {
             height: 0,
             prompt_len: 0,
             cx: 0,
-            rx: 0,
             coloff: 0,
             row: Row::new(String::new()),
         }
@@ -43,16 +41,14 @@ impl Minibuffer {
         self.row.push_str(string);
         self.prompt_len = 0;
         self.cx = 0;
-        self.rx = 0;
         self.coloff = 0;
     }
 
     pub fn set_prompt(&mut self, string: &str) {
         self.row.clear();
         self.row.push_str(string);
-        self.prompt_len = self.row.max_cx();
-        self.cx = self.row.max_cx();
-        self.rx = self.row.max_rx();
+        self.prompt_len = self.row.max_x();
+        self.cx = self.row.max_x();
         self.coloff = 0;
     }
 
@@ -64,8 +60,8 @@ impl Minibuffer {
         canvas.write(format!("\x1b[{};{}H", self.y + 1, self.x + 1).as_bytes())?;
 
         self.row.hls.clear();
-        self.row.hls.resize(self.row.render.len(), Hl::Default);
-        for i in 0..self.row.cx_to_rx.get(self.prompt_len) {
+        self.row.hls.resize(self.row.string.len(), Hl::Default);
+        for i in 0..self.prompt_len {
             self.row.hls[i] = Hl::Function;
         }
 
@@ -80,7 +76,7 @@ impl Minibuffer {
             format!(
                 "\x1b[{};{}H",
                 self.y + 1,
-                self.x + self.rx - self.coloff + 1,
+                self.x + self.cx - self.coloff + 1,
             )
             .as_bytes(),
         )?;
@@ -91,42 +87,36 @@ impl Minibuffer {
         match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if self.cx > 0 {
-                    self.cx -= 1;
-                    self.rx = self.row.cx_to_rx.get(self.cx);
+                    self.cx = self.row.prev_x(self.cx);
                 }
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
-                if self.cx < self.row.max_cx() {
-                    self.cx += 1;
-                    self.rx = self.row.cx_to_rx.get(self.cx);
+                if self.cx < self.row.max_x() {
+                    self.cx = self.row.next_x(self.cx);
                 }
             }
             Key::Home | Key::Ctrl(b'A') | Key::Alt(b'<') => {
                 self.cx = self.prompt_len;
-                self.rx = self.row.cx_to_rx.get(self.cx);
                 self.coloff = 0;
             }
             Key::End | Key::Ctrl(b'E') | Key::Alt(b'>') => {
-                self.cx = self.row.max_cx();
-                self.rx = self.row.max_rx();
+                self.cx = self.row.max_x();
             }
             Key::Backspace | Key::Ctrl(b'H') => {
                 if self.cx > self.prompt_len {
-                    self.row.remove(self.cx - 1);
-                    self.cx -= 1;
-                    self.rx = self.row.cx_to_rx.get(self.cx);
+                    self.cx = self.row.prev_x(self.cx);
+                    self.row.remove(self.cx);
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
-                if self.cx >= self.prompt_len && self.cx < self.row.max_cx() {
+                if self.cx >= self.prompt_len && self.cx < self.row.max_x() {
                     self.row.remove(self.cx);
                 }
             }
             Key::Ctrl(b'I') => {
                 if self.cx >= self.prompt_len {
                     self.row.insert(self.cx, '\t');
-                    self.cx += 1;
-                    self.rx = self.row.cx_to_rx.get(self.cx);
+                    self.cx = self.row.next_x(self.cx);
                 }
             }
             Key::Ctrl(b'K') => {
@@ -138,15 +128,13 @@ impl Minibuffer {
                 if self.cx > self.prompt_len {
                     self.row.remove_str(self.prompt_len, self.cx);
                     self.cx = self.prompt_len;
-                    self.rx = self.row.cx_to_rx.get(self.cx);
                     self.coloff = 0;
                 }
             }
             Key::Char(ch) => {
                 if self.cx >= self.prompt_len {
                     self.row.insert(self.cx, ch);
-                    self.cx += 1;
-                    self.rx = self.row.cx_to_rx.get(self.cx);
+                    self.cx = self.row.next_x(self.cx);
                 }
             }
             _ => (),
@@ -155,17 +143,11 @@ impl Minibuffer {
     }
 
     fn scroll(&mut self) {
-        if self.rx < self.coloff {
-            self.coloff = self.rx;
+        if self.cx < self.coloff {
+            self.coloff = self.cx;
         }
-        if self.rx >= self.coloff + self.width {
-            self.coloff = self.rx - self.width + 1;
-
-            if self.rx < self.row.max_rx()
-                && self.row.rx_to_idx.get(self.rx) == self.row.rx_to_idx.get(self.rx + 1)
-            {
-                self.coloff += 1;
-            }
+        if self.cx >= self.coloff + self.width {
+            self.coloff = self.cx - self.width + 1;
         }
     }
 }
