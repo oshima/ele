@@ -15,7 +15,7 @@ impl Syntax for Plain {
             }
             row.hl_context = Some(String::new());
             row.hls.clear();
-            row.hls.resize(row.render.len(), Hl::Default);
+            row.hls.resize(row.string.len(), Hl::Default);
         }
     }
 }

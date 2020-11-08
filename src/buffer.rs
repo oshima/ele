@@ -15,9 +15,8 @@ pub struct Buffer {
     width: usize,
     height: usize,
     cx: usize,
-    rx: usize,
     cy: usize,
-    saved_rx: usize,
+    saved_cx: usize,
     highlight_cy: Option<usize>,
     redraw_cy: Option<usize>,
     rowoff: usize,
@@ -36,9 +35,8 @@ impl Buffer {
             width: 0,
             height: 0,
             cx: 0,
-            rx: 0,
             cy: 0,
-            saved_rx: 0,
+            saved_cx: 0,
             highlight_cy: Some(0),
             redraw_cy: Some(0),
             rowoff: 0,
@@ -138,7 +136,7 @@ impl Buffer {
         let right = format!(
             "Ln {}, Col {} {}",
             self.cy + 1,
-            self.rx + 1,
+            self.cx + 1,
             self.syntax.name(),
         );
         let right_len = cmp::min(right.len(), self.width);
@@ -163,7 +161,7 @@ impl Buffer {
             format!(
                 "\x1b[{};{}H",
                 self.y + self.cy - self.rowoff + 1,
-                self.x + self.rx - self.coloff + 1,
+                self.x + self.cx - self.coloff + 1,
             )
             .as_bytes(),
         )?;
@@ -174,28 +172,24 @@ impl Buffer {
         match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if self.cx > 0 {
-                    self.cx -= 1;
-                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
-                    self.saved_rx = self.rx;
+                    self.cx = self.rows[self.cy].prev_x(self.cx);
+                    self.saved_cx = self.cx;
                 } else if self.cy > 0 {
                     self.cy -= 1;
-                    self.cx = self.rows[self.cy].max_cx();
-                    self.rx = self.rows[self.cy].max_rx();
-                    self.saved_rx = self.rx;
+                    self.cx = self.rows[self.cy].max_x();
+                    self.saved_cx = self.cx;
                 }
                 self.highlight_cy = None;
                 self.redraw_cy = None;
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
-                if self.cx < self.rows[self.cy].max_cx() {
-                    self.cx += 1;
-                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
-                    self.saved_rx = self.rx;
+                if self.cx < self.rows[self.cy].max_x() {
+                    self.cx = self.rows[self.cy].next_x(self.cx);
+                    self.saved_cx = self.cx;
                 } else if self.cy < self.rows.len() - 1 {
                     self.cy += 1;
                     self.cx = 0;
-                    self.rx = 0;
-                    self.saved_rx = self.rx;
+                    self.saved_cx = self.cx;
                 }
                 self.highlight_cy = None;
                 self.redraw_cy = None;
@@ -203,9 +197,7 @@ impl Buffer {
             Key::ArrowUp | Key::Ctrl(b'P') => {
                 if self.cy > 0 {
                     self.cy -= 1;
-                    self.rx = cmp::min(self.saved_rx, self.rows[self.cy].max_rx());
-                    self.cx = self.rows[self.cy].rx_to_cx.get(self.rx);
-                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                    self.cx = self.rows[self.cy].suitable_prev_x(self.saved_cx);
                 }
                 self.highlight_cy = None;
                 self.redraw_cy = None;
@@ -213,30 +205,21 @@ impl Buffer {
             Key::ArrowDown | Key::Ctrl(b'N') => {
                 if self.cy < self.rows.len() - 1 {
                     self.cy += 1;
-                    self.rx = cmp::min(self.saved_rx, self.rows[self.cy].max_rx());
-                    self.cx = self.rows[self.cy].rx_to_cx.get(self.rx);
-                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                    self.cx = self.rows[self.cy].suitable_prev_x(self.saved_cx);
                 }
                 self.highlight_cy = None;
                 self.redraw_cy = None;
             }
             Key::Home | Key::Ctrl(b'A') => {
-                let cx = self.rows[self.cy].beginning_of_code();
-                if self.cx == cx {
-                    self.cx = 0;
-                    self.rx = 0;
-                } else {
-                    self.cx = cx;
-                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
-                }
-                self.saved_rx = self.rx;
+                let x = self.rows[self.cy].first_letter_x();
+                self.cx = if self.cx == x { 0 } else { x };
+                self.saved_cx = self.cx;
                 self.highlight_cy = None;
                 self.redraw_cy = None;
             }
             Key::End | Key::Ctrl(b'E') => {
-                self.cx = self.rows[self.cy].max_cx();
-                self.rx = self.rows[self.cy].max_rx();
-                self.saved_rx = self.rx;
+                self.cx = self.rows[self.cy].max_x();
+                self.saved_cx = self.cx;
                 self.highlight_cy = None;
                 self.redraw_cy = None;
             }
@@ -244,9 +227,7 @@ impl Buffer {
                 if self.rowoff > 0 {
                     self.cy -= cmp::min(self.height, self.rowoff);
                     self.rowoff -= cmp::min(self.height, self.rowoff);
-                    self.rx = cmp::min(self.saved_rx, self.rows[self.cy].max_rx());
-                    self.cx = self.rows[self.cy].rx_to_cx.get(self.rx);
-                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                    self.cx = self.rows[self.cy].suitable_prev_x(self.saved_cx);
                     self.highlight_cy = None;
                     self.redraw_cy = Some(self.rowoff);
                 } else {
@@ -258,9 +239,7 @@ impl Buffer {
                 if self.rowoff + self.height < self.rows.len() {
                     self.cy += cmp::min(self.height, self.rows.len() - self.cy - 1);
                     self.rowoff += self.height;
-                    self.rx = cmp::min(self.saved_rx, self.rows[self.cy].max_rx());
-                    self.cx = self.rows[self.cy].rx_to_cx.get(self.rx);
-                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                    self.cx = self.rows[self.cy].suitable_prev_x(self.saved_cx);
                     self.highlight_cy = None;
                     self.redraw_cy = Some(self.rowoff);
                 } else {
@@ -270,21 +249,19 @@ impl Buffer {
             }
             Key::Backspace | Key::Ctrl(b'H') => {
                 if self.cx > 0 {
-                    self.rows[self.cy].remove(self.cx - 1);
-                    self.cx -= 1;
-                    self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                    self.cx = self.rows[self.cy].prev_x(self.cx);
+                    self.rows[self.cy].remove(self.cx);
                     self.modified = true;
-                    self.saved_rx = self.rx;
+                    self.saved_cx = self.cx;
                     self.highlight_cy = Some(self.cy);
                     self.redraw_cy = Some(self.cy);
                 } else if self.cy > 0 {
                     let row = self.rows.remove(self.cy);
                     self.cy -= 1;
-                    self.cx = self.rows[self.cy].max_cx();
-                    self.rx = self.rows[self.cy].max_rx();
+                    self.cx = self.rows[self.cy].max_x();
                     self.rows[self.cy].push_str(&row.string);
                     self.modified = true;
-                    self.saved_rx = self.rx;
+                    self.saved_cx = self.cx;
                     self.highlight_cy = Some(self.cy);
                     self.redraw_cy = Some(self.cy);
                 } else {
@@ -293,7 +270,7 @@ impl Buffer {
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
-                if self.cx < self.rows[self.cy].max_cx() {
+                if self.cx < self.rows[self.cy].max_x() {
                     self.rows[self.cy].remove(self.cx);
                     self.modified = true;
                     self.highlight_cy = Some(self.cy);
@@ -311,10 +288,9 @@ impl Buffer {
             }
             Key::Ctrl(b'I') => {
                 self.rows[self.cy].insert(self.cx, '\t');
-                self.cx += 1;
-                self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                self.cx = self.rows[self.cy].next_x(self.cx);
                 self.modified = true;
-                self.saved_rx = self.rx;
+                self.saved_cx = self.cx;
                 self.highlight_cy = Some(self.cy);
                 self.redraw_cy = Some(self.cy);
             }
@@ -323,9 +299,8 @@ impl Buffer {
                 self.rows.insert(self.cy + 1, Row::new(string));
                 self.cy += 1;
                 self.cx = 0;
-                self.rx = 0;
                 self.modified = true;
-                self.saved_rx = self.rx;
+                self.saved_cx = self.cx;
                 self.highlight_cy = Some(self.cy - 1);
                 self.redraw_cy = Some(self.cy - 1);
             }
@@ -338,34 +313,30 @@ impl Buffer {
             Key::Ctrl(b'U') => {
                 self.rows[self.cy].remove_str(0, self.cx);
                 self.cx = 0;
-                self.rx = 0;
                 self.modified = true;
-                self.saved_rx = self.rx;
+                self.saved_cx = self.cx;
                 self.highlight_cy = Some(self.cy);
                 self.redraw_cy = Some(self.cy);
             }
             Key::Alt(b'<') => {
                 self.cy = 0;
                 self.cx = 0;
-                self.rx = 0;
-                self.saved_rx = self.rx;
+                self.saved_cx = self.cx;
                 self.highlight_cy = None;
                 self.redraw_cy = None;
             }
             Key::Alt(b'>') => {
                 self.cy = self.rows.len() - 1;
-                self.cx = self.rows[self.cy].max_cx();
-                self.rx = self.rows[self.cy].max_rx();
-                self.saved_rx = self.rx;
+                self.cx = self.rows[self.cy].max_x();
+                self.saved_cx = self.cx;
                 self.highlight_cy = None;
                 self.redraw_cy = None;
             }
             Key::Char(ch) => {
                 self.rows[self.cy].insert(self.cx, ch);
-                self.cx += 1;
-                self.rx = self.rows[self.cy].cx_to_rx.get(self.cx);
+                self.cx = self.rows[self.cy].next_x(self.cx);
                 self.modified = true;
-                self.saved_rx = self.rx;
+                self.saved_cx = self.cx;
                 self.highlight_cy = Some(self.cy);
                 self.redraw_cy = Some(self.cy);
             }
@@ -383,20 +354,13 @@ impl Buffer {
             self.rowoff = self.cy - self.height + 1;
             self.redraw_cy = Some(self.rowoff);
         }
-        if self.rx < self.coloff {
-            self.coloff = self.rx;
+        if self.cx < self.coloff {
+            self.coloff = self.cx;
             self.redraw_cy = Some(self.rowoff);
         }
-        if self.rx >= self.coloff + self.width {
-            self.coloff = self.rx - self.width + 1;
+        if self.cx >= self.coloff + self.width {
+            self.coloff = self.cx - self.width + 1;
             self.redraw_cy = Some(self.rowoff);
-
-            let row = &self.rows[self.cy];
-            if self.rx < row.max_rx()
-                && row.rx_to_idx.get(self.rx) == row.rx_to_idx.get(self.rx + 1)
-            {
-                self.coloff += 1;
-            }
         }
     }
 }

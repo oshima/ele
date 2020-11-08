@@ -34,10 +34,10 @@ impl Syntax for Rust {
 impl Rust {
     fn highlight_row(&self, row: &mut Row) -> Option<String> {
         row.hls.clear();
-        row.hls.resize(row.render.len(), Hl::Default);
+        row.hls.resize(row.string.len(), Hl::Default);
 
         let context = row.hl_context.as_deref().unwrap_or("");
-        let mut tokens = Tokens::from(&row.render, context).peekable();
+        let mut tokens = Tokens::from(&row.string, context).peekable();
         let mut prev_token: Option<Token> = None;
 
         while let Some(token) = tokens.next() {
@@ -142,14 +142,14 @@ impl<'a> Tokens<'a> {
 }
 
 fn is_delim(ch: char) -> bool {
-    ch == ' ' || ch != '_' && ch.is_ascii_punctuation()
+    ch.is_ascii_whitespace() || ch != '_' && ch.is_ascii_punctuation()
 }
 
 impl<'a> Iterator for Tokens<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (start, ch) = self.chars.find(|t| t.1 != ' ')?;
+        let (start, ch) = self.chars.find(|t| !t.1.is_ascii_whitespace())?;
 
         let kind = match ch {
             // attribute
