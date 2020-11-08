@@ -9,6 +9,7 @@ use crate::uint_vec::UintVec;
 const TAB_WIDTH: usize = 4;
 const TOMBSTONE: usize = 0;
 
+// std::mem::size_of::<Row>() => 104
 pub struct Row {
     pub string: String,
     pub x_to_idx: UintVec,
