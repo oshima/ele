@@ -1,5 +1,6 @@
 extern crate unicode_width;
 
+use std::cmp;
 use std::io::{self, Write};
 use unicode_width::UnicodeWidthChar;
 
@@ -9,10 +10,10 @@ use crate::uint_vec::UintVec;
 const TAB_WIDTH: usize = 4;
 const TOMBSTONE: usize = 0;
 
-// std::mem::size_of::<Row>() => 104
+// std::mem::size_of::<Row>() == 64
 pub struct Row {
     pub string: String,
-    pub x_to_idx: UintVec,
+    x_to_idx: Option<Box<UintVec>>,
     pub hl_context: HlContext,
     pub hls: Vec<Hl>,
 }
@@ -21,7 +22,7 @@ impl Row {
     pub fn new(string: String) -> Self {
         let mut row = Self {
             string,
-            x_to_idx: UintVec::new(),
+            x_to_idx: None,
             hl_context: 0,
             hls: Vec::new(),
         };
@@ -29,14 +30,46 @@ impl Row {
         row
     }
 
+    fn char_at(&self, x: usize) -> char {
+        let idx = self.byte_index(x);
+        self.string[idx..].chars().next().unwrap()
+    }
+
+    fn char_width(&self, x: usize) -> usize {
+        let mut width = 1;
+        while !self.is_char_boundary(x + width) {
+            width += 1;
+        }
+        width
+    }
+
+    #[inline]
+    fn byte_index(&self, x: usize) -> usize {
+        match self.x_to_idx.as_ref() {
+            Some(v) => v.get(x),
+            None => x,
+        }
+    }
+
+    #[inline]
+    fn is_char_boundary(&self, x: usize) -> bool {
+        match self.x_to_idx.as_ref() {
+            Some(v) => x == 0 || v.get(x) != TOMBSTONE,
+            None => true,
+        }
+    }
+
     #[inline]
     pub fn max_x(&self) -> usize {
-        self.x_to_idx.len() - 1
+        match self.x_to_idx.as_ref() {
+            Some(v) => v.len() - 1,
+            None => self.string.len(),
+        }
     }
 
     pub fn prev_x(&self, x: usize) -> usize {
         let mut x = x - 1;
-        while self.is_invalid_x(x) {
+        while !self.is_char_boundary(x) {
             x -= 1;
         }
         x
@@ -44,88 +77,77 @@ impl Row {
 
     pub fn next_x(&self, x: usize) -> usize {
         let mut x = x + 1;
-        while self.is_invalid_x(x) {
+        while !self.is_char_boundary(x) {
             x += 1;
         }
         x
     }
 
     pub fn suitable_prev_x(&self, proposed_x: usize) -> usize {
-        if self.max_x() <= proposed_x {
-            return self.max_x();
-        }
-        let mut x = proposed_x;
-        while self.is_invalid_x(x) {
+        let mut x = cmp::min(proposed_x, self.max_x());
+        while !self.is_char_boundary(x) {
             x -= 1;
         }
         x
     }
 
     pub fn suitable_next_x(&self, proposed_x: usize) -> usize {
-        if self.max_x() <= proposed_x {
-            return self.max_x();
-        }
-        let mut x = proposed_x;
-        while self.is_invalid_x(x) {
+        let mut x = cmp::min(proposed_x, self.max_x());
+        while !self.is_char_boundary(x) {
             x += 1;
         }
         x
     }
 
     pub fn first_letter_x(&self) -> usize {
-        for x in 0..self.max_x() {
+        let mut x = 0;
+        let max_x = self.max_x();
+        while x < max_x {
             if !self.char_at(x).is_ascii_whitespace() {
                 return x;
             }
+            x = self.next_x(x);
         }
-        self.max_x()
-    }
-
-    fn char_at(&self, x: usize) -> char {
-        let idx = self.x_to_idx.get(x);
-        self.string[idx..].chars().next().unwrap()
-    }
-
-    fn char_width(&self, x: usize) -> usize {
-        let mut width = 1;
-        while self.is_invalid_x(x + width) {
-            width += 1;
-        }
-        width
-    }
-
-    #[inline]
-    fn is_invalid_x(&self, x: usize) -> bool {
-        x > 0 && self.x_to_idx.get(x) == TOMBSTONE
+        x
     }
 
     pub fn insert(&mut self, x: usize, ch: char) {
-        let idx = self.x_to_idx.get(x);
+        let idx = self.byte_index(x);
         self.string.insert(idx, ch);
-        self.update();
+        if self.x_to_idx.is_some() || ch == '\t' || !ch.is_ascii() {
+            self.update();
+        }
     }
 
     pub fn remove(&mut self, x: usize) {
-        let idx = self.x_to_idx.get(x);
+        let idx = self.byte_index(x);
         self.string.remove(idx);
-        self.update();
+        if self.x_to_idx.is_some() {
+            self.update();
+        }
     }
 
     pub fn clear(&mut self) {
         self.string.clear();
-        self.update();
+        if self.x_to_idx.is_some() {
+            self.update();
+        }
     }
 
     pub fn truncate(&mut self, x: usize) {
-        let idx = self.x_to_idx.get(x);
+        let idx = self.byte_index(x);
         self.string.truncate(idx);
-        self.update();
+        if self.x_to_idx.is_some() {
+            self.update();
+        }
     }
 
     pub fn split_off(&mut self, x: usize) -> String {
-        let idx = self.x_to_idx.get(x);
+        let idx = self.byte_index(x);
         let string = self.string.split_off(idx);
-        self.update();
+        if self.x_to_idx.is_some() {
+            self.update();
+        }
         string
     }
 
@@ -135,29 +157,45 @@ impl Row {
     }
 
     pub fn remove_str(&mut self, from_x: usize, to_x: usize) {
-        let from = self.x_to_idx.get(from_x);
-        let to = self.x_to_idx.get(to_x);
+        let from = self.byte_index(from_x);
+        let to = self.byte_index(to_x);
         let string = self.string.split_off(to);
         self.string.truncate(from);
         self.string.push_str(&string);
-        self.update();
+        if self.x_to_idx.is_some() {
+            self.update();
+        }
     }
 
     fn update(&mut self) {
-        self.x_to_idx.clear();
+        if self.string.is_empty() {
+            self.x_to_idx = None;
+            return;
+        }
+
+        let x_to_idx = self.x_to_idx.get_or_insert(Box::new(UintVec::new()));
+        let mut need_mappings = false;
+
+        x_to_idx.clear();
 
         for (idx, ch) in self.string.char_indices() {
-            if ch == '\t' {
-                for i in 0..(TAB_WIDTH - self.x_to_idx.len() % TAB_WIDTH) {
-                    self.x_to_idx.push(if i == 0 { idx } else { TOMBSTONE });
-                }
-            } else {
-                for i in 0..ch.width().unwrap_or(0) {
-                    self.x_to_idx.push(if i == 0 { idx } else { TOMBSTONE });
-                }
+            let width = match ch {
+                '\t' => TAB_WIDTH - x_to_idx.len() % TAB_WIDTH,
+                _ => ch.width().unwrap_or(0),
+            };
+            for i in 0..width {
+                x_to_idx.push(if i == 0 { idx } else { TOMBSTONE });
+            }
+            if ch == '\t' || !ch.is_ascii() {
+                need_mappings = true;
             }
         }
-        self.x_to_idx.push(self.string.len());
+
+        if need_mappings {
+            x_to_idx.push(self.string.len());
+        } else {
+            self.x_to_idx = None;
+        }
     }
 
     pub fn draw(&self, canvas: &mut Vec<u8>, coloff: usize, width: usize) -> io::Result<()> {
@@ -167,8 +205,8 @@ impl Row {
 
         let start_x = self.suitable_next_x(coloff);
         let end_x = self.suitable_prev_x(coloff + width);
-        let start = self.x_to_idx.get(start_x);
-        let end = self.x_to_idx.get(end_x);
+        let start = self.byte_index(start_x);
+        let end = self.byte_index(end_x);
 
         let mut x = start_x;
         let mut hl = Hl::Default;
