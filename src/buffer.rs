@@ -82,10 +82,14 @@ impl Buffer {
                     writer.write(b"\n")?;
                 }
             }
+            for row in self.rows.iter_mut() {
+                row.hl_context = 0;
+            }
             self.modified = false;
+            self.highlight_cy = Some(0);
+            self.redraw_cy = Some(self.rowoff);
         }
         self.syntax = Syntax::detect(&self.filename);
-        self.redraw_cy = Some(self.rowoff);
         Ok(())
     }
 
