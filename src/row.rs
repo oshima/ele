@@ -35,6 +35,7 @@ impl Row {
         self.string[idx..].chars().next().unwrap()
     }
 
+    #[inline]
     fn char_width(&self, x: usize) -> usize {
         let mut width = 1;
         while !self.is_char_boundary(x + width) {
