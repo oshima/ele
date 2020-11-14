@@ -5,6 +5,7 @@ use crate::buffer::Buffer;
 use crate::key::Key;
 use crate::minibuffer::Minibuffer;
 
+#[derive(PartialEq)]
 enum State {
     Default,
     CtrlX,
@@ -66,16 +67,12 @@ impl Editor {
         Ok((width, height))
     }
 
-    pub fn looop(&mut self) -> io::Result<()> {
-        loop {
+    pub fn run(&mut self) -> io::Result<()> {
+        while self.state != State::Quitted {
             self.refresh_screen()?;
 
             let key = self.read_key()?;
             self.process_keypress(key)?;
-
-            if let State::Quitted = self.state {
-                break;
-            }
         }
         Ok(())
     }

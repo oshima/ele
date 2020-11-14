@@ -19,6 +19,6 @@ fn main() -> io::Result<()> {
     let raw_mode = RawMode::new()?;
     raw_mode.enable()?;
 
-    let mut editor = Editor::new(args.get(1).map(Clone::clone))?;
-    editor.looop()
+    let mut editor = Editor::new(args.get(1).cloned())?;
+    editor.run()
 }
