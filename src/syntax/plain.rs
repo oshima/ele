@@ -11,7 +11,9 @@ impl Syntax for Plain {
         "Plain"
     }
 
-    fn highlight(&self, rows: &mut [Row]) {
+    fn highlight(&self, rows: &mut [Row]) -> usize {
+        let mut n_updates = 0;
+
         for (i, row) in rows.iter_mut().enumerate() {
             if i > 0 && row.hl_context != UNDEFINED {
                 break;
@@ -19,6 +21,9 @@ impl Syntax for Plain {
             row.hl_context = NORMAL;
             row.hls.clear();
             row.hls.resize(row.string.len(), Hl::Default);
+            n_updates += 1;
         }
+
+        n_updates
     }
 }

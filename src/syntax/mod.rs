@@ -7,7 +7,7 @@ use crate::syntax::rust::Rust;
 
 pub trait Syntax {
     fn name(&self) -> &'static str;
-    fn highlight(&self, rows: &mut [Row]);
+    fn highlight(&self, rows: &mut [Row]) -> usize;
 }
 
 impl dyn Syntax {

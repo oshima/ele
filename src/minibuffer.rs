@@ -65,7 +65,8 @@ impl Minibuffer {
             self.row.hls[i] = Hl::Function;
         }
 
-        self.row.draw(canvas, self.coloff, self.width)?;
+        self.row
+            .draw(canvas, self.coloff..(self.coloff + self.width))?;
 
         canvas.write(b"\x1b[K")?;
         Ok(())

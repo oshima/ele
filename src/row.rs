@@ -2,6 +2,7 @@ extern crate unicode_width;
 
 use std::cmp;
 use std::io::{self, Write};
+use std::ops::Range;
 use unicode_width::UnicodeWidthChar;
 
 use crate::syntax::{Hl, HlContext};
@@ -199,20 +200,20 @@ impl Row {
         }
     }
 
-    pub fn draw(&self, canvas: &mut Vec<u8>, coloff: usize, width: usize) -> io::Result<()> {
-        if self.max_x() <= coloff {
+    pub fn draw(&self, canvas: &mut Vec<u8>, x_range: Range<usize>) -> io::Result<()> {
+        if self.max_x() <= x_range.start {
             return Ok(());
         }
 
-        let start_x = self.suitable_next_x(coloff);
-        let end_x = self.suitable_prev_x(coloff + width);
+        let start_x = self.suitable_next_x(x_range.start);
+        let end_x = self.suitable_prev_x(x_range.end);
         let start = self.byte_index(start_x);
         let end = self.byte_index(end_x);
 
         let mut x = start_x;
         let mut hl = Hl::Default;
 
-        for _ in 0..(start_x - coloff) {
+        for _ in 0..(start_x - x_range.start) {
             canvas.write(b" ")?;
         }
 
