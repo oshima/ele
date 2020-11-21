@@ -85,7 +85,7 @@ impl Row {
         x
     }
 
-    pub fn suitable_prev_x(&self, proposed_x: usize) -> usize {
+    pub fn prev_fit_x(&self, proposed_x: usize) -> usize {
         let mut x = cmp::min(proposed_x, self.max_x());
         while !self.is_char_boundary(x) {
             x -= 1;
@@ -93,7 +93,7 @@ impl Row {
         x
     }
 
-    pub fn suitable_next_x(&self, proposed_x: usize) -> usize {
+    pub fn next_fit_x(&self, proposed_x: usize) -> usize {
         let mut x = cmp::min(proposed_x, self.max_x());
         while !self.is_char_boundary(x) {
             x += 1;
@@ -205,8 +205,8 @@ impl Row {
             return Ok(());
         }
 
-        let start_x = self.suitable_next_x(x_range.start);
-        let end_x = self.suitable_prev_x(x_range.end);
+        let start_x = self.next_fit_x(x_range.start);
+        let end_x = self.prev_fit_x(x_range.end);
         let start = self.byte_index(start_x);
         let end = self.byte_index(end_x);
 

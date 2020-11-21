@@ -2,6 +2,7 @@ use std::io::{self, Read, Write};
 use std::str;
 
 use crate::buffer::Buffer;
+use crate::coord::{Pos, Size};
 use crate::key::Key;
 use crate::minibuffer::Minibuffer;
 
@@ -33,30 +34,32 @@ impl Editor {
             buffer: Buffer::new(filename)?,
             minibuffer: Minibuffer::new(),
         };
-        let (width, height) = editor.get_window_size()?;
-        editor.buffer.locate(0, 0, width, height - 1);
-        editor.minibuffer.locate(0, height - 1, width, 1);
+        let Size { w, h } = editor.get_window_size()?;
+        editor.buffer.pos = Pos::new(0, 0);
+        editor.buffer.size = Size::new(w, h - 2);
+        editor.minibuffer.pos = Pos::new(0, h - 1);
+        editor.minibuffer.size = Size::new(w, 1);
         Ok(editor)
     }
 
-    fn get_window_size(&mut self) -> io::Result<(usize, usize)> {
+    fn get_window_size(&mut self) -> io::Result<Size> {
         self.stdout.write(b"\x1b[999C\x1b[999B")?;
         self.stdout.write(b"\x1b[6n")?;
         self.stdout.flush()?;
 
         let mut buf = [0];
         let mut num = 0;
-        let (mut width, mut height) = (0, 0);
+        let mut size = Size::new(0, 0);
 
         while self.stdin.read(&mut buf)? == 1 {
             match buf[0] {
                 b'\x1b' | b'[' => (),
                 b';' => {
-                    height = num;
+                    size.h = num;
                     num = 0;
                 }
                 b'R' => {
-                    width = num;
+                    size.w = num;
                     break;
                 }
                 ch => {
@@ -64,7 +67,7 @@ impl Editor {
                 }
             }
         }
-        Ok((width, height))
+        Ok(size)
     }
 
     pub fn run(&mut self) -> io::Result<()> {

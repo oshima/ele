@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::ops::Range;
 
+use crate::coord::{Cursor, Pos, Size};
 use crate::key::Key;
 use crate::row::Row;
 use crate::syntax::Syntax;
@@ -17,19 +18,14 @@ enum Redraw {
 pub struct Buffer {
     pub filename: Option<String>,
     pub modified: bool,
-    syntax: Box<dyn Syntax>,
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
-    cx: usize,
-    cy: usize,
-    saved_cx: usize,
-    highlight_y: Option<usize>,
+    pub pos: Pos,
+    pub size: Size,
+    offset: Pos,
+    cursor: Cursor,
+    hl_from: Option<usize>,
     redraw: Redraw,
-    rowoff: usize,
-    coloff: usize,
     rows: Vec<Row>,
+    syntax: Box<dyn Syntax>,
 }
 
 impl Buffer {
@@ -38,17 +34,12 @@ impl Buffer {
             syntax: Syntax::detect(&filename),
             filename,
             modified: false,
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
-            cx: 0,
-            cy: 0,
-            saved_cx: 0,
-            highlight_y: Some(0),
+            pos: Pos::new(0, 0),
+            size: Size::new(0, 0),
+            offset: Pos::new(0, 0),
+            cursor: Cursor::new(0, 0),
+            hl_from: Some(0),
             redraw: Redraw::Whole,
-            rowoff: 0,
-            coloff: 0,
             rows: Vec::new(),
         };
         buffer.init()?;
@@ -94,32 +85,25 @@ impl Buffer {
                 row.hl_context = 0;
             }
             self.modified = false;
-            self.highlight_y = Some(0);
+            self.hl_from = Some(0);
             self.redraw = Redraw::Whole;
         }
         self.syntax = Syntax::detect(&self.filename);
         Ok(())
     }
 
-    pub fn locate(&mut self, x: usize, y: usize, width: usize, height: usize) {
-        self.x = x;
-        self.y = y;
-        self.width = width;
-        self.height = height - 1; // subtract status bar
-    }
-
     pub fn draw(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
-        if let Some(y) = self.highlight_y {
+        if let Some(y) = self.hl_from {
             let n_updates = self.syntax.highlight(&mut self.rows[y..]);
             let y_range = match self.redraw {
                 Redraw::None => y..y,
-                Redraw::Min => y..cmp::min(y + n_updates, self.rowoff + self.height),
-                Redraw::End => y..(self.rowoff + self.height),
-                Redraw::Whole => self.rowoff..(self.rowoff + self.height),
+                Redraw::Min => y..cmp::min(y + n_updates, self.offset.y + self.size.h),
+                Redraw::End => y..(self.offset.y + self.size.h),
+                Redraw::Whole => self.offset.y..(self.offset.y + self.size.h),
             };
             self.draw_rows(canvas, y_range)?;
         } else if let Redraw::Whole = self.redraw {
-            let y_range = self.rowoff..(self.rowoff + self.height);
+            let y_range = self.offset.y..(self.offset.y + self.size.h);
             self.draw_rows(canvas, y_range)?;
         }
 
@@ -131,15 +115,15 @@ impl Buffer {
         canvas.write(
             format!(
                 "\x1b[{};{}H",
-                self.y + y_range.start - self.rowoff + 1,
-                self.x + 1
+                self.pos.y + y_range.start - self.offset.y + 1,
+                self.pos.x + 1
             )
             .as_bytes(),
         )?;
 
         for y in y_range {
             if y < self.rows.len() {
-                let x_range = self.coloff..(self.coloff + self.width);
+                let x_range = self.offset.x..(self.offset.x + self.size.w);
                 self.rows[y].draw(canvas, x_range)?;
             }
             canvas.write(b"\x1b[K")?;
@@ -156,15 +140,17 @@ impl Buffer {
         );
         let right = format!(
             "Ln {}, Col {} {}",
-            self.cy + 1,
-            self.cx + 1,
+            self.cursor.y + 1,
+            self.cursor.x + 1,
             self.syntax.name(),
         );
-        let right_len = cmp::min(right.len(), self.width);
-        let left_len = cmp::min(left.len(), self.width - right_len);
-        let padding = self.width - left_len - right_len;
+        let right_len = cmp::min(right.len(), self.size.w);
+        let left_len = cmp::min(left.len(), self.size.w - right_len);
+        let padding = self.size.w - left_len - right_len;
 
-        canvas.write(format!("\x1b[{};{}H", self.height + 1, self.x + 1).as_bytes())?;
+        canvas.write(
+            format!("\x1b[{};{}H", self.pos.y + self.size.h + 1, self.pos.x + 1).as_bytes(),
+        )?;
         canvas.write(b"\x1b[7m")?;
 
         canvas.write(&left.as_bytes()[0..left_len])?;
@@ -181,8 +167,8 @@ impl Buffer {
         canvas.write(
             format!(
                 "\x1b[{};{}H",
-                self.y + self.cy - self.rowoff + 1,
-                self.x + self.cx - self.coloff + 1,
+                self.pos.y + self.cursor.y - self.offset.y + 1,
+                self.pos.x + self.cursor.x - self.offset.x + 1,
             )
             .as_bytes(),
         )?;
@@ -192,173 +178,173 @@ impl Buffer {
     pub fn process_keypress(&mut self, key: Key) {
         match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
-                if self.cx > 0 {
-                    self.cx = self.rows[self.cy].prev_x(self.cx);
-                    self.saved_cx = self.cx;
-                } else if self.cy > 0 {
-                    self.cy -= 1;
-                    self.cx = self.rows[self.cy].max_x();
-                    self.saved_cx = self.cx;
+                if self.cursor.x > 0 {
+                    self.cursor.x = self.rows[self.cursor.y].prev_x(self.cursor.x);
+                    self.cursor.last_x = self.cursor.x;
+                } else if self.cursor.y > 0 {
+                    self.cursor.y -= 1;
+                    self.cursor.x = self.rows[self.cursor.y].max_x();
+                    self.cursor.last_x = self.cursor.x;
                 }
-                self.highlight_y = None;
+                self.hl_from = None;
                 self.redraw = Redraw::None;
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
-                if self.cx < self.rows[self.cy].max_x() {
-                    self.cx = self.rows[self.cy].next_x(self.cx);
-                    self.saved_cx = self.cx;
-                } else if self.cy < self.rows.len() - 1 {
-                    self.cy += 1;
-                    self.cx = 0;
-                    self.saved_cx = self.cx;
+                if self.cursor.x < self.rows[self.cursor.y].max_x() {
+                    self.cursor.x = self.rows[self.cursor.y].next_x(self.cursor.x);
+                    self.cursor.last_x = self.cursor.x;
+                } else if self.cursor.y < self.rows.len() - 1 {
+                    self.cursor.y += 1;
+                    self.cursor.x = 0;
+                    self.cursor.last_x = self.cursor.x;
                 }
-                self.highlight_y = None;
+                self.hl_from = None;
                 self.redraw = Redraw::None;
             }
             Key::ArrowUp | Key::Ctrl(b'P') => {
-                if self.cy > 0 {
-                    self.cy -= 1;
-                    self.cx = self.rows[self.cy].suitable_prev_x(self.saved_cx);
+                if self.cursor.y > 0 {
+                    self.cursor.y -= 1;
+                    self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
                 }
-                self.highlight_y = None;
+                self.hl_from = None;
                 self.redraw = Redraw::None;
             }
             Key::ArrowDown | Key::Ctrl(b'N') => {
-                if self.cy < self.rows.len() - 1 {
-                    self.cy += 1;
-                    self.cx = self.rows[self.cy].suitable_prev_x(self.saved_cx);
+                if self.cursor.y < self.rows.len() - 1 {
+                    self.cursor.y += 1;
+                    self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
                 }
-                self.highlight_y = None;
+                self.hl_from = None;
                 self.redraw = Redraw::None;
             }
             Key::Home | Key::Ctrl(b'A') => {
-                let x = self.rows[self.cy].first_letter_x();
-                self.cx = if self.cx == x { 0 } else { x };
-                self.saved_cx = self.cx;
-                self.highlight_y = None;
+                let x = self.rows[self.cursor.y].first_letter_x();
+                self.cursor.x = if self.cursor.x == x { 0 } else { x };
+                self.cursor.last_x = self.cursor.x;
+                self.hl_from = None;
                 self.redraw = Redraw::None;
             }
             Key::End | Key::Ctrl(b'E') => {
-                self.cx = self.rows[self.cy].max_x();
-                self.saved_cx = self.cx;
-                self.highlight_y = None;
+                self.cursor.x = self.rows[self.cursor.y].max_x();
+                self.cursor.last_x = self.cursor.x;
+                self.hl_from = None;
                 self.redraw = Redraw::None;
             }
             Key::PageUp | Key::Alt(b'v') => {
-                if self.rowoff > 0 {
-                    self.cy -= cmp::min(self.height, self.rowoff);
-                    self.rowoff -= cmp::min(self.height, self.rowoff);
-                    self.cx = self.rows[self.cy].suitable_prev_x(self.saved_cx);
-                    self.highlight_y = None;
+                if self.offset.y > 0 {
+                    self.cursor.y -= cmp::min(self.size.h, self.offset.y);
+                    self.offset.y -= cmp::min(self.size.h, self.offset.y);
+                    self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
+                    self.hl_from = None;
                     self.redraw = Redraw::Whole;
                 } else {
-                    self.highlight_y = None;
+                    self.hl_from = None;
                     self.redraw = Redraw::None;
                 }
             }
             Key::PageDown | Key::Ctrl(b'V') => {
-                if self.rowoff + self.height < self.rows.len() {
-                    self.cy += cmp::min(self.height, self.rows.len() - self.cy - 1);
-                    self.rowoff += self.height;
-                    self.cx = self.rows[self.cy].suitable_prev_x(self.saved_cx);
-                    self.highlight_y = None;
+                if self.offset.y + self.size.h < self.rows.len() {
+                    self.cursor.y += cmp::min(self.size.h, self.rows.len() - self.cursor.y - 1);
+                    self.offset.y += self.size.h;
+                    self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
+                    self.hl_from = None;
                     self.redraw = Redraw::Whole;
                 } else {
-                    self.highlight_y = None;
+                    self.hl_from = None;
                     self.redraw = Redraw::None;
                 }
             }
             Key::Backspace | Key::Ctrl(b'H') => {
-                if self.cx > 0 {
-                    self.cx = self.rows[self.cy].prev_x(self.cx);
-                    self.rows[self.cy].remove(self.cx);
+                if self.cursor.x > 0 {
+                    self.cursor.x = self.rows[self.cursor.y].prev_x(self.cursor.x);
+                    self.cursor.last_x = self.cursor.x;
+                    self.rows[self.cursor.y].remove(self.cursor.x);
                     self.modified = true;
-                    self.saved_cx = self.cx;
-                    self.highlight_y = Some(self.cy);
+                    self.hl_from = Some(self.cursor.y);
                     self.redraw = Redraw::Min;
-                } else if self.cy > 0 {
-                    let row = self.rows.remove(self.cy);
-                    self.cy -= 1;
-                    self.cx = self.rows[self.cy].max_x();
-                    self.rows[self.cy].push_str(&row.string);
+                } else if self.cursor.y > 0 {
+                    let row = self.rows.remove(self.cursor.y);
+                    self.cursor.y -= 1;
+                    self.cursor.x = self.rows[self.cursor.y].max_x();
+                    self.cursor.last_x = self.cursor.x;
+                    self.rows[self.cursor.y].push_str(&row.string);
                     self.modified = true;
-                    self.saved_cx = self.cx;
-                    self.highlight_y = Some(self.cy);
+                    self.hl_from = Some(self.cursor.y);
                     self.redraw = Redraw::End;
                 } else {
-                    self.highlight_y = None;
+                    self.hl_from = None;
                     self.redraw = Redraw::None;
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
-                if self.cx < self.rows[self.cy].max_x() {
-                    self.rows[self.cy].remove(self.cx);
+                if self.cursor.x < self.rows[self.cursor.y].max_x() {
+                    self.rows[self.cursor.y].remove(self.cursor.x);
                     self.modified = true;
-                    self.highlight_y = Some(self.cy);
+                    self.hl_from = Some(self.cursor.y);
                     self.redraw = Redraw::Min;
-                } else if self.cy < self.rows.len() - 1 {
-                    let row = self.rows.remove(self.cy + 1);
-                    self.rows[self.cy].push_str(&row.string);
+                } else if self.cursor.y < self.rows.len() - 1 {
+                    let row = self.rows.remove(self.cursor.y + 1);
+                    self.rows[self.cursor.y].push_str(&row.string);
                     self.modified = true;
-                    self.highlight_y = Some(self.cy);
+                    self.hl_from = Some(self.cursor.y);
                     self.redraw = Redraw::End;
                 } else {
-                    self.highlight_y = None;
+                    self.hl_from = None;
                     self.redraw = Redraw::None;
                 }
             }
             Key::Ctrl(b'I') => {
-                self.rows[self.cy].insert(self.cx, '\t');
-                self.cx = self.rows[self.cy].next_x(self.cx);
+                self.rows[self.cursor.y].insert(self.cursor.x, '\t');
+                self.cursor.x = self.rows[self.cursor.y].next_x(self.cursor.x);
+                self.cursor.last_x = self.cursor.x;
                 self.modified = true;
-                self.saved_cx = self.cx;
-                self.highlight_y = Some(self.cy);
+                self.hl_from = Some(self.cursor.y);
                 self.redraw = Redraw::Min;
             }
             Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
-                let string = self.rows[self.cy].split_off(self.cx);
-                self.rows.insert(self.cy + 1, Row::new(string));
-                self.cy += 1;
-                self.cx = 0;
+                let string = self.rows[self.cursor.y].split_off(self.cursor.x);
+                self.rows.insert(self.cursor.y + 1, Row::new(string));
+                self.cursor.y += 1;
+                self.cursor.x = 0;
+                self.cursor.last_x = self.cursor.x;
                 self.modified = true;
-                self.saved_cx = self.cx;
-                self.highlight_y = Some(self.cy - 1);
+                self.hl_from = Some(self.cursor.y - 1);
                 self.redraw = Redraw::End;
             }
             Key::Ctrl(b'K') => {
-                self.rows[self.cy].truncate(self.cx);
+                self.rows[self.cursor.y].truncate(self.cursor.x);
                 self.modified = true;
-                self.highlight_y = Some(self.cy);
+                self.hl_from = Some(self.cursor.y);
                 self.redraw = Redraw::Min;
             }
             Key::Ctrl(b'U') => {
-                self.rows[self.cy].remove_str(0, self.cx);
-                self.cx = 0;
+                self.rows[self.cursor.y].remove_str(0, self.cursor.x);
+                self.cursor.x = 0;
+                self.cursor.last_x = self.cursor.x;
                 self.modified = true;
-                self.saved_cx = self.cx;
-                self.highlight_y = Some(self.cy);
+                self.hl_from = Some(self.cursor.y);
                 self.redraw = Redraw::Min;
             }
             Key::Alt(b'<') => {
-                self.cy = 0;
-                self.cx = 0;
-                self.saved_cx = self.cx;
-                self.highlight_y = None;
+                self.cursor.y = 0;
+                self.cursor.x = 0;
+                self.cursor.last_x = self.cursor.x;
+                self.hl_from = None;
                 self.redraw = Redraw::None;
             }
             Key::Alt(b'>') => {
-                self.cy = self.rows.len() - 1;
-                self.cx = self.rows[self.cy].max_x();
-                self.saved_cx = self.cx;
-                self.highlight_y = None;
+                self.cursor.y = self.rows.len() - 1;
+                self.cursor.x = self.rows[self.cursor.y].max_x();
+                self.cursor.last_x = self.cursor.x;
+                self.hl_from = None;
                 self.redraw = Redraw::None;
             }
             Key::Char(ch) => {
-                self.rows[self.cy].insert(self.cx, ch);
-                self.cx = self.rows[self.cy].next_x(self.cx);
+                self.rows[self.cursor.y].insert(self.cursor.x, ch);
+                self.cursor.x = self.rows[self.cursor.y].next_x(self.cursor.x);
+                self.cursor.last_x = self.cursor.x;
                 self.modified = true;
-                self.saved_cx = self.cx;
-                self.highlight_y = Some(self.cy);
+                self.hl_from = Some(self.cursor.y);
                 self.redraw = Redraw::Min;
             }
             _ => (),
@@ -367,20 +353,20 @@ impl Buffer {
     }
 
     fn scroll(&mut self) {
-        if self.cy < self.rowoff {
-            self.rowoff = self.cy;
+        if self.cursor.y < self.offset.y {
+            self.offset.y = self.cursor.y;
             self.redraw = Redraw::Whole;
         }
-        if self.cy >= self.rowoff + self.height {
-            self.rowoff = self.cy - self.height + 1;
+        if self.cursor.y >= self.offset.y + self.size.h {
+            self.offset.y = self.cursor.y - self.size.h + 1;
             self.redraw = Redraw::Whole;
         }
-        if self.cx < self.coloff {
-            self.coloff = self.cx;
+        if self.cursor.x < self.offset.x {
+            self.offset.x = self.cursor.x;
             self.redraw = Redraw::Whole;
         }
-        if self.cx >= self.coloff + self.width {
-            self.coloff = self.cx - self.width + 1;
+        if self.cursor.x >= self.offset.x + self.size.w {
+            self.offset.x = self.cursor.x - self.size.w + 1;
             self.redraw = Redraw::Whole;
         }
     }

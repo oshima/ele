@@ -1,4 +1,5 @@
 mod buffer;
+mod coord;
 mod editor;
 mod key;
 mod minibuffer;
