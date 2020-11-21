@@ -83,12 +83,21 @@ impl Editor {
     fn refresh_screen(&mut self) -> io::Result<()> {
         self.canvas.write(b"\x1b[?25l")?;
 
-        self.buffer.draw(&mut self.canvas)?;
-        self.minibuffer.draw(&mut self.canvas)?;
-
         match self.state {
-            State::Default | State::CtrlX => self.buffer.draw_cursor(&mut self.canvas)?,
-            _ => self.minibuffer.draw_cursor(&mut self.canvas)?,
+            State::Default => {
+                self.buffer.draw(&mut self.canvas)?;
+                self.minibuffer.draw(&mut self.canvas)?;
+                self.buffer.draw_cursor(&mut self.canvas)?;
+            }
+            State::CtrlX => {
+                self.minibuffer.draw(&mut self.canvas)?;
+                self.buffer.draw_cursor(&mut self.canvas)?;
+            }
+            State::Save | State::Quit => {
+                self.minibuffer.draw(&mut self.canvas)?;
+                self.minibuffer.draw_cursor(&mut self.canvas)?;
+            }
+            State::Quitted => unreachable!(),
         }
 
         self.canvas.write(b"\x1b[?25h")?;
