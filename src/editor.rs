@@ -189,7 +189,8 @@ impl Editor {
                 }
                 Key::Ctrl(b'C') => {
                     if self.buffer.modified {
-                        self.minibuffer.set_prompt("Quit without saving? (Y/n): ");
+                        self.minibuffer
+                            .set_prompt("Quit without saving changes? (Y/n): ");
                         self.state = State::Quit;
                     } else {
                         self.state = State::Quitted;
