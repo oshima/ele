@@ -34,6 +34,11 @@ impl Editor {
             buffer: Buffer::new(filename)?,
             minibuffer: Minibuffer::new(),
         };
+
+        // switch to alternate screen buffer
+        editor.stdout.write(b"\x1b[?1049h")?;
+        editor.stdout.flush()?;
+
         let Size { w, h } = editor.get_window_size()?;
         editor.buffer.pos = Pos::new(0, 0);
         editor.buffer.size = Size::new(w, h - 2);
@@ -239,8 +244,8 @@ impl Editor {
 
 impl Drop for Editor {
     fn drop(&mut self) {
-        self.stdout.write(b"\x1b[2J").unwrap();
-        self.stdout.write(b"\x1b[H").unwrap();
+        // switch to main screen buffer
+        self.stdout.write(b"\x1b[?1049l").unwrap();
         self.stdout.flush().unwrap();
     }
 }
