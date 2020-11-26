@@ -3,7 +3,9 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::ops::Range;
 
+use crate::canvas::Canvas;
 use crate::coord::{Cursor, Pos, Size};
+use crate::hl::Hl;
 use crate::key::Key;
 use crate::row::Row;
 use crate::syntax::Syntax;
@@ -92,7 +94,7 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn draw(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
+    pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
         if let Some(y) = self.hl_from {
             let n_updates = self.syntax.highlight(&mut self.rows[y..]);
             let y_range = match self.redraw {
@@ -111,7 +113,7 @@ impl Buffer {
         Ok(())
     }
 
-    fn draw_rows(&mut self, canvas: &mut Vec<u8>, y_range: Range<usize>) -> io::Result<()> {
+    fn draw_rows(&mut self, canvas: &mut Canvas, y_range: Range<usize>) -> io::Result<()> {
         canvas.write(
             format!(
                 "\x1b[{};{}H",
@@ -120,6 +122,7 @@ impl Buffer {
             )
             .as_bytes(),
         )?;
+        canvas.set_color(Hl::Background)?;
 
         for y in y_range {
             if y < self.rows.len() {
@@ -129,41 +132,44 @@ impl Buffer {
             canvas.write(b"\x1b[K")?;
             canvas.write(b"\r\n")?;
         }
+
+        canvas.reset_color()?;
         Ok(())
     }
 
-    fn draw_status_bar(&self, canvas: &mut Vec<u8>) -> io::Result<()> {
-        let left = format!(
-            "{} {}",
-            self.filename.as_deref().unwrap_or("*newfile*"),
-            if self.modified { "(modified)" } else { "" },
+    fn draw_status_bar(&self, canvas: &mut Canvas) -> io::Result<()> {
+        let filename = format!(
+            " {}{} ",
+            self.filename.as_deref().unwrap_or("newfile"),
+            if self.modified { " +" } else { "" },
         );
-        let right = format!(
-            "Ln {}, Col {} {}",
-            self.cursor.y + 1,
-            self.cursor.x + 1,
-            self.syntax.name(),
-        );
-        let right_len = cmp::min(right.len(), self.size.w);
-        let left_len = cmp::min(left.len(), self.size.w - right_len);
-        let padding = self.size.w - left_len - right_len;
+        let cursor = format!(" {}, {} ", self.cursor.y + 1, self.cursor.x + 1);
+        let syntax = format!(" {} ", self.syntax.name());
+        let padding = self
+            .size
+            .w
+            .saturating_sub(filename.len() + cursor.len() + syntax.len());
 
         canvas.write(
             format!("\x1b[{};{}H", self.pos.y + self.size.h + 1, self.pos.x + 1).as_bytes(),
         )?;
-        canvas.write(b"\x1b[7m")?;
+        canvas.set_color(Hl::StatusBar)?;
+        canvas.set_color(Hl::Default)?;
 
-        canvas.write(&left.as_bytes()[0..left_len])?;
+        canvas.write(filename.as_bytes())?;
         for _ in 0..padding {
             canvas.write(b" ")?;
         }
-        canvas.write(&right.as_bytes()[0..right_len])?;
+        canvas.write(cursor.as_bytes())?;
 
-        canvas.write(b"\x1b[m")?;
+        canvas.write(self.syntax.color(canvas.term))?;
+        canvas.write(syntax.as_bytes())?;
+
+        canvas.reset_color()?;
         Ok(())
     }
 
-    pub fn draw_cursor(&self, canvas: &mut Vec<u8>) -> io::Result<()> {
+    pub fn draw_cursor(&self, canvas: &mut Canvas) -> io::Result<()> {
         canvas.write(
             format!(
                 "\x1b[{};{}H",

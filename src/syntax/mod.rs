@@ -1,12 +1,14 @@
 mod plain;
 mod rust;
 
+use crate::canvas::Term;
 use crate::row::Row;
 use crate::syntax::plain::Plain;
 use crate::syntax::rust::Rust;
 
 pub trait Syntax {
     fn name(&self) -> &'static str;
+    fn color(&self, term: Term) -> &'static [u8];
     fn highlight(&self, rows: &mut [Row]) -> usize;
 }
 
@@ -23,18 +25,3 @@ impl dyn Syntax {
         }
     }
 }
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum Hl {
-    Default,
-    Keyword,
-    Type,
-    Module,
-    Variable,
-    Function,
-    Macro,
-    String,
-    Comment,
-}
-
-pub type HlContext = u32;

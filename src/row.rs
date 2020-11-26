@@ -1,11 +1,12 @@
 extern crate unicode_width;
 
 use std::cmp;
-use std::io::{self, Write};
+use std::io;
 use std::ops::Range;
 use unicode_width::UnicodeWidthChar;
 
-use crate::syntax::{Hl, HlContext};
+use crate::canvas::Canvas;
+use crate::hl::{Hl, HlContext};
 use crate::uint_vec::UintVec;
 
 const TAB_WIDTH: usize = 4;
@@ -200,7 +201,7 @@ impl Row {
         }
     }
 
-    pub fn draw(&self, canvas: &mut Vec<u8>, x_range: Range<usize>) -> io::Result<()> {
+    pub fn draw(&self, canvas: &mut Canvas, x_range: Range<usize>) -> io::Result<()> {
         if self.max_x() <= x_range.start {
             return Ok(());
         }
@@ -210,34 +211,25 @@ impl Row {
         let start = self.byte_index(start_x);
         let end = self.byte_index(end_x);
 
-        let mut x = start_x;
-        let mut hl = Hl::Default;
-
         for _ in 0..(start_x - x_range.start) {
             canvas.write(b" ")?;
         }
 
+        let mut x = start_x;
+        let mut prev_hl = Hl::Background;
+
         for (idx, ch) in self.string[start..end].char_indices() {
             let idx = start + idx;
-            let ch_width = self.char_width(x);
+            let width = self.char_width(x);
+            let hl = self.hls[idx];
 
-            if self.hls[idx] != hl {
-                match self.hls[idx] {
-                    Hl::Default => canvas.write(b"\x1b[m")?,
-                    Hl::Keyword => canvas.write(b"\x1b[35m")?,
-                    Hl::Type => canvas.write(b"\x1b[33m")?,
-                    Hl::Module => canvas.write(b"\x1b[36m")?,
-                    Hl::Variable => canvas.write(b"\x1b[31m")?,
-                    Hl::Function => canvas.write(b"\x1b[34m")?,
-                    Hl::Macro => canvas.write(b"\x1b[36m")?,
-                    Hl::String => canvas.write(b"\x1b[32m")?,
-                    Hl::Comment => canvas.write(b"\x1b[36m")?,
-                };
-                hl = self.hls[idx];
+            if hl != prev_hl {
+                canvas.set_color(hl)?;
+                prev_hl = hl;
             }
 
             if ch == '\t' {
-                for _ in 0..ch_width {
+                for _ in 0..width {
                     canvas.write(b" ")?;
                 }
             } else {
@@ -245,10 +237,9 @@ impl Row {
                 canvas.write(s.as_bytes())?;
             }
 
-            x += ch_width;
+            x += width;
         }
 
-        canvas.write(b"\x1b[m")?;
         Ok(())
     }
 }

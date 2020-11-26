@@ -2,8 +2,10 @@ use std::iter::{Chain, Iterator, Peekable};
 use std::str::CharIndices;
 
 use self::TokenKind::*;
+use crate::canvas::Term;
+use crate::hl::{Hl, HlContext};
 use crate::row::Row;
-use crate::syntax::{Hl, HlContext, Syntax};
+use crate::syntax::Syntax;
 
 const UNDEFINED: HlContext = 0x00000000;
 const NORMAL: HlContext = 0x00000001;
@@ -17,6 +19,14 @@ pub struct Rust;
 impl Syntax for Rust {
     fn name(&self) -> &'static str {
         "Rust"
+    }
+
+    fn color(&self, term: Term) -> &'static [u8] {
+        match term {
+            Term::TrueColor => b"\x1b[38;2;0;0;0m\x1b[48;2;222;165;132m",
+            Term::Color256 => b"\x1b[38;5;16m\x1b[48;5;180m",
+            Term::Color16 => b"\x1b[30m\x1b[41m",
+        }
     }
 
     fn highlight(&self, rows: &mut [Row]) -> usize {

@@ -2,6 +2,7 @@ use std::io::{self, Read, Write};
 use std::str;
 
 use crate::buffer::Buffer;
+use crate::canvas::Canvas;
 use crate::coord::{Pos, Size};
 use crate::key::Key;
 use crate::minibuffer::Minibuffer;
@@ -18,7 +19,7 @@ enum State {
 pub struct Editor {
     stdin: io::Stdin,
     stdout: io::Stdout,
-    canvas: Vec<u8>,
+    canvas: Canvas,
     state: State,
     buffer: Buffer,
     minibuffer: Minibuffer,
@@ -29,7 +30,7 @@ impl Editor {
         let mut editor = Self {
             stdin: io::stdin(),
             stdout: io::stdout(),
-            canvas: Vec::new(),
+            canvas: Canvas::new(),
             state: State::Default,
             buffer: Buffer::new(filename)?,
             minibuffer: Minibuffer::new(),
@@ -107,7 +108,7 @@ impl Editor {
 
         self.canvas.write(b"\x1b[?25h")?;
 
-        self.stdout.write(&self.canvas)?;
+        self.stdout.write(self.canvas.as_bytes())?;
         self.canvas.clear();
         self.stdout.flush()
     }
@@ -190,6 +191,7 @@ impl Editor {
                     } else {
                         self.buffer.save()?;
                         self.minibuffer.set_message("Saved");
+                        self.state = State::Default;
                     }
                 }
                 Key::Ctrl(b'C') => {

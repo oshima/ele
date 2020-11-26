@@ -1,6 +1,8 @@
 mod buffer;
+mod canvas;
 mod coord;
 mod editor;
+mod hl;
 mod key;
 mod minibuffer;
 mod raw_mode;

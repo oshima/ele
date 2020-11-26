@@ -1,9 +1,10 @@
-use std::io::{self, Write};
+use std::io;
 
+use crate::canvas::Canvas;
 use crate::coord::{Cursor, Pos, Size};
+use crate::hl::Hl;
 use crate::key::Key;
 use crate::row::Row;
-use crate::syntax::Hl;
 
 pub struct Minibuffer {
     pub pos: Pos,
@@ -46,8 +47,9 @@ impl Minibuffer {
         self.row.string[self.prompt_len..].to_string()
     }
 
-    pub fn draw(&mut self, canvas: &mut Vec<u8>) -> io::Result<()> {
+    pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
         canvas.write(format!("\x1b[{};{}H", self.pos.y + 1, self.pos.x + 1).as_bytes())?;
+        canvas.set_color(Hl::Background)?;
 
         self.row.hls.clear();
         self.row.hls.resize(self.row.string.len(), Hl::Default);
@@ -59,10 +61,11 @@ impl Minibuffer {
             .draw(canvas, self.offset.x..(self.offset.x + self.size.w))?;
 
         canvas.write(b"\x1b[K")?;
+        canvas.reset_color()?;
         Ok(())
     }
 
-    pub fn draw_cursor(&self, canvas: &mut Vec<u8>) -> io::Result<()> {
+    pub fn draw_cursor(&self, canvas: &mut Canvas) -> io::Result<()> {
         canvas.write(
             format!(
                 "\x1b[{};{}H",
