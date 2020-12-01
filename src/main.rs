@@ -2,7 +2,7 @@ mod buffer;
 mod canvas;
 mod coord;
 mod editor;
-mod hl;
+mod face;
 mod key;
 mod minibuffer;
 mod raw_mode;

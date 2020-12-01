@@ -1,7 +1,7 @@
 use std::env;
 use std::io::{self, Write};
 
-use crate::hl::Hl;
+use crate::face::Face;
 
 #[derive(Clone, Copy)]
 pub enum Term {
@@ -13,7 +13,7 @@ pub enum Term {
 pub struct Canvas {
     pub term: Term,
     bytes: Vec<u8>,
-    colors: [Vec<u8>; 11],
+    colors: [Vec<u8>; 12],
 }
 
 impl Canvas {
@@ -37,49 +37,52 @@ impl Canvas {
         }
     }
 
-    fn load_colors(term: Term) -> [Vec<u8>; 11] {
+    fn load_colors(term: Term) -> [Vec<u8>; 12] {
         // TODO: load config file
 
         // default: Tomorrow Night Bright
         match term {
             Term::TrueColor => [
-                b"\x1b[38;2;234;234;234m".to_vec(), // Hl::Default
-                b"\x1b[38;2;195;151;216m".to_vec(), // Hl::Keyword
-                b"\x1b[38;2;231;197;71m".to_vec(),  // Hl::Type
-                b"\x1b[38;2;112;192;177m".to_vec(), // Hl::Module
-                b"\x1b[38;2;231;140;69m".to_vec(),  // Hl::Variable
-                b"\x1b[38;2;122;166;218m".to_vec(), // Hl::Function
-                b"\x1b[38;2;112;192;177m".to_vec(), // Hl::Macro
-                b"\x1b[38;2;185;202;74m".to_vec(),  // Hl::String
-                b"\x1b[38;2;150;152;150m".to_vec(), // Hl::Comment
-                b"\x1b[48;2;0;0;0m".to_vec(),       // Hl::Background
-                b"\x1b[48;2;28;28;28m".to_vec(),    // Hl::StatusBar
+                b"\x1b[38;2;234;234;234m".to_vec(), // Face::Default
+                b"\x1b[38;2;195;151;216m".to_vec(), // Face::Keyword
+                b"\x1b[38;2;231;197;71m".to_vec(),  // Face::Type
+                b"\x1b[38;2;112;192;177m".to_vec(), // Face::Module
+                b"\x1b[38;2;231;140;69m".to_vec(),  // Face::Variable
+                b"\x1b[38;2;122;166;218m".to_vec(), // Face::Function
+                b"\x1b[38;2;112;192;177m".to_vec(), // Face::Macro
+                b"\x1b[38;2;185;202;74m".to_vec(),  // Face::String
+                b"\x1b[38;2;150;152;150m".to_vec(), // Face::Comment
+                b"\x1b[38;2;122;166;218m".to_vec(), // Face::Prompt
+                b"\x1b[48;2;0;0;0m".to_vec(),       // Face::Background
+                b"\x1b[48;2;28;28;28m".to_vec(),    // Face::StatusBar
             ],
             Term::Color256 => [
-                b"\x1b[38;5;255m".to_vec(), // Hl::Default
-                b"\x1b[38;5;182m".to_vec(), // Hl::Keyword
-                b"\x1b[38;5;179m".to_vec(), // Hl::Type
-                b"\x1b[38;5;115m".to_vec(), // Hl::Module
-                b"\x1b[38;5;173m".to_vec(), // Hl::Variable
-                b"\x1b[38;5;110m".to_vec(), // Hl::Function
-                b"\x1b[38;5;115m".to_vec(), // Hl::Macro
-                b"\x1b[38;5;143m".to_vec(), // Hl::String
-                b"\x1b[38;5;246m".to_vec(), // Hl::Comment
-                b"\x1b[48;5;16m".to_vec(),  // Hl::Background
-                b"\x1b[48;5;234m".to_vec(), // Hl::StatusBar
+                b"\x1b[38;5;255m".to_vec(), // Face::Default
+                b"\x1b[38;5;182m".to_vec(), // Face::Keyword
+                b"\x1b[38;5;179m".to_vec(), // Face::Type
+                b"\x1b[38;5;115m".to_vec(), // Face::Module
+                b"\x1b[38;5;173m".to_vec(), // Face::Variable
+                b"\x1b[38;5;110m".to_vec(), // Face::Function
+                b"\x1b[38;5;115m".to_vec(), // Face::Macro
+                b"\x1b[38;5;143m".to_vec(), // Face::String
+                b"\x1b[38;5;246m".to_vec(), // Face::Comment
+                b"\x1b[38;5;110m".to_vec(), // Face::Prompt
+                b"\x1b[48;5;16m".to_vec(),  // Face::Background
+                b"\x1b[48;5;234m".to_vec(), // Face::StatusBar
             ],
             Term::Color16 => [
-                b"\x1b[39m".to_vec(), // Hl::Default
-                b"\x1b[35m".to_vec(), // Hl::Keyword
-                b"\x1b[33m".to_vec(), // Hl::Type
-                b"\x1b[36m".to_vec(), // Hl::Module
-                b"\x1b[31m".to_vec(), // Hl::Variable
-                b"\x1b[34m".to_vec(), // Hl::Function
-                b"\x1b[36m".to_vec(), // Hl::Macro
-                b"\x1b[32m".to_vec(), // Hl::String
-                b"\x1b[36m".to_vec(), // Hl::Comment
-                b"\x1b[40m".to_vec(), // Hl::Background
-                b"\x1b[40m".to_vec(), // Hl::StatusBar
+                b"\x1b[39m".to_vec(), // Face::Default
+                b"\x1b[35m".to_vec(), // Face::Keyword
+                b"\x1b[33m".to_vec(), // Face::Type
+                b"\x1b[36m".to_vec(), // Face::Module
+                b"\x1b[31m".to_vec(), // Face::Variable
+                b"\x1b[34m".to_vec(), // Face::Function
+                b"\x1b[36m".to_vec(), // Face::Macro
+                b"\x1b[32m".to_vec(), // Face::String
+                b"\x1b[36m".to_vec(), // Face::Comment
+                b"\x1b[34m".to_vec(), // Face::Prompt
+                b"\x1b[40m".to_vec(), // Face::Background
+                b"\x1b[40m".to_vec(), // Face::StatusBar
             ],
         }
     }
@@ -100,8 +103,8 @@ impl Canvas {
     }
 
     #[inline]
-    pub fn set_color(&mut self, hl: Hl) -> io::Result<usize> {
-        self.bytes.write(&self.colors[hl as usize])
+    pub fn set_color(&mut self, face: Face) -> io::Result<usize> {
+        self.bytes.write(&self.colors[face as usize])
     }
 
     #[inline]

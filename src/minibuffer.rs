@@ -2,7 +2,7 @@ use std::io;
 
 use crate::canvas::Canvas;
 use crate::coord::{Cursor, Pos, Size};
-use crate::hl::Hl;
+use crate::face::Face;
 use crate::key::Key;
 use crate::row::Row;
 
@@ -49,13 +49,11 @@ impl Minibuffer {
 
     pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
         canvas.write(format!("\x1b[{};{}H", self.pos.y + 1, self.pos.x + 1).as_bytes())?;
-        canvas.set_color(Hl::Background)?;
+        canvas.set_color(Face::Background)?;
 
-        self.row.hls.clear();
-        self.row.hls.resize(self.row.string.len(), Hl::Default);
-        for i in 0..self.prompt_len {
-            self.row.hls[i] = Hl::Function;
-        }
+        self.row.faces.clear();
+        self.row.faces.resize(self.prompt_len, Face::Prompt);
+        self.row.faces.resize(self.row.string.len(), Face::Default);
 
         self.row
             .draw(canvas, self.offset.x..(self.offset.x + self.size.w))?;

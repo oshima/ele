@@ -6,18 +6,19 @@ use std::ops::Range;
 use unicode_width::UnicodeWidthChar;
 
 use crate::canvas::Canvas;
-use crate::hl::{Hl, HlContext};
+use crate::face::Face;
 use crate::uint_vec::UintVec;
 
 const TAB_WIDTH: usize = 4;
 const TOMBSTONE: usize = 0;
 
-// std::mem::size_of::<Row>() == 64
+pub type HlContext = u32;
+
 pub struct Row {
     pub string: String,
     x_to_idx: Option<Box<UintVec>>,
     pub hl_context: HlContext,
-    pub hls: Vec<Hl>,
+    pub faces: Vec<Face>,
 }
 
 impl Row {
@@ -26,7 +27,7 @@ impl Row {
             string,
             x_to_idx: None,
             hl_context: 0,
-            hls: Vec::new(),
+            faces: Vec::new(),
         };
         row.update();
         row
@@ -216,16 +217,16 @@ impl Row {
         }
 
         let mut x = start_x;
-        let mut prev_hl = Hl::Background;
+        let mut prev_face = Face::Background;
 
         for (idx, ch) in self.string[start..end].char_indices() {
             let idx = start + idx;
             let width = self.char_width(x);
-            let hl = self.hls[idx];
+            let face = self.faces[idx];
 
-            if hl != prev_hl {
-                canvas.set_color(hl)?;
-                prev_hl = hl;
+            if face != prev_face {
+                canvas.set_color(face)?;
+                prev_face = face;
             }
 
             if ch == '\t' {

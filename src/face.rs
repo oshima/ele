@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, PartialEq)]
-pub enum Hl {
+pub enum Face {
     Default,
     Keyword,
     Type,
@@ -9,8 +9,7 @@ pub enum Hl {
     Macro,
     String,
     Comment,
+    Prompt,
     Background,
     StatusBar,
 }
-
-pub type HlContext = u32;

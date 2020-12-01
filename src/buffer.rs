@@ -5,7 +5,7 @@ use std::ops::Range;
 
 use crate::canvas::Canvas;
 use crate::coord::{Cursor, Pos, Size};
-use crate::hl::Hl;
+use crate::face::Face;
 use crate::key::Key;
 use crate::row::Row;
 use crate::syntax::Syntax;
@@ -122,7 +122,7 @@ impl Buffer {
             )
             .as_bytes(),
         )?;
-        canvas.set_color(Hl::Background)?;
+        canvas.set_color(Face::Background)?;
 
         for y in y_range {
             if y < self.rows.len() {
@@ -153,8 +153,8 @@ impl Buffer {
         canvas.write(
             format!("\x1b[{};{}H", self.pos.y + self.size.h + 1, self.pos.x + 1).as_bytes(),
         )?;
-        canvas.set_color(Hl::StatusBar)?;
-        canvas.set_color(Hl::Default)?;
+        canvas.set_color(Face::StatusBar)?;
+        canvas.set_color(Face::Default)?;
 
         canvas.write(filename.as_bytes())?;
         for _ in 0..padding {

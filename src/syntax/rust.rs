@@ -3,8 +3,8 @@ use std::str::CharIndices;
 
 use self::TokenKind::*;
 use crate::canvas::Term;
-use crate::hl::{Hl, HlContext};
-use crate::row::Row;
+use crate::face::Face;
+use crate::row::{HlContext, Row};
 use crate::syntax::Syntax;
 
 const UNDEFINED: HlContext = 0x00000000;
@@ -54,47 +54,47 @@ impl Syntax for Rust {
 
 impl Rust {
     fn highlight_row(&self, row: &mut Row) -> HlContext {
-        row.hls.clear();
-        row.hls.resize(row.string.len(), Hl::Default);
+        row.faces.clear();
+        row.faces.resize(row.string.len(), Face::Default);
 
         let context = self.decode_context(row.hl_context);
         let mut tokens = Tokens::from(&row.string, &context).peekable();
         let mut prev_token: Option<Token> = None;
 
         while let Some(token) = tokens.next() {
-            let hl = match token.kind {
-                Attribute { .. } => Hl::Macro,
-                BlockComment { .. } | LineComment => Hl::Comment,
-                CharLit | RawStrLit { .. } | StrLit { .. } => Hl::String,
-                Const | Fn | For | Keyword | Let | Mod | Mut | Static => Hl::Keyword,
-                Lifetime => Hl::Variable,
-                PrimitiveType => Hl::Type,
-                Question => Hl::Macro,
+            let face = match token.kind {
+                Attribute { .. } => Face::Macro,
+                BlockComment { .. } | LineComment => Face::Comment,
+                CharLit | RawStrLit { .. } | StrLit { .. } => Face::String,
+                Const | Fn | For | Keyword | Let | Mod | Mut | Static => Face::Keyword,
+                Lifetime => Face::Variable,
+                PrimitiveType => Face::Type,
+                Question => Face::Macro,
                 Bang => match prev_token.map(|t| t.kind) {
-                    Some(Ident) => Hl::Macro,
-                    _ => Hl::Default,
+                    Some(Ident) => Face::Macro,
+                    _ => Face::Default,
                 },
                 UpperIdent => match prev_token.map(|t| t.kind) {
-                    Some(Const) | Some(Static) => Hl::Variable,
-                    _ => Hl::Type,
+                    Some(Const) | Some(Static) => Face::Variable,
+                    _ => Face::Type,
                 },
                 Ident | RawIdent => match prev_token.map(|t| t.kind) {
-                    Some(Fn) => Hl::Function,
-                    Some(For) | Some(Let) | Some(Mut) => Hl::Variable,
-                    Some(Mod) => Hl::Module,
+                    Some(Fn) => Face::Function,
+                    Some(For) | Some(Let) | Some(Mut) => Face::Variable,
+                    Some(Mod) => Face::Module,
                     _ => match tokens.peek().map(|t| t.kind) {
-                        Some(Bang) => Hl::Macro,
-                        Some(Colon) => Hl::Variable,
-                        Some(ColonColon) => Hl::Module,
-                        Some(Paren) => Hl::Function,
-                        _ => Hl::Default,
+                        Some(Bang) => Face::Macro,
+                        Some(Colon) => Face::Variable,
+                        Some(ColonColon) => Face::Module,
+                        Some(Paren) => Face::Function,
+                        _ => Face::Default,
                     },
                 },
-                _ => Hl::Default,
+                _ => Face::Default,
             };
 
             for i in token.start..token.end {
-                row.hls[i] = hl;
+                row.faces[i] = face;
             }
 
             prev_token = Some(token);

@@ -1,6 +1,6 @@
 use crate::canvas::Term;
-use crate::hl::{Hl, HlContext};
-use crate::row::Row;
+use crate::face::Face;
+use crate::row::{HlContext, Row};
 use crate::syntax::Syntax;
 
 const UNDEFINED: HlContext = 0;
@@ -29,8 +29,8 @@ impl Syntax for Plain {
                 break;
             }
             row.hl_context = NORMAL;
-            row.hls.clear();
-            row.hls.resize(row.string.len(), Hl::Default);
+            row.faces.clear();
+            row.faces.resize(row.string.len(), Face::Default);
             n_updates += 1;
         }
 
