@@ -34,7 +34,7 @@ impl Row {
     }
 
     fn char_at(&self, x: usize) -> char {
-        let idx = self.byte_index(x);
+        let idx = self.x_to_idx(x);
         self.string[idx..].chars().next().unwrap()
     }
 
@@ -48,10 +48,25 @@ impl Row {
     }
 
     #[inline]
-    fn byte_index(&self, x: usize) -> usize {
+    pub fn x_to_idx(&self, x: usize) -> usize {
         match self.x_to_idx.as_ref() {
             Some(v) => v.get(x),
             None => x,
+        }
+    }
+
+    pub fn idx_to_x(&self, idx: usize) -> usize {
+        match self.x_to_idx.as_ref() {
+            Some(v) => {
+                let mut x = 0;
+                loop {
+                    if v.get(x) == idx {
+                        break x;
+                    }
+                    x += 1;
+                }
+            }
+            None => idx,
         }
     }
 
@@ -116,7 +131,7 @@ impl Row {
     }
 
     pub fn insert(&mut self, x: usize, ch: char) {
-        let idx = self.byte_index(x);
+        let idx = self.x_to_idx(x);
         self.string.insert(idx, ch);
         if self.x_to_idx.is_some() || ch == '\t' || !ch.is_ascii() {
             self.update();
@@ -124,7 +139,7 @@ impl Row {
     }
 
     pub fn remove(&mut self, x: usize) {
-        let idx = self.byte_index(x);
+        let idx = self.x_to_idx(x);
         self.string.remove(idx);
         if self.x_to_idx.is_some() {
             self.update();
@@ -139,7 +154,7 @@ impl Row {
     }
 
     pub fn truncate(&mut self, x: usize) {
-        let idx = self.byte_index(x);
+        let idx = self.x_to_idx(x);
         self.string.truncate(idx);
         if self.x_to_idx.is_some() {
             self.update();
@@ -147,7 +162,7 @@ impl Row {
     }
 
     pub fn split_off(&mut self, x: usize) -> String {
-        let idx = self.byte_index(x);
+        let idx = self.x_to_idx(x);
         let string = self.string.split_off(idx);
         if self.x_to_idx.is_some() {
             self.update();
@@ -161,8 +176,8 @@ impl Row {
     }
 
     pub fn remove_str(&mut self, from_x: usize, to_x: usize) {
-        let from = self.byte_index(from_x);
-        let to = self.byte_index(to_x);
+        let from = self.x_to_idx(from_x);
+        let to = self.x_to_idx(to_x);
         let string = self.string.split_off(to);
         self.string.truncate(from);
         self.string.push_str(&string);
@@ -209,8 +224,8 @@ impl Row {
 
         let start_x = self.next_fit_x(x_range.start);
         let end_x = self.prev_fit_x(x_range.end);
-        let start = self.byte_index(start_x);
-        let end = self.byte_index(end_x);
+        let start = self.x_to_idx(start_x);
+        let end = self.x_to_idx(end_x);
 
         for _ in 0..(start_x - x_range.start) {
             canvas.write(b" ")?;
@@ -225,6 +240,9 @@ impl Row {
             let face = self.faces[idx];
 
             if face != prev_face {
+                if let Face::Match | Face::CurrentMatch = prev_face {
+                    canvas.set_color(Face::Background)?;
+                }
                 canvas.set_color(face)?;
                 prev_face = face;
             }
@@ -241,6 +259,9 @@ impl Row {
             x += width;
         }
 
+        if let Face::Match | Face::CurrentMatch = prev_face {
+            canvas.set_color(Face::Background)?;
+        }
         Ok(())
     }
 }

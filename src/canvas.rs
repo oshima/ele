@@ -13,18 +13,18 @@ pub enum Term {
 pub struct Canvas {
     pub term: Term,
     bytes: Vec<u8>,
-    colors: [Vec<u8>; 12],
+    colors: [Vec<u8>; 14],
 }
 
 impl Canvas {
     pub fn new() -> Self {
-        let term = Self::detect_term();
-
-        Self {
-            term,
+        let mut canvas = Self {
+            term: Self::detect_term(),
             bytes: Vec::new(),
-            colors: Self::load_colors(term),
-        }
+            colors: Default::default(),
+        };
+        canvas.define_colors();
+        canvas
     }
 
     fn detect_term() -> Term {
@@ -37,54 +37,64 @@ impl Canvas {
         }
     }
 
-    fn load_colors(term: Term) -> [Vec<u8>; 12] {
+    fn define_colors(&mut self) {
         // TODO: load config file
 
         // default: Tomorrow Night Bright
-        match term {
-            Term::TrueColor => [
-                b"\x1b[38;2;234;234;234m".to_vec(), // Face::Default
-                b"\x1b[38;2;195;151;216m".to_vec(), // Face::Keyword
-                b"\x1b[38;2;231;197;71m".to_vec(),  // Face::Type
-                b"\x1b[38;2;112;192;177m".to_vec(), // Face::Module
-                b"\x1b[38;2;231;140;69m".to_vec(),  // Face::Variable
-                b"\x1b[38;2;122;166;218m".to_vec(), // Face::Function
-                b"\x1b[38;2;112;192;177m".to_vec(), // Face::Macro
-                b"\x1b[38;2;185;202;74m".to_vec(),  // Face::String
-                b"\x1b[38;2;150;152;150m".to_vec(), // Face::Comment
-                b"\x1b[38;2;122;166;218m".to_vec(), // Face::Prompt
-                b"\x1b[48;2;0;0;0m".to_vec(),       // Face::Background
-                b"\x1b[48;2;28;28;28m".to_vec(),    // Face::StatusBar
-            ],
-            Term::Color256 => [
-                b"\x1b[38;5;255m".to_vec(), // Face::Default
-                b"\x1b[38;5;182m".to_vec(), // Face::Keyword
-                b"\x1b[38;5;179m".to_vec(), // Face::Type
-                b"\x1b[38;5;115m".to_vec(), // Face::Module
-                b"\x1b[38;5;173m".to_vec(), // Face::Variable
-                b"\x1b[38;5;110m".to_vec(), // Face::Function
-                b"\x1b[38;5;115m".to_vec(), // Face::Macro
-                b"\x1b[38;5;143m".to_vec(), // Face::String
-                b"\x1b[38;5;246m".to_vec(), // Face::Comment
-                b"\x1b[38;5;110m".to_vec(), // Face::Prompt
-                b"\x1b[48;5;16m".to_vec(),  // Face::Background
-                b"\x1b[48;5;234m".to_vec(), // Face::StatusBar
-            ],
-            Term::Color16 => [
-                b"\x1b[39m".to_vec(), // Face::Default
-                b"\x1b[35m".to_vec(), // Face::Keyword
-                b"\x1b[33m".to_vec(), // Face::Type
-                b"\x1b[36m".to_vec(), // Face::Module
-                b"\x1b[31m".to_vec(), // Face::Variable
-                b"\x1b[34m".to_vec(), // Face::Function
-                b"\x1b[36m".to_vec(), // Face::Macro
-                b"\x1b[32m".to_vec(), // Face::String
-                b"\x1b[36m".to_vec(), // Face::Comment
-                b"\x1b[34m".to_vec(), // Face::Prompt
-                b"\x1b[40m".to_vec(), // Face::Background
-                b"\x1b[40m".to_vec(), // Face::StatusBar
-            ],
+        match self.term {
+            Term::TrueColor => {
+                self.define_color(Face::Default, b"\x1b[38;2;234;234;234m");
+                self.define_color(Face::Keyword, b"\x1b[38;2;195;151;216m");
+                self.define_color(Face::Type, b"\x1b[38;2;231;197;71m");
+                self.define_color(Face::Module, b"\x1b[38;2;112;192;177m");
+                self.define_color(Face::Variable, b"\x1b[38;2;231;140;69m");
+                self.define_color(Face::Function, b"\x1b[38;2;122;166;218m");
+                self.define_color(Face::Macro, b"\x1b[38;2;112;192;177m");
+                self.define_color(Face::String, b"\x1b[38;2;185;202;74m");
+                self.define_color(Face::Comment, b"\x1b[38;2;150;152;150m");
+                self.define_color(Face::Prompt, b"\x1b[38;2;122;166;218m");
+                self.define_color(Face::Background, b"\x1b[48;2;0;0;0m");
+                self.define_color(Face::Match, b"\x1b[48;2;231;197;71m\x1b[38;2;0;0;0m");
+                self.define_color(Face::CurrentMatch, b"\x1b[48;2;231;140;69m\x1b[38;2;0;0;0m");
+                self.define_color(Face::StatusBar, b"\x1b[48;2;28;28;28m");
+            }
+            Term::Color256 => {
+                self.define_color(Face::Default, b"\x1b[38;5;255m");
+                self.define_color(Face::Keyword, b"\x1b[38;5;182m");
+                self.define_color(Face::Type, b"\x1b[38;5;179m");
+                self.define_color(Face::Module, b"\x1b[38;5;115m");
+                self.define_color(Face::Variable, b"\x1b[38;5;173m");
+                self.define_color(Face::Function, b"\x1b[38;5;110m");
+                self.define_color(Face::Macro, b"\x1b[38;5;115m");
+                self.define_color(Face::String, b"\x1b[38;5;143m");
+                self.define_color(Face::Comment, b"\x1b[38;5;246m");
+                self.define_color(Face::Prompt, b"\x1b[38;5;110m");
+                self.define_color(Face::Background, b"\x1b[48;5;16m");
+                self.define_color(Face::Match, b"\x1b[48;5;179m\x1b[38;5;16m");
+                self.define_color(Face::CurrentMatch, b"\x1b[48;5;173m\x1b[38;5;16m");
+                self.define_color(Face::StatusBar, b"\x1b[48;5;234m");
+            }
+            Term::Color16 => {
+                self.define_color(Face::Default, b"\x1b[39m");
+                self.define_color(Face::Keyword, b"\x1b[35m");
+                self.define_color(Face::Type, b"\x1b[33m");
+                self.define_color(Face::Module, b"\x1b[36m");
+                self.define_color(Face::Variable, b"\x1b[31m");
+                self.define_color(Face::Function, b"\x1b[34m");
+                self.define_color(Face::Macro, b"\x1b[36m");
+                self.define_color(Face::String, b"\x1b[32m");
+                self.define_color(Face::Comment, b"\x1b[36m");
+                self.define_color(Face::Prompt, b"\x1b[34m");
+                self.define_color(Face::Background, b"\x1b[40m");
+                self.define_color(Face::Match, b"\x1b[43m\x1b[30m");
+                self.define_color(Face::CurrentMatch, b"\x1b[41m\x1b[30m");
+                self.define_color(Face::StatusBar, b"\x1b[40m");
+            }
         }
+    }
+
+    fn define_color(&mut self, face: Face, color: &[u8]) {
+        self.colors[face as usize].extend_from_slice(color);
     }
 
     #[inline]

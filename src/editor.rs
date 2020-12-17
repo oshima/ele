@@ -10,6 +10,7 @@ use crate::minibuffer::Minibuffer;
 #[derive(PartialEq)]
 enum State {
     Default,
+    Search { backward: bool },
     CtrlX,
     Save,
     Quit,
@@ -95,6 +96,11 @@ impl Editor {
                 self.minibuffer.draw(&mut self.canvas)?;
                 self.buffer.draw_cursor(&mut self.canvas)?;
             }
+            State::Search { .. } => {
+                self.buffer.draw(&mut self.canvas)?;
+                self.minibuffer.draw(&mut self.canvas)?;
+                self.minibuffer.draw_cursor(&mut self.canvas)?;
+            }
             State::CtrlX => {
                 self.minibuffer.draw(&mut self.canvas)?;
                 self.buffer.draw_cursor(&mut self.canvas)?;
@@ -177,11 +183,46 @@ impl Editor {
     fn process_keypress(&mut self, key: Key) -> io::Result<()> {
         match self.state {
             State::Default => match key {
+                Key::Ctrl(b'R') => {
+                    self.minibuffer.set_prompt("Search: ");
+                    self.state = State::Search { backward: true };
+                }
+                Key::Ctrl(b'S') => {
+                    self.minibuffer.set_prompt("Search: ");
+                    self.state = State::Search { backward: false };
+                }
                 Key::Ctrl(b'X') => {
                     self.minibuffer.set_message("C-x [C-s: save] [C-c: quit]");
                     self.state = State::CtrlX;
                 }
                 _ => self.buffer.process_keypress(key),
+            },
+            State::Search { backward } => match key {
+                Key::Ctrl(b'G') => {
+                    self.buffer.clear_matches(true);
+                    self.minibuffer.set_message("");
+                    self.state = State::Default;
+                }
+                Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
+                    self.buffer.clear_matches(false);
+                    self.minibuffer.set_message("");
+                    self.state = State::Default;
+                }
+                Key::Ctrl(b'R') => {
+                    self.buffer.next_match(true);
+                }
+                Key::Ctrl(b'S') => {
+                    self.buffer.next_match(false);
+                }
+                _ => {
+                    let prev_input = self.minibuffer.get_input();
+                    self.minibuffer.process_keypress(key);
+                    let input = self.minibuffer.get_input();
+                    if input != prev_input {
+                        self.buffer.clear_matches(true);
+                        self.buffer.search(&input, backward);
+                    }
+                }
             },
             State::CtrlX => match key {
                 Key::Ctrl(b'S') => {

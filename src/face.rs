@@ -11,5 +11,7 @@ pub enum Face {
     Comment,
     Prompt,
     Background,
+    Match,
+    CurrentMatch,
     StatusBar,
 }

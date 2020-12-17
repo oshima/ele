@@ -17,6 +17,19 @@ enum Redraw {
     Whole,
 }
 
+#[derive(Default)]
+struct Search {
+    matches: Vec<Match>,
+    match_idx: usize,
+    orig_offset: Pos,
+    orig_cursor: Cursor,
+}
+
+struct Match {
+    pos: Pos,
+    faces: Vec<Face>,
+}
+
 pub struct Buffer {
     pub filename: Option<String>,
     pub modified: bool,
@@ -27,6 +40,7 @@ pub struct Buffer {
     hl_from: Option<usize>,
     redraw: Redraw,
     rows: Vec<Row>,
+    search: Search,
     syntax: Box<dyn Syntax>,
 }
 
@@ -43,6 +57,7 @@ impl Buffer {
             hl_from: Some(0),
             redraw: Redraw::Whole,
             rows: Vec::new(),
+            search: Default::default(),
         };
         buffer.init()?;
         Ok(buffer)
@@ -374,6 +389,110 @@ impl Buffer {
         if self.cursor.x >= self.offset.x + self.size.w {
             self.offset.x = self.cursor.x - self.size.w + 1;
             self.redraw = Redraw::Whole;
+        }
+    }
+}
+
+impl Buffer {
+    pub fn search(&mut self, query: &str, backward: bool) {
+        for (y, row) in self.rows.iter_mut().enumerate() {
+            for (idx, _) in row.string.match_indices(query) {
+                let pos = Pos::new(row.idx_to_x(idx), y);
+                let mut faces = Vec::new();
+                faces.resize(query.len(), Face::Match);
+                faces.swap_with_slice(&mut row.faces[idx..(idx + query.len())]);
+                self.search.matches.push(Match { pos, faces });
+            }
+        }
+
+        if self.search.matches.is_empty() {
+            return;
+        }
+
+        let mut matches = self.search.matches.iter();
+        let cursor_pos = self.cursor.as_pos();
+        self.search.match_idx = if backward {
+            matches
+                .rposition(|m| m.pos < cursor_pos)
+                .unwrap_or(self.search.matches.len() - 1)
+        } else {
+            matches.position(|m| m.pos >= cursor_pos).unwrap_or(0)
+        };
+
+        self.search.orig_offset = self.offset;
+        self.search.orig_cursor = self.cursor;
+
+        self.move_to_match();
+        self.highlight_match(Face::CurrentMatch);
+        self.redraw = Redraw::Whole;
+    }
+
+    pub fn next_match(&mut self, backward: bool) {
+        if self.search.matches.len() <= 1 {
+            return;
+        }
+
+        self.highlight_match(Face::Match);
+
+        self.search.match_idx = if backward {
+            if self.search.match_idx > 0 {
+                self.search.match_idx - 1
+            } else {
+                self.search.matches.len() - 1
+            }
+        } else {
+            if self.search.match_idx < self.search.matches.len() - 1 {
+                self.search.match_idx + 1
+            } else {
+                0
+            }
+        };
+
+        self.move_to_match();
+        self.highlight_match(Face::CurrentMatch);
+        self.redraw = Redraw::Whole;
+    }
+
+    pub fn clear_matches(&mut self, restore: bool) {
+        if self.search.matches.is_empty() {
+            return;
+        }
+
+        for mat in self.search.matches.iter_mut() {
+            let row = &mut self.rows[mat.pos.y];
+            let idx = row.x_to_idx(mat.pos.x);
+            row.faces[idx..(idx + mat.faces.len())].swap_with_slice(&mut mat.faces);
+        }
+
+        self.search.matches.clear();
+        if restore {
+            self.offset = self.search.orig_offset;
+            self.cursor = self.search.orig_cursor;
+        }
+        self.redraw = Redraw::Whole;
+    }
+
+    fn move_to_match(&mut self) {
+        let mat = &self.search.matches[self.search.match_idx];
+
+        if mat.pos.x < self.offset.x || mat.pos.x >= self.offset.x + self.size.w {
+            self.offset.x = mat.pos.x.saturating_sub(self.size.w / 2);
+        }
+        if mat.pos.y < self.offset.y || mat.pos.y >= self.offset.y + self.size.h {
+            self.offset.y = mat.pos.y.saturating_sub(self.size.h / 2);
+        }
+        self.cursor.x = mat.pos.x;
+        self.cursor.y = mat.pos.y;
+        self.cursor.last_x = mat.pos.x;
+    }
+
+    fn highlight_match(&mut self, face: Face) {
+        let mat = &self.search.matches[self.search.match_idx];
+        let row = &mut self.rows[mat.pos.y];
+        let idx = row.x_to_idx(mat.pos.x);
+
+        for i in idx..(idx + mat.faces.len()) {
+            row.faces[i] = face;
         }
     }
 }
