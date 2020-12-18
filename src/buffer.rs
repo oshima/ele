@@ -10,7 +10,7 @@ use crate::key::Key;
 use crate::row::Row;
 use crate::syntax::Syntax;
 
-enum Redraw {
+enum Draw {
     None,
     Min,
     End,
@@ -31,6 +31,7 @@ struct Match {
 }
 
 pub struct Buffer {
+    syntax: Box<dyn Syntax>,
     pub filename: Option<String>,
     pub modified: bool,
     pub pos: Pos,
@@ -38,16 +39,15 @@ pub struct Buffer {
     offset: Pos,
     cursor: Cursor,
     hl_from: Option<usize>,
-    redraw: Redraw,
+    draw: Draw,
     rows: Vec<Row>,
     search: Search,
-    syntax: Box<dyn Syntax>,
 }
 
 impl Buffer {
     pub fn new(filename: Option<String>) -> io::Result<Self> {
         let mut buffer = Self {
-            syntax: Syntax::detect(&filename),
+            syntax: Syntax::detect(filename.as_deref()),
             filename,
             modified: false,
             pos: Pos::new(0, 0),
@@ -55,7 +55,7 @@ impl Buffer {
             offset: Pos::new(0, 0),
             cursor: Cursor::new(0, 0),
             hl_from: Some(0),
-            redraw: Redraw::Whole,
+            draw: Draw::Whole,
             rows: Vec::new(),
             search: Default::default(),
         };
@@ -64,7 +64,7 @@ impl Buffer {
     }
 
     fn init(&mut self) -> io::Result<()> {
-        if let Some(filename) = &self.filename {
+        if let Some(filename) = self.filename.as_deref() {
             let file = File::open(filename)?;
             let mut reader = BufReader::new(file);
             let mut buf = String::new();
@@ -88,38 +88,37 @@ impl Buffer {
     }
 
     pub fn save(&mut self) -> io::Result<()> {
-        if let Some(filename) = &self.filename {
+        if let Some(filename) = self.filename.as_deref() {
             let file = File::create(filename)?;
             let mut writer = BufWriter::new(file);
+            let len = self.rows.len();
 
-            for (i, row) in self.rows.iter().enumerate() {
+            for (i, row) in self.rows.iter_mut().enumerate() {
                 writer.write(row.string.as_bytes())?;
-                if i < self.rows.len() - 1 {
+                if i < len - 1 {
                     writer.write(b"\n")?;
                 }
-            }
-            for row in self.rows.iter_mut() {
                 row.hl_context = 0;
             }
+            self.syntax = Syntax::detect(Some(filename));
             self.modified = false;
             self.hl_from = Some(0);
-            self.redraw = Redraw::Whole;
+            self.draw = Draw::Whole;
         }
-        self.syntax = Syntax::detect(&self.filename);
         Ok(())
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
         if let Some(y) = self.hl_from {
             let n_updates = self.syntax.highlight(&mut self.rows[y..]);
-            let y_range = match self.redraw {
-                Redraw::None => y..y,
-                Redraw::Min => y..cmp::min(y + n_updates, self.offset.y + self.size.h),
-                Redraw::End => y..(self.offset.y + self.size.h),
-                Redraw::Whole => self.offset.y..(self.offset.y + self.size.h),
+            let y_range = match self.draw {
+                Draw::None => y..y,
+                Draw::Min => y..cmp::min(y + n_updates, self.offset.y + self.size.h),
+                Draw::End => y..(self.offset.y + self.size.h),
+                Draw::Whole => self.offset.y..(self.offset.y + self.size.h),
             };
             self.draw_rows(canvas, y_range)?;
-        } else if let Redraw::Whole = self.redraw {
+        } else if let Draw::Whole = self.draw {
             let y_range = self.offset.y..(self.offset.y + self.size.h);
             self.draw_rows(canvas, y_range)?;
         }
@@ -208,7 +207,7 @@ impl Buffer {
                     self.cursor.last_x = self.cursor.x;
                 }
                 self.hl_from = None;
-                self.redraw = Redraw::None;
+                self.draw = Draw::None;
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
                 if self.cursor.x < self.rows[self.cursor.y].max_x() {
@@ -220,7 +219,7 @@ impl Buffer {
                     self.cursor.last_x = self.cursor.x;
                 }
                 self.hl_from = None;
-                self.redraw = Redraw::None;
+                self.draw = Draw::None;
             }
             Key::ArrowUp | Key::Ctrl(b'P') => {
                 if self.cursor.y > 0 {
@@ -228,7 +227,7 @@ impl Buffer {
                     self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
                 }
                 self.hl_from = None;
-                self.redraw = Redraw::None;
+                self.draw = Draw::None;
             }
             Key::ArrowDown | Key::Ctrl(b'N') => {
                 if self.cursor.y < self.rows.len() - 1 {
@@ -236,20 +235,20 @@ impl Buffer {
                     self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
                 }
                 self.hl_from = None;
-                self.redraw = Redraw::None;
+                self.draw = Draw::None;
             }
             Key::Home | Key::Ctrl(b'A') => {
                 let x = self.rows[self.cursor.y].first_letter_x();
                 self.cursor.x = if self.cursor.x == x { 0 } else { x };
                 self.cursor.last_x = self.cursor.x;
                 self.hl_from = None;
-                self.redraw = Redraw::None;
+                self.draw = Draw::None;
             }
             Key::End | Key::Ctrl(b'E') => {
                 self.cursor.x = self.rows[self.cursor.y].max_x();
                 self.cursor.last_x = self.cursor.x;
                 self.hl_from = None;
-                self.redraw = Redraw::None;
+                self.draw = Draw::None;
             }
             Key::PageUp | Key::Alt(b'v') => {
                 if self.offset.y > 0 {
@@ -257,10 +256,10 @@ impl Buffer {
                     self.offset.y -= cmp::min(self.size.h, self.offset.y);
                     self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
                     self.hl_from = None;
-                    self.redraw = Redraw::Whole;
+                    self.draw = Draw::Whole;
                 } else {
                     self.hl_from = None;
-                    self.redraw = Redraw::None;
+                    self.draw = Draw::None;
                 }
             }
             Key::PageDown | Key::Ctrl(b'V') => {
@@ -269,10 +268,10 @@ impl Buffer {
                     self.offset.y += self.size.h;
                     self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
                     self.hl_from = None;
-                    self.redraw = Redraw::Whole;
+                    self.draw = Draw::Whole;
                 } else {
                     self.hl_from = None;
-                    self.redraw = Redraw::None;
+                    self.draw = Draw::None;
                 }
             }
             Key::Backspace | Key::Ctrl(b'H') => {
@@ -282,7 +281,7 @@ impl Buffer {
                     self.rows[self.cursor.y].remove(self.cursor.x);
                     self.modified = true;
                     self.hl_from = Some(self.cursor.y);
-                    self.redraw = Redraw::Min;
+                    self.draw = Draw::Min;
                 } else if self.cursor.y > 0 {
                     let row = self.rows.remove(self.cursor.y);
                     self.cursor.y -= 1;
@@ -291,10 +290,10 @@ impl Buffer {
                     self.rows[self.cursor.y].push_str(&row.string);
                     self.modified = true;
                     self.hl_from = Some(self.cursor.y);
-                    self.redraw = Redraw::End;
+                    self.draw = Draw::End;
                 } else {
                     self.hl_from = None;
-                    self.redraw = Redraw::None;
+                    self.draw = Draw::None;
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
@@ -302,16 +301,16 @@ impl Buffer {
                     self.rows[self.cursor.y].remove(self.cursor.x);
                     self.modified = true;
                     self.hl_from = Some(self.cursor.y);
-                    self.redraw = Redraw::Min;
+                    self.draw = Draw::Min;
                 } else if self.cursor.y < self.rows.len() - 1 {
                     let row = self.rows.remove(self.cursor.y + 1);
                     self.rows[self.cursor.y].push_str(&row.string);
                     self.modified = true;
                     self.hl_from = Some(self.cursor.y);
-                    self.redraw = Redraw::End;
+                    self.draw = Draw::End;
                 } else {
                     self.hl_from = None;
-                    self.redraw = Redraw::None;
+                    self.draw = Draw::None;
                 }
             }
             Key::Ctrl(b'I') => {
@@ -320,7 +319,7 @@ impl Buffer {
                 self.cursor.last_x = self.cursor.x;
                 self.modified = true;
                 self.hl_from = Some(self.cursor.y);
-                self.redraw = Redraw::Min;
+                self.draw = Draw::Min;
             }
             Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
                 let string = self.rows[self.cursor.y].split_off(self.cursor.x);
@@ -330,13 +329,13 @@ impl Buffer {
                 self.cursor.last_x = self.cursor.x;
                 self.modified = true;
                 self.hl_from = Some(self.cursor.y - 1);
-                self.redraw = Redraw::End;
+                self.draw = Draw::End;
             }
             Key::Ctrl(b'K') => {
                 self.rows[self.cursor.y].truncate(self.cursor.x);
                 self.modified = true;
                 self.hl_from = Some(self.cursor.y);
-                self.redraw = Redraw::Min;
+                self.draw = Draw::Min;
             }
             Key::Ctrl(b'U') => {
                 self.rows[self.cursor.y].remove_str(0, self.cursor.x);
@@ -344,21 +343,21 @@ impl Buffer {
                 self.cursor.last_x = self.cursor.x;
                 self.modified = true;
                 self.hl_from = Some(self.cursor.y);
-                self.redraw = Redraw::Min;
+                self.draw = Draw::Min;
             }
             Key::Alt(b'<') => {
                 self.cursor.y = 0;
                 self.cursor.x = 0;
                 self.cursor.last_x = self.cursor.x;
                 self.hl_from = None;
-                self.redraw = Redraw::None;
+                self.draw = Draw::None;
             }
             Key::Alt(b'>') => {
                 self.cursor.y = self.rows.len() - 1;
                 self.cursor.x = self.rows[self.cursor.y].max_x();
                 self.cursor.last_x = self.cursor.x;
                 self.hl_from = None;
-                self.redraw = Redraw::None;
+                self.draw = Draw::None;
             }
             Key::Char(ch) => {
                 self.rows[self.cursor.y].insert(self.cursor.x, ch);
@@ -366,7 +365,7 @@ impl Buffer {
                 self.cursor.last_x = self.cursor.x;
                 self.modified = true;
                 self.hl_from = Some(self.cursor.y);
-                self.redraw = Redraw::Min;
+                self.draw = Draw::Min;
             }
             _ => (),
         }
@@ -376,19 +375,19 @@ impl Buffer {
     fn scroll(&mut self) {
         if self.cursor.y < self.offset.y {
             self.offset.y = self.cursor.y;
-            self.redraw = Redraw::Whole;
+            self.draw = Draw::Whole;
         }
         if self.cursor.y >= self.offset.y + self.size.h {
             self.offset.y = self.cursor.y - self.size.h + 1;
-            self.redraw = Redraw::Whole;
+            self.draw = Draw::Whole;
         }
         if self.cursor.x < self.offset.x {
             self.offset.x = self.cursor.x;
-            self.redraw = Redraw::Whole;
+            self.draw = Draw::Whole;
         }
         if self.cursor.x >= self.offset.x + self.size.w {
             self.offset.x = self.cursor.x - self.size.w + 1;
-            self.redraw = Redraw::Whole;
+            self.draw = Draw::Whole;
         }
     }
 }
@@ -424,7 +423,7 @@ impl Buffer {
 
         self.move_to_match();
         self.highlight_match(Face::CurrentMatch);
-        self.redraw = Redraw::Whole;
+        self.draw = Draw::Whole;
     }
 
     pub fn next_match(&mut self, backward: bool) {
@@ -450,7 +449,7 @@ impl Buffer {
 
         self.move_to_match();
         self.highlight_match(Face::CurrentMatch);
-        self.redraw = Redraw::Whole;
+        self.draw = Draw::Whole;
     }
 
     pub fn clear_matches(&mut self, restore: bool) {
@@ -469,7 +468,7 @@ impl Buffer {
             self.offset = self.search.orig_offset;
             self.cursor = self.search.orig_cursor;
         }
-        self.redraw = Redraw::Whole;
+        self.draw = Draw::Whole;
     }
 
     fn move_to_match(&mut self) {

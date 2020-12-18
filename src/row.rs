@@ -33,20 +33,6 @@ impl Row {
         row
     }
 
-    fn char_at(&self, x: usize) -> char {
-        let idx = self.x_to_idx(x);
-        self.string[idx..].chars().next().unwrap()
-    }
-
-    #[inline]
-    fn char_width(&self, x: usize) -> usize {
-        let mut width = 1;
-        while !self.is_char_boundary(x + width) {
-            width += 1;
-        }
-        width
-    }
-
     #[inline]
     pub fn x_to_idx(&self, x: usize) -> usize {
         match self.x_to_idx.as_ref() {
@@ -67,14 +53,6 @@ impl Row {
                 }
             }
             None => idx,
-        }
-    }
-
-    #[inline]
-    fn is_char_boundary(&self, x: usize) -> bool {
-        match self.x_to_idx.as_ref() {
-            Some(v) => x == 0 || v.get(x) != TOMBSTONE,
-            None => true,
         }
     }
 
@@ -128,6 +106,28 @@ impl Row {
             x = self.next_x(x);
         }
         x
+    }
+
+    fn char_at(&self, x: usize) -> char {
+        let idx = self.x_to_idx(x);
+        self.string[idx..].chars().next().unwrap()
+    }
+
+    #[inline]
+    fn char_width(&self, x: usize) -> usize {
+        let mut width = 1;
+        while !self.is_char_boundary(x + width) {
+            width += 1;
+        }
+        width
+    }
+
+    #[inline]
+    fn is_char_boundary(&self, x: usize) -> bool {
+        match self.x_to_idx.as_ref() {
+            Some(v) => x == 0 || v.get(x) != TOMBSTONE,
+            None => true,
+        }
     }
 
     pub fn insert(&mut self, x: usize, ch: char) {
