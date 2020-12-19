@@ -1,3 +1,5 @@
+#![allow(clippy::unused_io_amount)]
+
 mod buffer;
 mod canvas;
 mod coord;

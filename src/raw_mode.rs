@@ -18,7 +18,7 @@ impl RawMode {
     }
 
     pub fn enable(&self) -> io::Result<()> {
-        let mut clone = self.termios.clone();
+        let mut clone = self.termios;
 
         clone.c_iflag &= !(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
         clone.c_oflag &= !(OPOST);

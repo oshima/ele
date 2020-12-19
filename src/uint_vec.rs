@@ -1,3 +1,5 @@
+#![allow(clippy::box_vec)]
+
 pub struct UintVec {
     u8_vec: Vec<u8>,
     u16_vec: Option<Box<Vec<u16>>>,

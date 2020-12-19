@@ -1,3 +1,5 @@
+#![allow(clippy::single_match)]
+
 use std::iter::{Chain, Iterator, Peekable};
 use std::str::CharIndices;
 

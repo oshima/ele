@@ -75,7 +75,7 @@ impl Buffer {
             while reader.read_line(&mut buf)? > 0 {
                 let string = buf.trim_end_matches(crlf).to_string();
                 self.rows.push(Row::new(string));
-                ends_with_lf = buf.ends_with("\n");
+                ends_with_lf = buf.ends_with('\n');
                 buf.clear();
             }
             if self.rows.is_empty() || ends_with_lf {
@@ -426,6 +426,7 @@ impl Buffer {
         self.draw = Draw::Whole;
     }
 
+    #[allow(clippy::collapsible_if)]
     pub fn next_match(&mut self, backward: bool) {
         if self.search.matches.len() <= 1 {
             return;
