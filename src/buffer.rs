@@ -109,17 +109,18 @@ impl Buffer {
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
+        let y_range = self.offset.y..(self.offset.y + self.size.h);
+
         if let Some(y) = self.hl_from {
             let n_updates = self.syntax.highlight(&mut self.rows[y..]);
             let y_range = match self.draw {
-                Draw::None => y..y,
-                Draw::Min => y..cmp::min(y + n_updates, self.offset.y + self.size.h),
-                Draw::End => y..(self.offset.y + self.size.h),
-                Draw::Whole => self.offset.y..(self.offset.y + self.size.h),
+                Draw::None => 0..0,
+                Draw::Min => y..cmp::min(y + n_updates, y_range.end),
+                Draw::End => y..y_range.end,
+                Draw::Whole => y_range,
             };
             self.draw_rows(canvas, y_range)?;
         } else if let Draw::Whole = self.draw {
-            let y_range = self.offset.y..(self.offset.y + self.size.h);
             self.draw_rows(canvas, y_range)?;
         }
 
