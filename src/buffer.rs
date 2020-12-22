@@ -125,6 +125,9 @@ impl Buffer {
         }
 
         self.draw_status_bar(canvas)?;
+
+        self.hl_from = None;
+        self.draw = Draw::None;
         Ok(())
     }
 
@@ -207,8 +210,6 @@ impl Buffer {
                     self.cursor.x = self.rows[self.cursor.y].max_x();
                     self.cursor.last_x = self.cursor.x;
                 }
-                self.hl_from = None;
-                self.draw = Draw::None;
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
                 if self.cursor.x < self.rows[self.cursor.y].max_x() {
@@ -219,48 +220,34 @@ impl Buffer {
                     self.cursor.x = 0;
                     self.cursor.last_x = self.cursor.x;
                 }
-                self.hl_from = None;
-                self.draw = Draw::None;
             }
             Key::ArrowUp | Key::Ctrl(b'P') => {
                 if self.cursor.y > 0 {
                     self.cursor.y -= 1;
                     self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
                 }
-                self.hl_from = None;
-                self.draw = Draw::None;
             }
             Key::ArrowDown | Key::Ctrl(b'N') => {
                 if self.cursor.y < self.rows.len() - 1 {
                     self.cursor.y += 1;
                     self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
                 }
-                self.hl_from = None;
-                self.draw = Draw::None;
             }
             Key::Home | Key::Ctrl(b'A') => {
                 let x = self.rows[self.cursor.y].first_letter_x();
                 self.cursor.x = if self.cursor.x == x { 0 } else { x };
                 self.cursor.last_x = self.cursor.x;
-                self.hl_from = None;
-                self.draw = Draw::None;
             }
             Key::End | Key::Ctrl(b'E') => {
                 self.cursor.x = self.rows[self.cursor.y].max_x();
                 self.cursor.last_x = self.cursor.x;
-                self.hl_from = None;
-                self.draw = Draw::None;
             }
             Key::PageUp | Key::Alt(b'v') => {
                 if self.offset.y > 0 {
                     self.cursor.y -= cmp::min(self.size.h, self.offset.y);
                     self.offset.y -= cmp::min(self.size.h, self.offset.y);
                     self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
-                    self.hl_from = None;
                     self.draw = Draw::Whole;
-                } else {
-                    self.hl_from = None;
-                    self.draw = Draw::None;
                 }
             }
             Key::PageDown | Key::Ctrl(b'V') => {
@@ -268,11 +255,7 @@ impl Buffer {
                     self.cursor.y += cmp::min(self.size.h, self.rows.len() - self.cursor.y - 1);
                     self.offset.y += self.size.h;
                     self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
-                    self.hl_from = None;
                     self.draw = Draw::Whole;
-                } else {
-                    self.hl_from = None;
-                    self.draw = Draw::None;
                 }
             }
             Key::Backspace | Key::Ctrl(b'H') => {
@@ -292,9 +275,6 @@ impl Buffer {
                     self.modified = true;
                     self.hl_from = Some(self.cursor.y);
                     self.draw = Draw::End;
-                } else {
-                    self.hl_from = None;
-                    self.draw = Draw::None;
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
@@ -309,9 +289,6 @@ impl Buffer {
                     self.modified = true;
                     self.hl_from = Some(self.cursor.y);
                     self.draw = Draw::End;
-                } else {
-                    self.hl_from = None;
-                    self.draw = Draw::None;
                 }
             }
             Key::Ctrl(b'I') => {
@@ -350,15 +327,11 @@ impl Buffer {
                 self.cursor.y = 0;
                 self.cursor.x = 0;
                 self.cursor.last_x = self.cursor.x;
-                self.hl_from = None;
-                self.draw = Draw::None;
             }
             Key::Alt(b'>') => {
                 self.cursor.y = self.rows.len() - 1;
                 self.cursor.x = self.rows[self.cursor.y].max_x();
                 self.cursor.last_x = self.cursor.x;
-                self.hl_from = None;
-                self.draw = Draw::None;
             }
             Key::Char(ch) => {
                 self.rows[self.cursor.y].insert(self.cursor.x, ch);
