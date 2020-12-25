@@ -16,6 +16,18 @@ pub struct Canvas {
     colors: [Vec<u8>; 14],
 }
 
+impl Write for Canvas {
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.bytes.write(buf)
+    }
+
+    #[inline]
+    fn flush(&mut self) -> io::Result<()> {
+        self.bytes.flush()
+    }
+}
+
 impl Canvas {
     pub fn new() -> Self {
         let mut canvas = Self {
@@ -98,8 +110,13 @@ impl Canvas {
     }
 
     #[inline]
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.bytes[..]
+    pub fn set_color(&mut self, face: Face) -> io::Result<usize> {
+        self.bytes.write(&self.colors[face as usize])
+    }
+
+    #[inline]
+    pub fn reset_color(&mut self) -> io::Result<usize> {
+        self.bytes.write(b"\x1b[m")
     }
 
     #[inline]
@@ -108,17 +125,7 @@ impl Canvas {
     }
 
     #[inline]
-    pub fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.bytes.write(bytes)
-    }
-
-    #[inline]
-    pub fn set_color(&mut self, face: Face) -> io::Result<usize> {
-        self.bytes.write(&self.colors[face as usize])
-    }
-
-    #[inline]
-    pub fn reset_color(&mut self) -> io::Result<usize> {
-        self.bytes.write(b"\x1b[m")
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes[..]
     }
 }

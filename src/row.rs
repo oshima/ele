@@ -1,7 +1,7 @@
 extern crate unicode_width;
 
 use std::cmp;
-use std::io;
+use std::io::{self, Write};
 use std::ops::Range;
 use unicode_width::UnicodeWidthChar;
 

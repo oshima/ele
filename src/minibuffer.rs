@@ -1,4 +1,4 @@
-use std::io;
+use std::io::{self, Write};
 
 use crate::canvas::Canvas;
 use crate::coord::{Cursor, Pos, Size};
@@ -48,7 +48,7 @@ impl Minibuffer {
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
-        canvas.write(format!("\x1b[{};{}H", self.pos.y + 1, self.pos.x + 1).as_bytes())?;
+        write!(canvas, "\x1b[{};{}H", self.pos.y + 1, self.pos.x + 1)?;
         canvas.set_color(Face::Background)?;
 
         self.row.faces.clear();
@@ -64,13 +64,11 @@ impl Minibuffer {
     }
 
     pub fn draw_cursor(&self, canvas: &mut Canvas) -> io::Result<()> {
-        canvas.write(
-            format!(
-                "\x1b[{};{}H",
-                self.pos.y + 1,
-                self.pos.x + self.cursor.x - self.offset.x + 1,
-            )
-            .as_bytes(),
+        write!(
+            canvas,
+            "\x1b[{};{}H",
+            self.pos.y + 1,
+            self.pos.x + self.cursor.x - self.offset.x + 1,
         )?;
         Ok(())
     }

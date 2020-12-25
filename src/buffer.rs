@@ -132,13 +132,11 @@ impl Buffer {
     }
 
     fn draw_rows(&mut self, canvas: &mut Canvas, y_range: Range<usize>) -> io::Result<()> {
-        canvas.write(
-            format!(
-                "\x1b[{};{}H",
-                self.pos.y + y_range.start - self.offset.y + 1,
-                self.pos.x + 1
-            )
-            .as_bytes(),
+        write!(
+            canvas,
+            "\x1b[{};{}H",
+            self.pos.y + y_range.start - self.offset.y + 1,
+            self.pos.x + 1,
         )?;
         canvas.set_color(Face::Background)?;
 
@@ -168,8 +166,11 @@ impl Buffer {
             .w
             .saturating_sub(filename.len() + cursor.len() + syntax.len());
 
-        canvas.write(
-            format!("\x1b[{};{}H", self.pos.y + self.size.h + 1, self.pos.x + 1).as_bytes(),
+        write!(
+            canvas,
+            "\x1b[{};{}H",
+            self.pos.y + self.size.h + 1,
+            self.pos.x + 1
         )?;
         canvas.set_color(Face::StatusBar)?;
         canvas.set_color(Face::Default)?;
@@ -188,13 +189,11 @@ impl Buffer {
     }
 
     pub fn draw_cursor(&self, canvas: &mut Canvas) -> io::Result<()> {
-        canvas.write(
-            format!(
-                "\x1b[{};{}H",
-                self.pos.y + self.cursor.y - self.offset.y + 1,
-                self.pos.x + self.cursor.x - self.offset.x + 1,
-            )
-            .as_bytes(),
+        write!(
+            canvas,
+            "\x1b[{};{}H",
+            self.pos.y + self.cursor.y - self.offset.y + 1,
+            self.pos.x + self.cursor.x - self.offset.x + 1,
         )?;
         Ok(())
     }
