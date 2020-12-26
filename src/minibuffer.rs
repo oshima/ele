@@ -12,6 +12,7 @@ pub struct Minibuffer {
     offset: Pos,
     cursor: Cursor,
     prompt_len: usize,
+    draw: bool,
     row: Row,
 }
 
@@ -23,6 +24,7 @@ impl Minibuffer {
             offset: Pos::new(0, 0),
             cursor: Cursor::new(0, 0),
             prompt_len: 0,
+            draw: true,
             row: Row::new(String::new()),
         }
     }
@@ -33,6 +35,7 @@ impl Minibuffer {
         self.offset.x = 0;
         self.cursor.x = 0;
         self.prompt_len = 0;
+        self.draw = true;
     }
 
     pub fn set_prompt(&mut self, string: &str) {
@@ -41,6 +44,7 @@ impl Minibuffer {
         self.offset.x = 0;
         self.cursor.x = self.row.max_x();
         self.prompt_len = self.row.max_x();
+        self.draw = true;
     }
 
     pub fn get_input(&self) -> String {
@@ -48,6 +52,10 @@ impl Minibuffer {
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
+        if !self.draw {
+            return Ok(());
+        }
+
         write!(canvas, "\x1b[{};{}H", self.pos.y + 1, self.pos.x + 1)?;
         canvas.set_color(Face::Background)?;
 
@@ -55,11 +63,13 @@ impl Minibuffer {
         self.row.faces.resize(self.prompt_len, Face::Prompt);
         self.row.faces.resize(self.row.string.len(), Face::Default);
 
-        self.row
-            .draw(canvas, self.offset.x..(self.offset.x + self.size.w))?;
+        let x_range = self.offset.x..(self.offset.x + self.size.w);
+        self.row.draw(canvas, x_range)?;
 
         canvas.write(b"\x1b[K")?;
         canvas.reset_color()?;
+
+        self.draw = false;
         Ok(())
     }
 
@@ -85,46 +95,54 @@ impl Minibuffer {
                     self.cursor.x = self.row.next_x(self.cursor.x);
                 }
             }
-            Key::Home | Key::Ctrl(b'A') | Key::Alt(b'<') => {
-                self.cursor.x = self.prompt_len;
-                self.offset.x = 0;
+            Key::Home | Key::Ctrl(b'A') => {
+                self.cursor.x = if self.cursor.x == self.prompt_len {
+                    0
+                } else {
+                    self.prompt_len
+                };
             }
-            Key::End | Key::Ctrl(b'E') | Key::Alt(b'>') => {
+            Key::End | Key::Ctrl(b'E') => {
                 self.cursor.x = self.row.max_x();
             }
             Key::Backspace | Key::Ctrl(b'H') => {
                 if self.cursor.x > self.prompt_len {
                     self.cursor.x = self.row.prev_x(self.cursor.x);
                     self.row.remove(self.cursor.x);
+                    self.draw = true;
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
                 if self.cursor.x >= self.prompt_len && self.cursor.x < self.row.max_x() {
                     self.row.remove(self.cursor.x);
+                    self.draw = true;
                 }
             }
             Key::Ctrl(b'I') => {
                 if self.cursor.x >= self.prompt_len {
                     self.row.insert(self.cursor.x, '\t');
                     self.cursor.x = self.row.next_x(self.cursor.x);
+                    self.draw = true;
                 }
             }
             Key::Ctrl(b'K') => {
                 if self.cursor.x >= self.prompt_len {
                     self.row.truncate(self.cursor.x);
+                    self.draw = true;
                 }
             }
             Key::Ctrl(b'U') => {
                 if self.cursor.x > self.prompt_len {
                     self.row.remove_str(self.prompt_len, self.cursor.x);
                     self.cursor.x = self.prompt_len;
-                    self.offset.x = 0;
+                    self.draw = true;
                 }
             }
             Key::Char(ch) => {
                 if self.cursor.x >= self.prompt_len {
                     self.row.insert(self.cursor.x, ch);
                     self.cursor.x = self.row.next_x(self.cursor.x);
+                    self.draw = true;
                 }
             }
             _ => (),
@@ -135,9 +153,11 @@ impl Minibuffer {
     fn scroll(&mut self) {
         if self.cursor.x < self.offset.x {
             self.offset.x = self.cursor.x;
+            self.draw = true;
         }
         if self.cursor.x >= self.offset.x + self.size.w {
             self.offset.x = self.cursor.x - self.size.w + 1;
+            self.draw = true;
         }
     }
 }
