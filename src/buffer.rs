@@ -109,19 +109,19 @@ impl Buffer {
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
-        let y_range = self.offset.y..(self.offset.y + self.size.h);
+        let (start, end) = (self.offset.y, self.offset.y + self.size.h);
 
         if let Some(y) = self.hl_from {
-            let n_updates = self.syntax.highlight(&mut self.rows[y..]);
+            let len = self.syntax.highlight(&mut self.rows[y..]);
             let y_range = match self.draw {
-                Draw::None => 0..0,
-                Draw::Min => y..cmp::min(y + n_updates, y_range.end),
-                Draw::End => y..y_range.end,
-                Draw::Whole => y_range,
+                Draw::None => start..start,
+                Draw::Min => cmp::max(start, y)..cmp::min(y + len, end),
+                Draw::End => cmp::max(start, y)..end,
+                Draw::Whole => start..end,
             };
             self.draw_rows(canvas, y_range)?;
         } else if let Draw::Whole = self.draw {
-            self.draw_rows(canvas, y_range)?;
+            self.draw_rows(canvas, start..end)?;
         }
 
         self.draw_status_bar(canvas)?;
@@ -170,7 +170,7 @@ impl Buffer {
             canvas,
             "\x1b[{};{}H",
             self.pos.y + self.size.h + 1,
-            self.pos.x + 1
+            self.pos.x + 1,
         )?;
         canvas.set_color(Face::StatusBar)?;
         canvas.set_color(Face::Default)?;

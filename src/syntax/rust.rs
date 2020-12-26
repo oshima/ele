@@ -33,7 +33,7 @@ impl Syntax for Rust {
 
     fn highlight(&self, rows: &mut [Row]) -> usize {
         let mut new_context = UNDEFINED;
-        let mut n_updates = 0;
+        let mut len = 0;
 
         for (i, row) in rows.iter_mut().enumerate() {
             if i == 0 {
@@ -47,10 +47,10 @@ impl Syntax for Rust {
                 row.hl_context = new_context;
             }
             new_context = self.highlight_row(row);
-            n_updates += 1;
+            len += 1;
         }
 
-        n_updates
+        len
     }
 }
 

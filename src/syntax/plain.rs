@@ -22,7 +22,7 @@ impl Syntax for Plain {
     }
 
     fn highlight(&self, rows: &mut [Row]) -> usize {
-        let mut n_updates = 0;
+        let mut len = 0;
 
         for (i, row) in rows.iter_mut().enumerate() {
             if i > 0 && row.hl_context != UNDEFINED {
@@ -31,9 +31,9 @@ impl Syntax for Plain {
             row.hl_context = NORMAL;
             row.faces.clear();
             row.faces.resize(row.string.len(), Face::Default);
-            n_updates += 1;
+            len += 1;
         }
 
-        n_updates
+        len
     }
 }
