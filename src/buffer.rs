@@ -115,8 +115,8 @@ impl Buffer {
             let len = self.syntax.highlight(&mut self.rows[y..]);
             let y_range = match self.draw {
                 Draw::None => start..start,
-                Draw::Min => cmp::max(start, y)..cmp::min(y + len, end),
-                Draw::End => cmp::max(start, y)..end,
+                Draw::Min => start.max(y)..end.min(y + len),
+                Draw::End => start.max(y)..end,
                 Draw::Whole => start..end,
             };
             self.draw_rows(canvas, y_range)?;
@@ -131,7 +131,7 @@ impl Buffer {
         Ok(())
     }
 
-    fn draw_rows(&mut self, canvas: &mut Canvas, y_range: Range<usize>) -> io::Result<()> {
+    fn draw_rows(&self, canvas: &mut Canvas, y_range: Range<usize>) -> io::Result<()> {
         write!(
             canvas,
             "\x1b[{};{}H",
