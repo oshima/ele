@@ -111,9 +111,9 @@ impl Rust {
 
     fn decode_context(&self, hl_context: HlContext) -> String {
         if hl_context & IN_ATTRIBUTE != 0 {
-            "#[".to_string()
+            String::from("#[")
         } else if hl_context & IN_STRING != 0 {
-            "\"".to_string()
+            String::from("\"")
         } else if hl_context & IN_RAW_STRING != 0 {
             let n_hashes = (hl_context >> IN_RAW_STRING.trailing_zeros()) - 1;
             format!("r{}\"", "#".repeat(n_hashes as usize))
@@ -121,7 +121,7 @@ impl Rust {
             let depth = hl_context >> IN_COMMENT.trailing_zeros();
             "/*".repeat(depth as usize)
         } else {
-            "".to_string()
+            String::new()
         }
     }
 
@@ -313,13 +313,13 @@ impl<'a> Tokens<'a> {
                         self.chars.next();
                         depth -= 1;
                         if depth == 0 {
-                            break BlockComment { open: false, depth };
+                            return BlockComment { open: false, depth };
                         }
                     }
                     _ => (),
                 },
                 Some(_) => (),
-                None => break BlockComment { open: true, depth },
+                None => return BlockComment { open: true, depth },
             }
         }
     }
@@ -342,12 +342,12 @@ impl<'a> Tokens<'a> {
             match self.chars.peek() {
                 Some(&(_, '\'')) => {
                     self.chars.next();
-                    break CharLit;
+                    return CharLit;
                 }
                 Some(&(_, ch)) if !is_delim(ch) => {
                     self.chars.next();
                 }
-                _ => break Lifetime,
+                _ => return Lifetime,
             }
         }
     }
@@ -355,12 +355,12 @@ impl<'a> Tokens<'a> {
     fn str_lit(&mut self) -> TokenKind {
         loop {
             match self.chars.next() {
-                Some((_, '"')) => break StrLit { open: false },
+                Some((_, '"')) => return StrLit { open: false },
                 Some((_, '\\')) => {
                     self.chars.next();
                 }
                 Some(_) => (),
-                None => break StrLit { open: true },
+                None => return StrLit { open: true },
             }
         }
     }
@@ -387,7 +387,7 @@ impl<'a> Tokens<'a> {
                         close_hashes += 1;
                     }
                     if close_hashes == n_hashes {
-                        break RawStrLit {
+                        return RawStrLit {
                             open: false,
                             n_hashes,
                         };
@@ -395,7 +395,7 @@ impl<'a> Tokens<'a> {
                 }
                 Some(_) => (),
                 None => {
-                    break RawStrLit {
+                    return RawStrLit {
                         open: true,
                         n_hashes,
                     }
@@ -437,7 +437,7 @@ impl<'a> Tokens<'a> {
                 self.chars.next();
                 continue;
             }
-            break match &self.text[start..end] {
+            return match &self.text[start..end] {
                 "const" => Const,
                 "fn" => Fn,
                 "for" => For,
