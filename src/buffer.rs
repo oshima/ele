@@ -154,17 +154,14 @@ impl Buffer {
     }
 
     fn draw_status_bar(&self, canvas: &mut Canvas) -> io::Result<()> {
-        let filename = format!(
-            " {}{} ",
-            self.filename.as_deref().unwrap_or("newfile"),
-            if self.modified { " +" } else { "" },
-        );
-        let cursor = format!(" {}, {} ", self.cursor.y + 1, self.cursor.x + 1);
-        let syntax = format!(" {} ", self.syntax.name());
-        let padding = self
-            .size
-            .w
-            .saturating_sub(filename.len() + cursor.len() + syntax.len());
+        let filename = self.filename.as_deref().unwrap_or("newfile");
+        let modified = if self.modified { "+" } else { "" };
+        let cursor = format!("{}, {}", self.cursor.y + 1, self.cursor.x + 1);
+        let syntax = self.syntax.name();
+
+        let left_len = filename.len() + modified.len() + 2;
+        let right_len = cursor.len() + syntax.len() + 4;
+        let padding = self.size.w.saturating_sub(left_len + right_len);
 
         write!(
             canvas,
@@ -175,14 +172,26 @@ impl Buffer {
         canvas.set_color(Face::StatusBar)?;
         canvas.set_color(Face::Default)?;
 
-        canvas.write(filename.as_bytes())?;
+        if left_len <= self.size.w {
+            canvas.write(b" ")?;
+            canvas.write(filename.as_bytes())?;
+            canvas.write(b" ")?;
+            canvas.write(modified.as_bytes())?;
+        }
+
         for _ in 0..padding {
             canvas.write(b" ")?;
         }
-        canvas.write(cursor.as_bytes())?;
 
-        canvas.write(self.syntax.color(canvas.term))?;
-        canvas.write(syntax.as_bytes())?;
+        if left_len + right_len <= self.size.w {
+            canvas.write(b" ")?;
+            canvas.write(cursor.as_bytes())?;
+            canvas.write(b" ")?;
+            canvas.write(self.syntax.color(canvas.term))?;
+            canvas.write(b" ")?;
+            canvas.write(syntax.as_bytes())?;
+            canvas.write(b" ")?;
+        }
 
         canvas.reset_color()?;
         Ok(())
