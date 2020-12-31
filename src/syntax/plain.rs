@@ -1,7 +1,7 @@
 use crate::canvas::Term;
 use crate::face::Face;
 use crate::row::{HlContext, Row};
-use crate::syntax::Syntax;
+use crate::syntax::{Indent, Syntax};
 
 const UNDEFINED: HlContext = 0;
 const NORMAL: HlContext = 1;
@@ -19,6 +19,10 @@ impl Syntax for Plain {
             Term::Color256 => b"\x1b[38;5;16m\x1b[48;5;231m",
             Term::Color16 => b"\x1b[30m\x1b[47m",
         }
+    }
+
+    fn indent(&self) -> Indent {
+        Indent::None
     }
 
     fn highlight(&self, rows: &mut [Row]) -> usize {

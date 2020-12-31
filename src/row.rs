@@ -9,7 +9,7 @@ use crate::canvas::Canvas;
 use crate::face::Face;
 use crate::uint_vec::UintVec;
 
-const TAB_WIDTH: usize = 4;
+pub const TAB_WIDTH: usize = 4;
 const TOMBSTONE: usize = 0;
 
 pub type HlContext = u32;
@@ -172,6 +172,12 @@ impl Row {
 
     pub fn push_str(&mut self, string: &str) {
         self.string.push_str(string);
+        self.update();
+    }
+
+    pub fn insert_str(&mut self, x: usize, string: &str) {
+        let idx = self.x_to_idx(x);
+        self.string.insert_str(idx, string);
         self.update();
     }
 

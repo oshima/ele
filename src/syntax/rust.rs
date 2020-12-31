@@ -7,7 +7,7 @@ use self::TokenKind::*;
 use crate::canvas::Term;
 use crate::face::Face;
 use crate::row::{HlContext, Row};
-use crate::syntax::Syntax;
+use crate::syntax::{Indent, Syntax};
 
 const UNDEFINED: HlContext = 0x00000000;
 const NORMAL: HlContext = 0x00000001;
@@ -29,6 +29,10 @@ impl Syntax for Rust {
             Term::Color256 => b"\x1b[38;5;16m\x1b[48;5;180m",
             Term::Color16 => b"\x1b[30m\x1b[41m",
         }
+    }
+
+    fn indent(&self) -> Indent {
+        Indent::Spaces(4)
     }
 
     fn highlight(&self, rows: &mut [Row]) -> usize {

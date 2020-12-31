@@ -9,6 +9,7 @@ use crate::syntax::rust::Rust;
 pub trait Syntax {
     fn name(&self) -> &'static str;
     fn color(&self, term: Term) -> &'static [u8];
+    fn indent(&self) -> Indent;
     fn highlight(&self, rows: &mut [Row]) -> usize;
 }
 
@@ -24,4 +25,11 @@ impl dyn Syntax {
             Box::new(Plain)
         }
     }
+}
+
+#[allow(dead_code)]
+pub enum Indent {
+    None,
+    Tab,
+    Spaces(usize),
 }

@@ -7,8 +7,8 @@ use crate::canvas::Canvas;
 use crate::coord::{Cursor, Pos, Size};
 use crate::face::Face;
 use crate::key::Key;
-use crate::row::Row;
-use crate::syntax::Syntax;
+use crate::row::{Row, TAB_WIDTH};
+use crate::syntax::{Indent, Syntax};
 
 enum Draw {
     None,
@@ -291,8 +291,22 @@ impl Buffer {
                 }
             }
             Key::Ctrl(b'I') => {
-                self.rows[self.cursor.y].insert(self.cursor.x, '\t');
-                self.cursor.x = self.rows[self.cursor.y].next_x(self.cursor.x);
+                match self.syntax.indent() {
+                    Indent::None => {
+                        self.rows[self.cursor.y].insert(self.cursor.x, '\t');
+                        self.cursor.x = self.rows[self.cursor.y].next_x(self.cursor.x);
+                    }
+                    Indent::Tab => {
+                        self.rows[self.cursor.y].insert(0, '\t');
+                        self.cursor.x += TAB_WIDTH;
+                    }
+                    Indent::Spaces(n) => {
+                        let x = self.rows[self.cursor.y].first_letter_x();
+                        let spaces = " ".repeat(n - x % n);
+                        self.rows[self.cursor.y].insert_str(0, &spaces);
+                        self.cursor.x += spaces.len();
+                    }
+                }
                 self.cursor.last_x = self.cursor.x;
                 self.modified = true;
                 self.hl_from = Some(self.cursor.y);
@@ -370,8 +384,7 @@ impl Buffer {
         for (y, row) in self.rows.iter_mut().enumerate() {
             for (idx, _) in row.string.match_indices(query) {
                 let pos = Pos::new(row.idx_to_x(idx), y);
-                let mut faces = Vec::new();
-                faces.resize(query.len(), Face::Match);
+                let mut faces = vec![Face::Match; query.len()];
                 faces.swap_with_slice(&mut row.faces[idx..(idx + query.len())]);
                 self.search.matches.push(Match { pos, faces });
             }
