@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use crate::canvas::Canvas;
 use crate::coord::{Cursor, Pos, Size};
-use crate::face::Face;
+use crate::face::{Bg, Fg};
 use crate::key::Key;
 use crate::row::Row;
 
@@ -57,17 +57,19 @@ impl Minibuffer {
         }
 
         write!(canvas, "\x1b[{};{}H", self.pos.y + 1, self.pos.x + 1)?;
-        canvas.set_color(Face::Background)?;
 
         self.row.faces.clear();
-        self.row.faces.resize(self.prompt_len, Face::Prompt);
-        self.row.faces.resize(self.row.string.len(), Face::Default);
+        self.row
+            .faces
+            .resize(self.prompt_len, (Fg::Prompt, Bg::Default));
+        self.row
+            .faces
+            .resize(self.row.string.len(), (Fg::Default, Bg::Default));
 
         let x_range = self.offset.x..(self.offset.x + self.size.w);
         self.row.draw(canvas, x_range)?;
 
         canvas.write(b"\x1b[K")?;
-        canvas.reset_color()?;
 
         self.draw = false;
         Ok(())

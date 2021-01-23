@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, PartialEq)]
-pub enum Face {
+pub enum Fg {
     Default,
     Keyword,
     Type,
@@ -10,8 +10,14 @@ pub enum Face {
     String,
     Comment,
     Prompt,
-    Background,
     Match,
     CurrentMatch,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum Bg {
+    Default,
     StatusBar,
+    Match,
+    CurrentMatch,
 }

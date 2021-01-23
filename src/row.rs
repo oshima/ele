@@ -6,7 +6,7 @@ use std::ops::Range;
 use unicode_width::UnicodeWidthChar;
 
 use crate::canvas::Canvas;
-use crate::face::Face;
+use crate::face::{Bg, Fg};
 use crate::uint_vec::UintVec;
 
 pub const TAB_WIDTH: usize = 4;
@@ -18,7 +18,7 @@ pub struct Row {
     pub string: String,
     x_to_idx: Option<Box<UintVec>>,
     pub hl_context: HlContext,
-    pub faces: Vec<Face>,
+    pub faces: Vec<(Fg, Bg)>,
 }
 
 impl Row {
@@ -238,20 +238,14 @@ impl Row {
         }
 
         let mut x = start_x;
-        let mut prev_face = Face::Background;
 
         for (idx, ch) in self.string[start..end].char_indices() {
             let idx = start + idx;
             let width = self.char_width(x);
-            let face = self.faces[idx];
+            let (fg, bg) = self.faces[idx];
 
-            if face != prev_face {
-                if let Face::Match | Face::CurrentMatch = prev_face {
-                    canvas.set_color(Face::Background)?;
-                }
-                canvas.set_color(face)?;
-                prev_face = face;
-            }
+            canvas.set_fg_color(fg)?;
+            canvas.set_bg_color(bg)?;
 
             if ch == '\t' {
                 for _ in 0..width {
@@ -265,9 +259,7 @@ impl Row {
             x += width;
         }
 
-        if let Face::Match | Face::CurrentMatch = prev_face {
-            canvas.set_color(Face::Background)?;
-        }
+        canvas.set_bg_color(Bg::Default)?;
         Ok(())
     }
 }

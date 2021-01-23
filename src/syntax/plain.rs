@@ -1,5 +1,5 @@
 use crate::canvas::Term;
-use crate::face::Face;
+use crate::face::{Bg, Fg};
 use crate::row::{HlContext, Row};
 use crate::syntax::{Indent, Syntax};
 
@@ -34,7 +34,8 @@ impl Syntax for Plain {
             }
             row.hl_context = NORMAL;
             row.faces.clear();
-            row.faces.resize(row.string.len(), Face::Default);
+            row.faces
+                .resize(row.string.len(), (Fg::Default, Bg::Default));
             len += 1;
         }
 

@@ -5,7 +5,7 @@ use std::ops::Range;
 
 use crate::canvas::Canvas;
 use crate::coord::{Cursor, Pos, Size};
-use crate::face::Face;
+use crate::face::{Bg, Fg};
 use crate::key::Key;
 use crate::row::{Row, TAB_WIDTH};
 use crate::syntax::{Indent, Syntax};
@@ -27,7 +27,7 @@ struct Search {
 
 struct Match {
     pos: Pos,
-    faces: Vec<Face>,
+    faces: Vec<(Fg, Bg)>,
 }
 
 pub struct Buffer {
@@ -138,7 +138,6 @@ impl Buffer {
             self.pos.y + y_range.start - self.offset.y + 1,
             self.pos.x + 1,
         )?;
-        canvas.set_color(Face::Background)?;
 
         for y in y_range {
             if y < self.rows.len() {
@@ -148,8 +147,6 @@ impl Buffer {
             canvas.write(b"\x1b[K")?;
             canvas.write(b"\r\n")?;
         }
-
-        canvas.reset_color()?;
         Ok(())
     }
 
@@ -169,8 +166,8 @@ impl Buffer {
             self.pos.y + self.size.h + 1,
             self.pos.x + 1,
         )?;
-        canvas.set_color(Face::StatusBar)?;
-        canvas.set_color(Face::Default)?;
+        canvas.set_fg_color(Fg::Default)?;
+        canvas.set_bg_color(Bg::StatusBar)?;
 
         if left_len <= self.size.w {
             canvas.write(b" ")?;
@@ -393,7 +390,7 @@ impl Buffer {
         for (y, row) in self.rows.iter_mut().enumerate() {
             for (idx, _) in row.string.match_indices(query) {
                 let pos = Pos::new(row.idx_to_x(idx), y);
-                let mut faces = vec![Face::Match; query.len()];
+                let mut faces = vec![(Fg::Match, Bg::Match); query.len()];
                 faces.swap_with_slice(&mut row.faces[idx..(idx + query.len())]);
                 self.search.matches.push(Match { pos, faces });
             }
@@ -417,7 +414,7 @@ impl Buffer {
         self.search.orig_cursor = self.cursor;
 
         self.move_to_match();
-        self.highlight_match(Face::CurrentMatch);
+        self.highlight_match(true);
         self.draw = Draw::Whole;
     }
 
@@ -427,7 +424,7 @@ impl Buffer {
             return;
         }
 
-        self.highlight_match(Face::Match);
+        self.highlight_match(false);
 
         self.search.match_idx = if backward {
             if self.search.match_idx > 0 {
@@ -444,7 +441,7 @@ impl Buffer {
         };
 
         self.move_to_match();
-        self.highlight_match(Face::CurrentMatch);
+        self.highlight_match(true);
         self.draw = Draw::Whole;
     }
 
@@ -481,10 +478,15 @@ impl Buffer {
         self.cursor.last_x = mat.pos.x;
     }
 
-    fn highlight_match(&mut self, face: Face) {
+    fn highlight_match(&mut self, current: bool) {
         let mat = &self.search.matches[self.search.match_idx];
         let row = &mut self.rows[mat.pos.y];
         let idx = row.x_to_idx(mat.pos.x);
+        let face = if current {
+            (Fg::CurrentMatch, Bg::CurrentMatch)
+        } else {
+            (Fg::Match, Bg::Match)
+        };
 
         for i in idx..(idx + mat.faces.len()) {
             row.faces[i] = face;
