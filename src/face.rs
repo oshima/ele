@@ -17,6 +17,7 @@ pub enum Fg {
 #[derive(Clone, Copy, PartialEq)]
 pub enum Bg {
     Default,
+    Region,
     StatusBar,
     Match,
     CurrentMatch,

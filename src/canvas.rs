@@ -13,10 +13,10 @@ pub enum Term {
 pub struct Canvas {
     pub term: Term,
     bytes: Vec<u8>,
-    fg: Option<Fg>,
-    bg: Option<Bg>,
+    pub fg: Option<Fg>,
+    pub bg: Option<Bg>,
     fg_colors: [Vec<u8>; 12],
-    bg_colors: [Vec<u8>; 4],
+    bg_colors: [Vec<u8>; 5],
 }
 
 impl Write for Canvas {
@@ -75,6 +75,7 @@ impl Canvas {
                 self.define_bg_color(Bg::CurrentMatch, b"\x1b[38;2;0;0;0m");
 
                 self.define_bg_color(Bg::Default, b"\x1b[48;2;0;0;0m");
+                self.define_bg_color(Bg::Region, b"\x1b[48;2;66;66;66m");
                 self.define_bg_color(Bg::StatusBar, b"\x1b[48;2;28;28;28m");
                 self.define_bg_color(Bg::Match, b"\x1b[48;2;231;197;71m");
                 self.define_bg_color(Bg::CurrentMatch, b"\x1b[48;2;231;140;69m");
@@ -94,6 +95,7 @@ impl Canvas {
                 self.define_fg_color(Fg::CurrentMatch, b"\x1b[38;5;16m");
 
                 self.define_bg_color(Bg::Default, b"\x1b[48;5;16m");
+                self.define_bg_color(Bg::Region, b"\x1b[48;5;238m");
                 self.define_bg_color(Bg::StatusBar, b"\x1b[48;5;234m");
                 self.define_bg_color(Bg::Match, b"\x1b[48;5;179m");
                 self.define_bg_color(Bg::CurrentMatch, b"\x1b[48;5;173m");
@@ -113,6 +115,7 @@ impl Canvas {
                 self.define_fg_color(Fg::CurrentMatch, b"\x1b[30m");
 
                 self.define_bg_color(Bg::Default, b"\x1b[40m");
+                self.define_bg_color(Bg::Region, b"\x1b[47m");
                 self.define_bg_color(Bg::StatusBar, b"\x1b[40m");
                 self.define_bg_color(Bg::Match, b"\x1b[43m");
                 self.define_bg_color(Bg::CurrentMatch, b"\x1b[41m");

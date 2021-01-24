@@ -19,6 +19,7 @@ pub struct Row {
     x_to_idx: Option<Box<UintVec>>,
     pub hl_context: HlContext,
     pub faces: Vec<(Fg, Bg)>,
+    pub trailing_bg: Bg,
 }
 
 impl Row {
@@ -28,6 +29,7 @@ impl Row {
             x_to_idx: None,
             hl_context: 0,
             faces: Vec::new(),
+            trailing_bg: Bg::Default,
         };
         row.update();
         row
@@ -224,16 +226,12 @@ impl Row {
     }
 
     pub fn draw(&self, canvas: &mut Canvas, x_range: Range<usize>) -> io::Result<()> {
-        if self.max_x() <= x_range.start {
-            return Ok(());
-        }
-
         let start_x = self.next_fit_x(x_range.start);
         let end_x = self.prev_fit_x(x_range.end);
         let start = self.x_to_idx(start_x);
         let end = self.x_to_idx(end_x);
 
-        for _ in 0..(start_x - x_range.start) {
+        for _ in 0..start_x.saturating_sub(x_range.start) {
             canvas.write(b" ")?;
         }
 
@@ -259,7 +257,7 @@ impl Row {
             x += width;
         }
 
-        canvas.set_bg_color(Bg::Default)?;
+        canvas.set_bg_color(self.trailing_bg)?;
         Ok(())
     }
 }

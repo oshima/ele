@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-#[derive(Clone, Copy, Default, PartialEq)]
+#[derive(Clone, Copy, Default, Eq, PartialEq)]
 pub struct Pos {
     pub x: usize,
     pub y: usize,
@@ -12,13 +12,19 @@ impl Pos {
     }
 }
 
+impl Ord for Pos {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.y == other.y {
+            self.x.cmp(&other.x)
+        } else {
+            self.y.cmp(&other.y)
+        }
+    }
+}
+
 impl PartialOrd for Pos {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.y == other.y {
-            self.x.partial_cmp(&other.x)
-        } else {
-            self.y.partial_cmp(&other.y)
-        }
+        Some(self.cmp(other))
     }
 }
 

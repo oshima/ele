@@ -38,6 +38,7 @@ pub struct Buffer {
     pub size: Size,
     offset: Pos,
     cursor: Cursor,
+    anchor: Option<Pos>,
     hl_from: Option<usize>,
     draw: Draw,
     rows: Vec<Row>,
@@ -54,6 +55,7 @@ impl Buffer {
             size: Size::new(0, 0),
             offset: Pos::new(0, 0),
             cursor: Cursor::new(0, 0),
+            anchor: None,
             hl_from: Some(0),
             draw: Draw::Whole,
             rows: Vec::new(),
@@ -205,6 +207,8 @@ impl Buffer {
     }
 
     pub fn process_keypress(&mut self, key: Key) {
+        let prev_cursor = self.cursor;
+
         match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if self.cursor.x > 0 {
@@ -296,6 +300,19 @@ impl Buffer {
                     self.draw = Draw::End;
                 }
             }
+            Key::Ctrl(b'@') => {
+                if let Some(anchor) = self.anchor {
+                    self.unhighlight_region(anchor);
+                }
+                self.anchor = Some(self.cursor.as_pos());
+            }
+            Key::Ctrl(b'G') => {
+                if let Some(anchor) = self.anchor {
+                    self.unhighlight_region(anchor);
+                }
+                self.anchor = None;
+                self.draw = Draw::Whole;
+            }
             Key::Ctrl(b'I') => {
                 match self.syntax.indent() {
                     Indent::None => {
@@ -362,7 +379,13 @@ impl Buffer {
             }
             _ => (),
         }
+
         self.scroll();
+
+        if let Some(_) = self.anchor {
+            self.highlight_region(prev_cursor);
+            self.draw = Draw::Whole; // temporary
+        }
     }
 
     fn scroll(&mut self) {
@@ -381,6 +404,46 @@ impl Buffer {
         if self.cursor.x >= self.offset.x + self.size.w {
             self.offset.x = self.cursor.x - self.size.w + 1;
             self.draw = Draw::Whole;
+        }
+    }
+
+    fn highlight_region(&mut self, prev_cursor: Cursor) {
+        let pos1 = cmp::min(prev_cursor.as_pos(), self.cursor.as_pos());
+        let pos2 = cmp::max(prev_cursor.as_pos(), self.cursor.as_pos());
+
+        for y in pos1.y..=pos2.y {
+            let row = &mut self.rows[y];
+            let x1 = if y == pos1.y { pos1.x } else { 0 };
+            let x2 = if y == pos2.y { pos2.x } else { row.max_x() };
+
+            for i in row.x_to_idx(x1)..row.x_to_idx(x2) {
+                row.faces[i].1 = match row.faces[i].1 {
+                    Bg::Default => Bg::Region,
+                    _ => Bg::Default,
+                };
+            }
+            if y < pos2.y {
+                row.trailing_bg = match row.trailing_bg {
+                    Bg::Default => Bg::Region,
+                    _ => Bg::Default,
+                };
+            }
+        }
+    }
+
+    fn unhighlight_region(&mut self, anchor: Pos) {
+        let pos1 = cmp::min(anchor, self.cursor.as_pos());
+        let pos2 = cmp::max(anchor, self.cursor.as_pos());
+
+        for y in pos1.y..=pos2.y {
+            let row = &mut self.rows[y];
+            let x1 = if y == pos1.y { pos1.x } else { 0 };
+            let x2 = if y == pos2.y { pos2.x } else { row.max_x() };
+
+            for i in row.x_to_idx(x1)..row.x_to_idx(x2) {
+                row.faces[i].1 = Bg::Default;
+            }
+            row.trailing_bg = Bg::Default;
         }
     }
 }
