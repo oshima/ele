@@ -231,8 +231,11 @@ impl Row {
         let start = self.x_to_idx(start_x);
         let end = self.x_to_idx(end_x);
 
-        for _ in 0..start_x.saturating_sub(x_range.start) {
-            canvas.write(b" ")?;
+        if x_range.start < start_x {
+            canvas.set_bg_color(self.faces[start - 1].1)?;
+            for _ in 0..(start_x - x_range.start) {
+                canvas.write(b" ")?;
+            }
         }
 
         let mut x = start_x;
@@ -255,6 +258,13 @@ impl Row {
             }
 
             x += width;
+        }
+
+        if end_x < x_range.end && x_range.end <= self.max_x() {
+            canvas.set_bg_color(self.faces[end].1)?;
+            for _ in 0..(x_range.end - end_x) {
+                canvas.write(b" ")?;
+            }
         }
 
         canvas.set_bg_color(self.trailing_bg)?;
