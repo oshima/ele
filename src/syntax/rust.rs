@@ -101,7 +101,7 @@ impl Rust {
             };
 
             for i in token.start..token.end {
-                row.faces[i] = (fg, Bg::Default);
+                row.faces[i].0 = fg;
             }
 
             prev_token = Some(token);

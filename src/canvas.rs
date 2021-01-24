@@ -71,8 +71,8 @@ impl Canvas {
                 self.define_fg_color(Fg::String, b"\x1b[38;2;185;202;74m");
                 self.define_fg_color(Fg::Comment, b"\x1b[38;2;150;152;150m");
                 self.define_fg_color(Fg::Prompt, b"\x1b[38;2;122;166;218m");
-                self.define_bg_color(Bg::Match, b"\x1b[38;2;0;0;0m");
-                self.define_bg_color(Bg::CurrentMatch, b"\x1b[38;2;0;0;0m");
+                self.define_fg_color(Fg::Match, b"\x1b[38;2;0;0;0m");
+                self.define_fg_color(Fg::CurrentMatch, b"\x1b[38;2;0;0;0m");
 
                 self.define_bg_color(Bg::Default, b"\x1b[48;2;0;0;0m");
                 self.define_bg_color(Bg::Region, b"\x1b[48;2;66;66;66m");
