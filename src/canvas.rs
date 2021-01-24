@@ -13,8 +13,8 @@ pub enum Term {
 pub struct Canvas {
     pub term: Term,
     bytes: Vec<u8>,
-    pub fg: Option<Fg>,
-    pub bg: Option<Bg>,
+    fg: Option<Fg>,
+    bg: Option<Bg>,
     fg_colors: [Vec<u8>; 12],
     bg_colors: [Vec<u8>; 5],
 }
@@ -133,27 +133,28 @@ impl Canvas {
 
     #[inline]
     pub fn set_fg_color(&mut self, fg: Fg) -> io::Result<()> {
-        let prev_fg = self.fg.replace(fg);
-
-        if self.fg != prev_fg {
+        if self.fg != Some(fg) {
             self.bytes.write(&self.fg_colors[fg as usize])?;
+            self.fg.replace(fg);
         }
         Ok(())
     }
 
     #[inline]
     pub fn set_bg_color(&mut self, bg: Bg) -> io::Result<()> {
-        let prev_bg = self.bg.replace(bg);
-
-        if self.bg != prev_bg {
+        if self.bg != Some(bg) {
             self.bytes.write(&self.bg_colors[bg as usize])?;
+            self.bg.replace(bg);
         }
         Ok(())
     }
 
     #[inline]
-    pub fn reset_color(&mut self) -> io::Result<usize> {
-        self.bytes.write(b"\x1b[m")
+    pub fn reset_color(&mut self) -> io::Result<()> {
+        self.bytes.write(b"\x1b[m")?;
+        self.fg = None;
+        self.bg = None;
+        Ok(())
     }
 
     #[inline]

@@ -192,8 +192,7 @@ impl Buffer {
             canvas.write(b" ")?;
         }
 
-        canvas.reset_color()?;
-        Ok(())
+        canvas.reset_color()
     }
 
     pub fn draw_cursor(&self, canvas: &mut Canvas) -> io::Result<()> {
@@ -443,7 +442,9 @@ impl Buffer {
             for i in row.x_to_idx(x1)..row.x_to_idx(x2) {
                 row.faces[i].1 = Bg::Default;
             }
-            row.trailing_bg = Bg::Default;
+            if y < pos2.y {
+                row.trailing_bg = Bg::Default;
+            }
         }
     }
 }
