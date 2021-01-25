@@ -10,11 +10,42 @@ use crate::key::Key;
 use crate::row::{Row, TAB_WIDTH};
 use crate::syntax::{Indent, Syntax};
 
-enum Draw {
-    None,
-    Min,
-    End,
-    Whole,
+#[derive(Default)]
+struct DrawRange {
+    start: Option<usize>,
+    end: Option<usize>,
+}
+
+impl DrawRange {
+    fn extend_start(&mut self, start: usize) {
+        if let Some(y) = self.start {
+            self.start = Some(start.min(y));
+        } else {
+            self.start = Some(start);
+        }
+    }
+
+    fn extend_end(&mut self, end: usize) {
+        if let Some(y) = self.end {
+            self.end = Some(end.max(y));
+        } else {
+            self.end = Some(end);
+        }
+    }
+
+    fn extend(&mut self, start: usize, end: usize) {
+        self.extend_start(start);
+        self.extend_end(end);
+    }
+
+    fn clear(&mut self) {
+        self.start = None;
+        self.end = None;
+    }
+
+    fn as_tuple(&self) -> (Option<usize>, Option<usize>) {
+        (self.start, self.end)
+    }
 }
 
 #[derive(Default)]
@@ -39,9 +70,8 @@ pub struct Buffer {
     offset: Pos,
     cursor: Cursor,
     anchor: Option<Pos>,
-    hl_from: Option<usize>,
-    draw: Draw,
     rows: Vec<Row>,
+    draw_range: DrawRange,
     search: Search,
 }
 
@@ -56,9 +86,8 @@ impl Buffer {
             offset: Pos::new(0, 0),
             cursor: Cursor::new(0, 0),
             anchor: None,
-            hl_from: Some(0),
-            draw: Draw::Whole,
             rows: Vec::new(),
+            draw_range: Default::default(),
             search: Default::default(),
         };
         buffer.init()?;
@@ -86,6 +115,7 @@ impl Buffer {
         } else {
             self.rows.push(Row::new(String::new()));
         }
+        self.highlight(0);
         Ok(())
     }
 
@@ -104,32 +134,20 @@ impl Buffer {
             }
             self.syntax = Syntax::detect(Some(filename));
             self.modified = false;
-            self.hl_from = Some(0);
-            self.draw = Draw::Whole;
+            self.highlight(0);
         }
         Ok(())
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
-        let (start, end) = (self.offset.y, self.offset.y + self.size.h);
-
-        if let Some(y) = self.hl_from {
-            let len = self.syntax.highlight(&mut self.rows[y..]);
-            let y_range = match self.draw {
-                Draw::None => start..start,
-                Draw::Min => start.max(y)..end.min(y + len),
-                Draw::End => start.max(y)..end,
-                Draw::Whole => start..end,
-            };
+        if let (Some(start), Some(end)) = self.draw_range.as_tuple() {
+            let (top, bottom) = (self.offset.y, self.offset.y + self.size.h);
+            let y_range = start.max(top)..end.min(bottom);
             self.draw_rows(canvas, y_range)?;
-        } else if let Draw::Whole = self.draw {
-            self.draw_rows(canvas, start..end)?;
         }
-
         self.draw_status_bar(canvas)?;
 
-        self.hl_from = None;
-        self.draw = Draw::None;
+        self.draw_range.clear();
         Ok(())
     }
 
@@ -206,74 +224,126 @@ impl Buffer {
     }
 
     pub fn process_keypress(&mut self, key: Key) {
-        let prev_cursor = self.cursor;
-
         match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if self.cursor.x > 0 {
+                    let prev_cursor = self.cursor;
                     self.cursor.x = self.rows[self.cursor.y].prev_x(self.cursor.x);
                     self.cursor.last_x = self.cursor.x;
+                    if self.anchor.is_some() {
+                        self.highlight_region(prev_cursor);
+                    }
+                    self.scroll();
                 } else if self.cursor.y > 0 {
+                    let prev_cursor = self.cursor;
                     self.cursor.y -= 1;
                     self.cursor.x = self.rows[self.cursor.y].max_x();
                     self.cursor.last_x = self.cursor.x;
+                    if self.anchor.is_some() {
+                        self.highlight_region(prev_cursor);
+                    }
+                    self.scroll();
                 }
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
                 if self.cursor.x < self.rows[self.cursor.y].max_x() {
+                    let prev_cursor = self.cursor;
                     self.cursor.x = self.rows[self.cursor.y].next_x(self.cursor.x);
                     self.cursor.last_x = self.cursor.x;
+                    if self.anchor.is_some() {
+                        self.highlight_region(prev_cursor);
+                    }
+                    self.scroll();
                 } else if self.cursor.y < self.rows.len() - 1 {
+                    let prev_cursor = self.cursor;
                     self.cursor.y += 1;
                     self.cursor.x = 0;
                     self.cursor.last_x = self.cursor.x;
+                    if self.anchor.is_some() {
+                        self.highlight_region(prev_cursor);
+                    }
+                    self.scroll();
                 }
             }
             Key::ArrowUp | Key::Ctrl(b'P') => {
                 if self.cursor.y > 0 {
+                    let prev_cursor = self.cursor;
                     self.cursor.y -= 1;
                     self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
+                    if self.anchor.is_some() {
+                        self.highlight_region(prev_cursor);
+                    }
+                    self.scroll();
                 }
             }
             Key::ArrowDown | Key::Ctrl(b'N') => {
                 if self.cursor.y < self.rows.len() - 1 {
+                    let prev_cursor = self.cursor;
                     self.cursor.y += 1;
                     self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
+                    if self.anchor.is_some() {
+                        self.highlight_region(prev_cursor);
+                    }
+                    self.scroll();
                 }
             }
             Key::Home | Key::Ctrl(b'A') => {
+                let prev_cursor = self.cursor;
                 let x = self.rows[self.cursor.y].first_letter_x();
                 self.cursor.x = if self.cursor.x == x { 0 } else { x };
                 self.cursor.last_x = self.cursor.x;
+                if self.anchor.is_some() {
+                    self.highlight_region(prev_cursor);
+                }
+                self.scroll();
             }
             Key::End | Key::Ctrl(b'E') => {
+                let prev_cursor = self.cursor;
                 self.cursor.x = self.rows[self.cursor.y].max_x();
                 self.cursor.last_x = self.cursor.x;
+                if self.anchor.is_some() {
+                    self.highlight_region(prev_cursor);
+                }
+                self.scroll();
             }
             Key::PageUp | Key::Alt(b'v') => {
                 if self.offset.y > 0 {
+                    let prev_cursor = self.cursor;
                     self.cursor.y -= cmp::min(self.size.h, self.offset.y);
                     self.offset.y -= cmp::min(self.size.h, self.offset.y);
                     self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
-                    self.draw = Draw::Whole;
+                    if self.anchor.is_some() {
+                        self.highlight_region(prev_cursor);
+                    }
+                    self.scroll();
+                    self.draw_range
+                        .extend(self.offset.y, self.offset.y + self.size.h);
                 }
             }
             Key::PageDown | Key::Ctrl(b'V') => {
                 if self.offset.y + self.size.h < self.rows.len() {
+                    let prev_cursor = self.cursor;
                     self.cursor.y += cmp::min(self.size.h, self.rows.len() - self.cursor.y - 1);
                     self.offset.y += self.size.h;
                     self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
-                    self.draw = Draw::Whole;
+                    if self.anchor.is_some() {
+                        self.highlight_region(prev_cursor);
+                    }
+                    self.scroll();
+                    self.draw_range
+                        .extend(self.offset.y, self.offset.y + self.size.h);
                 }
             }
             Key::Backspace | Key::Ctrl(b'H') => {
-                if self.cursor.x > 0 {
+                if self.anchor.is_some() {
+                    // TODO
+                } else if self.cursor.x > 0 {
                     self.cursor.x = self.rows[self.cursor.y].prev_x(self.cursor.x);
                     self.cursor.last_x = self.cursor.x;
                     self.rows[self.cursor.y].remove(self.cursor.x);
                     self.modified = true;
-                    self.hl_from = Some(self.cursor.y);
-                    self.draw = Draw::Min;
+                    self.highlight(self.cursor.y);
+                    self.scroll();
                 } else if self.cursor.y > 0 {
                     let row = self.rows.remove(self.cursor.y);
                     self.cursor.y -= 1;
@@ -281,22 +351,24 @@ impl Buffer {
                     self.cursor.last_x = self.cursor.x;
                     self.rows[self.cursor.y].push_str(&row.string);
                     self.modified = true;
-                    self.hl_from = Some(self.cursor.y);
-                    self.draw = Draw::End;
+                    self.highlight(self.cursor.y);
+                    self.scroll();
+                    self.draw_range.extend_end(self.offset.y + self.size.h);
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
-                if self.cursor.x < self.rows[self.cursor.y].max_x() {
+                if self.anchor.is_some() {
+                    // TODO
+                } else if self.cursor.x < self.rows[self.cursor.y].max_x() {
                     self.rows[self.cursor.y].remove(self.cursor.x);
                     self.modified = true;
-                    self.hl_from = Some(self.cursor.y);
-                    self.draw = Draw::Min;
+                    self.highlight(self.cursor.y);
                 } else if self.cursor.y < self.rows.len() - 1 {
                     let row = self.rows.remove(self.cursor.y + 1);
                     self.rows[self.cursor.y].push_str(&row.string);
                     self.modified = true;
-                    self.hl_from = Some(self.cursor.y);
-                    self.draw = Draw::End;
+                    self.highlight(self.cursor.y);
+                    self.draw_range.extend_end(self.offset.y + self.size.h);
                 }
             }
             Key::Ctrl(b'@') => {
@@ -310,9 +382,9 @@ impl Buffer {
                     self.unhighlight_region(anchor);
                 }
                 self.anchor = None;
-                self.draw = Draw::Whole;
             }
             Key::Ctrl(b'I') => {
+                // TODO: if self.anchor.is_some()
                 match self.syntax.indent() {
                     Indent::None => {
                         self.rows[self.cursor.y].insert(self.cursor.x, '\t');
@@ -331,79 +403,72 @@ impl Buffer {
                 }
                 self.cursor.last_x = self.cursor.x;
                 self.modified = true;
-                self.hl_from = Some(self.cursor.y);
-                self.draw = Draw::Min;
+                self.highlight(self.cursor.y);
+                self.scroll();
             }
             Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
+                // TODO: if self.anchor.is_some()
                 let string = self.rows[self.cursor.y].split_off(self.cursor.x);
                 self.rows.insert(self.cursor.y + 1, Row::new(string));
                 self.cursor.y += 1;
                 self.cursor.x = 0;
                 self.cursor.last_x = self.cursor.x;
                 self.modified = true;
-                self.hl_from = Some(self.cursor.y - 1);
-                self.draw = Draw::End;
+                self.highlight(self.cursor.y - 1);
+                self.scroll();
+                self.draw_range.extend_end(self.offset.y + self.size.h);
             }
             Key::Ctrl(b'K') => {
+                // TODO: if self.anchor.is_some()
                 self.rows[self.cursor.y].truncate(self.cursor.x);
                 self.modified = true;
-                self.hl_from = Some(self.cursor.y);
-                self.draw = Draw::Min;
+                self.highlight(self.cursor.y);
             }
             Key::Ctrl(b'U') => {
+                // TODO: if self.anchor.is_some()
                 self.rows[self.cursor.y].remove_str(0, self.cursor.x);
                 self.cursor.x = 0;
                 self.cursor.last_x = self.cursor.x;
                 self.modified = true;
-                self.hl_from = Some(self.cursor.y);
-                self.draw = Draw::Min;
+                self.highlight(self.cursor.y);
+                self.scroll();
             }
             Key::Alt(b'<') => {
+                let prev_cursor = self.cursor;
                 self.cursor.y = 0;
                 self.cursor.x = 0;
                 self.cursor.last_x = self.cursor.x;
+                if self.anchor.is_some() {
+                    self.highlight_region(prev_cursor);
+                }
+                self.scroll();
             }
             Key::Alt(b'>') => {
+                let prev_cursor = self.cursor;
                 self.cursor.y = self.rows.len() - 1;
                 self.cursor.x = self.rows[self.cursor.y].max_x();
                 self.cursor.last_x = self.cursor.x;
+                if self.anchor.is_some() {
+                    self.highlight_region(prev_cursor);
+                }
+                self.scroll();
             }
             Key::Char(ch) => {
+                // TODO: if self.anchor.is_some()
                 self.rows[self.cursor.y].insert(self.cursor.x, ch);
                 self.cursor.x = self.rows[self.cursor.y].next_x(self.cursor.x);
                 self.cursor.last_x = self.cursor.x;
                 self.modified = true;
-                self.hl_from = Some(self.cursor.y);
-                self.draw = Draw::Min;
+                self.highlight(self.cursor.y);
+                self.scroll();
             }
             _ => (),
         }
-
-        self.scroll();
-
-        if let Some(_) = self.anchor {
-            self.highlight_region(prev_cursor);
-            self.draw = Draw::Whole; // temporary
-        }
     }
 
-    fn scroll(&mut self) {
-        if self.cursor.y < self.offset.y {
-            self.offset.y = self.cursor.y;
-            self.draw = Draw::Whole;
-        }
-        if self.cursor.y >= self.offset.y + self.size.h {
-            self.offset.y = self.cursor.y - self.size.h + 1;
-            self.draw = Draw::Whole;
-        }
-        if self.cursor.x < self.offset.x {
-            self.offset.x = self.cursor.x;
-            self.draw = Draw::Whole;
-        }
-        if self.cursor.x >= self.offset.x + self.size.w {
-            self.offset.x = self.cursor.x - self.size.w + 1;
-            self.draw = Draw::Whole;
-        }
+    fn highlight(&mut self, y: usize) {
+        let len = self.syntax.highlight(&mut self.rows[y..]);
+        self.draw_range.extend(y, y + len);
     }
 
     fn highlight_region(&mut self, prev_cursor: Cursor) {
@@ -428,6 +493,7 @@ impl Buffer {
                 };
             }
         }
+        self.draw_range.extend(pos1.y, pos2.y + 1);
     }
 
     fn unhighlight_region(&mut self, anchor: Pos) {
@@ -445,6 +511,30 @@ impl Buffer {
             if y < pos2.y {
                 row.trailing_bg = Bg::Default;
             }
+        }
+        self.draw_range.extend(pos1.y, pos2.y + 1);
+    }
+
+    fn scroll(&mut self) {
+        if self.cursor.y < self.offset.y {
+            self.offset.y = self.cursor.y;
+            self.draw_range
+                .extend(self.offset.y, self.offset.y + self.size.h);
+        }
+        if self.cursor.y >= self.offset.y + self.size.h {
+            self.offset.y = self.cursor.y - self.size.h + 1;
+            self.draw_range
+                .extend(self.offset.y, self.offset.y + self.size.h);
+        }
+        if self.cursor.x < self.offset.x {
+            self.offset.x = self.cursor.x;
+            self.draw_range
+                .extend(self.offset.y, self.offset.y + self.size.h);
+        }
+        if self.cursor.x >= self.offset.x + self.size.w {
+            self.offset.x = self.cursor.x - self.size.w + 1;
+            self.draw_range
+                .extend(self.offset.y, self.offset.y + self.size.h);
         }
     }
 }
@@ -479,7 +569,8 @@ impl Buffer {
 
         self.move_to_match();
         self.highlight_match(true);
-        self.draw = Draw::Whole;
+        self.draw_range
+            .extend(self.offset.y, self.offset.y + self.size.h);
     }
 
     #[allow(clippy::collapsible_if)]
@@ -506,7 +597,8 @@ impl Buffer {
 
         self.move_to_match();
         self.highlight_match(true);
-        self.draw = Draw::Whole;
+        self.draw_range
+            .extend(self.offset.y, self.offset.y + self.size.h);
     }
 
     pub fn clear_matches(&mut self, restore: bool) {
@@ -525,7 +617,8 @@ impl Buffer {
             self.offset = self.search.orig_offset;
             self.cursor = self.search.orig_cursor;
         }
-        self.draw = Draw::Whole;
+        self.draw_range
+            .extend(self.offset.y, self.offset.y + self.size.h);
     }
 
     fn move_to_match(&mut self) {
