@@ -219,8 +219,7 @@ impl Buffer {
             "\x1b[{};{}H",
             self.pos.y + self.cursor.y - self.offset.y + 1,
             self.pos.x + self.cursor.x - self.offset.x + 1,
-        )?;
-        Ok(())
+        )
     }
 
     pub fn process_keypress(&mut self, key: Key) {

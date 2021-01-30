@@ -11,9 +11,9 @@ pub struct Minibuffer {
     pub size: Size,
     offset: Pos,
     cursor: Cursor,
+    row: Row,
     prompt_len: usize,
     draw: bool,
-    row: Row,
 }
 
 impl Minibuffer {
@@ -23,9 +23,9 @@ impl Minibuffer {
             size: Size::new(0, 0),
             offset: Pos::new(0, 0),
             cursor: Cursor::new(0, 0),
+            row: Row::new(String::new()),
             prompt_len: 0,
             draw: true,
-            row: Row::new(String::new()),
         }
     }
 
@@ -35,7 +35,7 @@ impl Minibuffer {
         self.offset.x = 0;
         self.cursor.x = 0;
         self.prompt_len = 0;
-        self.draw = true;
+        self.highlight();
     }
 
     pub fn set_prompt(&mut self, string: &str) {
@@ -44,7 +44,7 @@ impl Minibuffer {
         self.offset.x = 0;
         self.cursor.x = self.row.max_x();
         self.prompt_len = self.row.max_x();
-        self.draw = true;
+        self.highlight();
     }
 
     pub fn get_input(&self) -> String {
@@ -57,14 +57,6 @@ impl Minibuffer {
         }
 
         write!(canvas, "\x1b[{};{}H", self.pos.y + 1, self.pos.x + 1)?;
-
-        self.row.faces.clear();
-        self.row
-            .faces
-            .resize(self.prompt_len, (Fg::Prompt, Bg::Default));
-        self.row
-            .faces
-            .resize(self.row.string.len(), (Fg::Default, Bg::Default));
 
         let x_range = self.offset.x..(self.offset.x + self.size.w);
         self.row.draw(canvas, x_range)?;
@@ -81,8 +73,7 @@ impl Minibuffer {
             "\x1b[{};{}H",
             self.pos.y + 1,
             self.pos.x + self.cursor.x - self.offset.x + 1,
-        )?;
-        Ok(())
+        )
     }
 
     pub fn process_keypress(&mut self, key: Key) {
@@ -90,11 +81,13 @@ impl Minibuffer {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if self.cursor.x > 0 {
                     self.cursor.x = self.row.prev_x(self.cursor.x);
+                    self.scroll();
                 }
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
                 if self.cursor.x < self.row.max_x() {
                     self.cursor.x = self.row.next_x(self.cursor.x);
+                    self.scroll();
                 }
             }
             Key::Home | Key::Ctrl(b'A') => {
@@ -103,53 +96,69 @@ impl Minibuffer {
                 } else {
                     self.prompt_len
                 };
+                self.scroll();
             }
             Key::End | Key::Ctrl(b'E') => {
                 self.cursor.x = self.row.max_x();
+                self.scroll();
             }
             Key::Backspace | Key::Ctrl(b'H') => {
                 if self.cursor.x > self.prompt_len {
                     self.cursor.x = self.row.prev_x(self.cursor.x);
                     self.row.remove(self.cursor.x);
-                    self.draw = true;
+                    self.highlight();
+                    self.scroll();
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
                 if self.cursor.x >= self.prompt_len && self.cursor.x < self.row.max_x() {
                     self.row.remove(self.cursor.x);
-                    self.draw = true;
+                    self.highlight();
                 }
             }
             Key::Ctrl(b'I') => {
                 if self.cursor.x >= self.prompt_len {
                     self.row.insert(self.cursor.x, '\t');
                     self.cursor.x = self.row.next_x(self.cursor.x);
-                    self.draw = true;
+                    self.highlight();
+                    self.scroll();
                 }
             }
             Key::Ctrl(b'K') => {
                 if self.cursor.x >= self.prompt_len {
                     self.row.truncate(self.cursor.x);
-                    self.draw = true;
+                    self.highlight();
                 }
             }
             Key::Ctrl(b'U') => {
                 if self.cursor.x > self.prompt_len {
                     self.row.remove_str(self.prompt_len, self.cursor.x);
                     self.cursor.x = self.prompt_len;
-                    self.draw = true;
+                    self.highlight();
+                    self.scroll();
                 }
             }
             Key::Char(ch) => {
                 if self.cursor.x >= self.prompt_len {
                     self.row.insert(self.cursor.x, ch);
                     self.cursor.x = self.row.next_x(self.cursor.x);
-                    self.draw = true;
+                    self.highlight();
+                    self.scroll();
                 }
             }
             _ => (),
         }
-        self.scroll();
+    }
+
+    fn highlight(&mut self) {
+        self.row.faces.clear();
+        self.row
+            .faces
+            .resize(self.prompt_len, (Fg::Prompt, Bg::Default));
+        self.row
+            .faces
+            .resize(self.row.string.len(), (Fg::Default, Bg::Default));
+        self.draw = true;
     }
 
     fn scroll(&mut self) {

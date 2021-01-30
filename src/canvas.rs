@@ -10,6 +10,18 @@ pub enum Term {
     Color16,
 }
 
+impl Term {
+    fn detect() -> Self {
+        match env::var("COLORTERM") {
+            Ok(val) if val == "truecolor" => Self::TrueColor,
+            _ => match env::var("TERM") {
+                Ok(val) if val.contains("256color") => Self::Color256,
+                _ => Self::Color16,
+            },
+        }
+    }
+}
+
 pub struct Canvas {
     pub term: Term,
     bytes: Vec<u8>,
@@ -34,7 +46,7 @@ impl Write for Canvas {
 impl Canvas {
     pub fn new() -> Self {
         let mut canvas = Self {
-            term: Self::detect_term(),
+            term: Term::detect(),
             bytes: Vec::new(),
             fg: None,
             bg: None,
@@ -43,16 +55,6 @@ impl Canvas {
         };
         canvas.define_colors();
         canvas
-    }
-
-    fn detect_term() -> Term {
-        match env::var("COLORTERM") {
-            Ok(val) if val == "truecolor" => Term::TrueColor,
-            _ => match env::var("TERM") {
-                Ok(val) if val.contains("256color") => Term::Color256,
-                _ => Term::Color16,
-            },
-        }
     }
 
     fn define_colors(&mut self) {
