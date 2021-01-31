@@ -9,44 +9,7 @@ use crate::face::{Bg, Fg};
 use crate::key::Key;
 use crate::row::{Row, TAB_WIDTH};
 use crate::syntax::{Indent, Syntax};
-
-#[derive(Default)]
-struct DrawRange {
-    start: Option<usize>,
-    end: Option<usize>,
-}
-
-impl DrawRange {
-    fn extend_start(&mut self, start: usize) {
-        if let Some(y) = self.start {
-            self.start = Some(start.min(y));
-        } else {
-            self.start = Some(start);
-        }
-    }
-
-    fn extend_end(&mut self, end: usize) {
-        if let Some(y) = self.end {
-            self.end = Some(end.max(y));
-        } else {
-            self.end = Some(end);
-        }
-    }
-
-    fn extend(&mut self, start: usize, end: usize) {
-        self.extend_start(start);
-        self.extend_end(end);
-    }
-
-    fn clear(&mut self) {
-        self.start = None;
-        self.end = None;
-    }
-
-    fn as_tuple(&self) -> (Option<usize>, Option<usize>) {
-        (self.start, self.end)
-    }
-}
+use crate::util::ExpandableRange;
 
 #[derive(Default)]
 struct Search {
@@ -71,7 +34,7 @@ pub struct Buffer {
     cursor: Cursor,
     anchor: Option<Pos>,
     rows: Vec<Row>,
-    draw_range: DrawRange,
+    draw_range: ExpandableRange,
     search: Search,
 }
 
@@ -315,8 +278,7 @@ impl Buffer {
                         self.highlight_region(prev_cursor);
                     }
                     self.scroll();
-                    self.draw_range
-                        .extend(self.offset.y, self.offset.y + self.size.h);
+                    self.draw_range.full_expand();
                 }
             }
             Key::PageDown | Key::Ctrl(b'V') => {
@@ -329,8 +291,7 @@ impl Buffer {
                         self.highlight_region(prev_cursor);
                     }
                     self.scroll();
-                    self.draw_range
-                        .extend(self.offset.y, self.offset.y + self.size.h);
+                    self.draw_range.full_expand();
                 }
             }
             Key::Backspace | Key::Ctrl(b'H') => {
@@ -352,7 +313,7 @@ impl Buffer {
                     self.modified = true;
                     self.highlight(self.cursor.y);
                     self.scroll();
-                    self.draw_range.extend_end(self.offset.y + self.size.h);
+                    self.draw_range.full_expand_end();
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
@@ -367,7 +328,7 @@ impl Buffer {
                     self.rows[self.cursor.y].push_str(&row.string);
                     self.modified = true;
                     self.highlight(self.cursor.y);
-                    self.draw_range.extend_end(self.offset.y + self.size.h);
+                    self.draw_range.full_expand_end();
                 }
             }
             Key::Ctrl(b'@') => {
@@ -415,7 +376,7 @@ impl Buffer {
                 self.modified = true;
                 self.highlight(self.cursor.y - 1);
                 self.scroll();
-                self.draw_range.extend_end(self.offset.y + self.size.h);
+                self.draw_range.full_expand_end();
             }
             Key::Ctrl(b'K') => {
                 // TODO: if self.anchor.is_some()
@@ -467,7 +428,7 @@ impl Buffer {
 
     fn highlight(&mut self, y: usize) {
         let len = self.syntax.highlight(&mut self.rows[y..]);
-        self.draw_range.extend(y, y + len);
+        self.draw_range.expand(y, y + len);
     }
 
     fn highlight_region(&mut self, prev_cursor: Cursor) {
@@ -492,7 +453,7 @@ impl Buffer {
                 };
             }
         }
-        self.draw_range.extend(pos1.y, pos2.y + 1);
+        self.draw_range.expand(pos1.y, pos2.y + 1);
     }
 
     fn unhighlight_region(&mut self, anchor: Pos) {
@@ -511,29 +472,25 @@ impl Buffer {
                 row.trailing_bg = Bg::Default;
             }
         }
-        self.draw_range.extend(pos1.y, pos2.y + 1);
+        self.draw_range.expand(pos1.y, pos2.y + 1);
     }
 
     fn scroll(&mut self) {
         if self.cursor.y < self.offset.y {
             self.offset.y = self.cursor.y;
-            self.draw_range
-                .extend(self.offset.y, self.offset.y + self.size.h);
+            self.draw_range.full_expand();
         }
         if self.cursor.y >= self.offset.y + self.size.h {
             self.offset.y = self.cursor.y - self.size.h + 1;
-            self.draw_range
-                .extend(self.offset.y, self.offset.y + self.size.h);
+            self.draw_range.full_expand();
         }
         if self.cursor.x < self.offset.x {
             self.offset.x = self.cursor.x;
-            self.draw_range
-                .extend(self.offset.y, self.offset.y + self.size.h);
+            self.draw_range.full_expand();
         }
         if self.cursor.x >= self.offset.x + self.size.w {
             self.offset.x = self.cursor.x - self.size.w + 1;
-            self.draw_range
-                .extend(self.offset.y, self.offset.y + self.size.h);
+            self.draw_range.full_expand();
         }
     }
 }
@@ -568,8 +525,7 @@ impl Buffer {
 
         self.move_to_match();
         self.highlight_match(true);
-        self.draw_range
-            .extend(self.offset.y, self.offset.y + self.size.h);
+        self.draw_range.full_expand();
     }
 
     #[allow(clippy::collapsible_if)]
@@ -596,8 +552,7 @@ impl Buffer {
 
         self.move_to_match();
         self.highlight_match(true);
-        self.draw_range
-            .extend(self.offset.y, self.offset.y + self.size.h);
+        self.draw_range.full_expand();
     }
 
     pub fn clear_matches(&mut self, restore: bool) {
@@ -616,8 +571,7 @@ impl Buffer {
             self.offset = self.search.orig_offset;
             self.cursor = self.search.orig_cursor;
         }
-        self.draw_range
-            .extend(self.offset.y, self.offset.y + self.size.h);
+        self.draw_range.full_expand();
     }
 
     fn move_to_match(&mut self) {

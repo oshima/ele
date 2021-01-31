@@ -7,7 +7,7 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::canvas::Canvas;
 use crate::face::{Bg, Fg};
-use crate::uint_vec::UintVec;
+use crate::util::UintVec;
 
 pub const TAB_WIDTH: usize = 4;
 const TOMBSTONE: usize = 0;

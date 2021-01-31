@@ -10,7 +10,7 @@ mod minibuffer;
 mod raw_mode;
 mod row;
 mod syntax;
-mod uint_vec;
+mod util;
 
 use std::env;
 use std::io;
