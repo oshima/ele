@@ -9,8 +9,8 @@ use crate::face::{Bg, Fg};
 use crate::row::{HlContext, Row};
 use crate::syntax::{Indent, Syntax};
 
-const UNDEFINED: HlContext = 0x00000000;
-const NORMAL: HlContext = 0x00000001;
+const UNCHECKED: HlContext = 0x00000000;
+const DEFAULT: HlContext = 0x00000001;
 const IN_ATTRIBUTE: HlContext = 0x00000002;
 const IN_STRING: HlContext = 0x00000004;
 const IN_RAW_STRING: HlContext = 0x0000ff00;
@@ -36,13 +36,13 @@ impl Syntax for Rust {
     }
 
     fn highlight(&self, rows: &mut [Row]) -> usize {
-        let mut new_context = UNDEFINED;
+        let mut new_context = UNCHECKED;
         let mut len = 0;
 
         for (i, row) in rows.iter_mut().enumerate() {
             if i == 0 {
-                if row.hl_context == UNDEFINED {
-                    row.hl_context = NORMAL;
+                if row.hl_context == UNCHECKED {
+                    row.hl_context = DEFAULT;
                 }
             } else {
                 if row.hl_context == new_context {
@@ -137,7 +137,7 @@ impl Rust {
             Some(BlockComment { open: true, depth }) => {
                 (depth as HlContext) << IN_COMMENT.trailing_zeros()
             }
-            _ => NORMAL,
+            _ => DEFAULT,
         }
     }
 }

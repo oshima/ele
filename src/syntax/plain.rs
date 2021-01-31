@@ -3,8 +3,8 @@ use crate::face::{Bg, Fg};
 use crate::row::{HlContext, Row};
 use crate::syntax::{Indent, Syntax};
 
-const UNDEFINED: HlContext = 0;
-const NORMAL: HlContext = 1;
+const UNCHECKED: HlContext = 0;
+const DEFAULT: HlContext = 1;
 
 pub struct Plain;
 
@@ -29,10 +29,10 @@ impl Syntax for Plain {
         let mut len = 0;
 
         for (i, row) in rows.iter_mut().enumerate() {
-            if i > 0 && row.hl_context != UNDEFINED {
+            if i > 0 && row.hl_context != UNCHECKED {
                 break;
             }
-            row.hl_context = NORMAL;
+            row.hl_context = DEFAULT;
             row.faces.clear();
             row.faces
                 .resize(row.string.len(), (Fg::Default, Bg::Default));
