@@ -103,7 +103,7 @@ impl Canvas {
                 self.define_bg_color(Bg::CurrentMatch, b"\x1b[48;5;173m");
             }
             Term::Color16 => {
-                self.define_fg_color(Fg::Default, b"\x1b[39m");
+                self.define_fg_color(Fg::Default, b"\x1b[37m");
                 self.define_fg_color(Fg::Keyword, b"\x1b[35m");
                 self.define_fg_color(Fg::Type, b"\x1b[33m");
                 self.define_fg_color(Fg::Module, b"\x1b[36m");
@@ -117,8 +117,8 @@ impl Canvas {
                 self.define_fg_color(Fg::CurrentMatch, b"\x1b[30m");
 
                 self.define_bg_color(Bg::Default, b"\x1b[40m");
-                self.define_bg_color(Bg::Region, b"\x1b[47m");
-                self.define_bg_color(Bg::StatusBar, b"\x1b[40m");
+                self.define_bg_color(Bg::Region, b"\x1b[100m");
+                self.define_bg_color(Bg::StatusBar, b"\x1b[100m");
                 self.define_bg_color(Bg::Match, b"\x1b[43m");
                 self.define_bg_color(Bg::CurrentMatch, b"\x1b[41m");
             }
