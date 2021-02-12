@@ -63,6 +63,7 @@ impl Rust {
         row.faces.clear();
         row.faces
             .resize(row.string.len(), (Fg::Default, Bg::Default));
+        row.trailing_bg = Bg::Default;
 
         let context = self.decode_context(row.hl_context);
         let mut tokens = Tokens::from(&row.string, &context).peekable();

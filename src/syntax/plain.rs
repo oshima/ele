@@ -36,6 +36,7 @@ impl Syntax for Plain {
             row.faces.clear();
             row.faces
                 .resize(row.string.len(), (Fg::Default, Bg::Default));
+            row.trailing_bg = Bg::Default;
             len += 1;
         }
 

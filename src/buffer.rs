@@ -79,6 +79,7 @@ impl Buffer {
             self.rows.push(Row::new(String::new()));
         }
         self.highlight(0);
+        self.draw_range.full_expand();
         Ok(())
     }
 
@@ -96,6 +97,7 @@ impl Buffer {
                 row.hl_context = 0;
             }
             self.syntax = Syntax::detect(Some(filename));
+            self.anchor = None;
             self.modified = false;
             self.highlight(0);
         }
@@ -298,6 +300,7 @@ impl Buffer {
                 if let Some(anchor) = self.anchor {
                     self.remove_region(anchor);
                     self.anchor = None;
+                    self.modified = true;
                     self.highlight(self.cursor.y);
                     self.scroll();
                 } else if self.cursor.x > 0 {
@@ -323,6 +326,7 @@ impl Buffer {
                 if let Some(anchor) = self.anchor {
                     self.remove_region(anchor);
                     self.anchor = None;
+                    self.modified = true;
                     self.highlight(self.cursor.y);
                     self.scroll();
                 } else if self.cursor.x < self.rows[self.cursor.y].max_x() {
