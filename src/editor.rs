@@ -24,6 +24,7 @@ pub struct Editor {
     state: State,
     buffer: Buffer,
     minibuffer: Minibuffer,
+    clipboard: Vec<String>,
 }
 
 impl Editor {
@@ -35,6 +36,7 @@ impl Editor {
             state: State::Default,
             buffer: Buffer::new(filename)?,
             minibuffer: Minibuffer::new(),
+            clipboard: Vec::new(),
         };
 
         // switch to alternate screen buffer
@@ -195,7 +197,7 @@ impl Editor {
                     self.minibuffer.set_message("C-x [C-s: save] [C-c: quit]");
                     self.state = State::CtrlX;
                 }
-                _ => self.buffer.process_keypress(key),
+                _ => self.buffer.process_keypress(key, &mut self.clipboard),
             },
             State::Search { backward } => match key {
                 Key::Ctrl(b'G') => {

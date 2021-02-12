@@ -183,15 +183,16 @@ impl Row {
         self.update();
     }
 
-    pub fn remove_str(&mut self, from_x: usize, to_x: usize) {
+    pub fn remove_str(&mut self, from_x: usize, to_x: usize) -> String {
         let from = self.x_to_idx(from_x);
         let to = self.x_to_idx(to_x);
         let string = self.string.split_off(to);
-        self.string.truncate(from);
+        let removed = self.string.split_off(from);
         self.string.push_str(&string);
         if self.x_to_idx.is_some() {
             self.update();
         }
+        removed
     }
 
     fn update(&mut self) {

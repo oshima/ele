@@ -185,7 +185,7 @@ impl Buffer {
         )
     }
 
-    pub fn process_keypress(&mut self, key: Key) {
+    pub fn process_keypress(&mut self, key: Key, clipboard: &mut Vec<String>) {
         match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if self.cursor.x > 0 {
@@ -394,7 +394,9 @@ impl Buffer {
                     self.unhighlight_region(anchor);
                     self.anchor = None;
                 }
-                self.rows[self.cursor.y].truncate(self.cursor.x);
+                let string = self.rows[self.cursor.y].split_off(self.cursor.x);
+                clipboard.clear();
+                clipboard.push(string);
                 self.modified = true;
                 self.highlight(self.cursor.y);
             }
@@ -403,12 +405,56 @@ impl Buffer {
                     self.unhighlight_region(anchor);
                     self.anchor = None;
                 }
-                self.rows[self.cursor.y].remove_str(0, self.cursor.x);
+                let string = self.rows[self.cursor.y].remove_str(0, self.cursor.x);
+                clipboard.clear();
+                clipboard.push(string);
                 self.cursor.x = 0;
                 self.cursor.last_x = self.cursor.x;
                 self.modified = true;
                 self.highlight(self.cursor.y);
                 self.scroll();
+            }
+            Key::Ctrl(b'W') => {
+                if let Some(anchor) = self.anchor {
+                    let mut strings = self.extract_region(anchor);
+                    clipboard.clear();
+                    clipboard.append(&mut strings);
+                    self.remove_region(anchor);
+                    self.anchor = None;
+                    self.modified = true;
+                    self.highlight(self.cursor.y);
+                    self.scroll();
+                }
+            }
+            Key::Ctrl(b'Y') => {
+                if clipboard.len() == 1 {
+                    let max_x = self.rows[self.cursor.y].max_x();
+                    self.rows[self.cursor.y].insert_str(self.cursor.x, &clipboard[0]);
+                    self.cursor.x += self.rows[self.cursor.y].max_x() - max_x;
+                    self.cursor.last_x = self.cursor.x;
+                    self.modified = true;
+                    self.highlight(self.cursor.y);
+                    self.scroll();
+                } else if clipboard.len() > 1 {
+                    let string = self.rows[self.cursor.y].split_off(self.cursor.x);
+                    let mut rows = self.rows.split_off(self.cursor.y + 1);
+                    self.rows[self.cursor.y].push_str(&clipboard[0]);
+                    self.rows.append(
+                        &mut clipboard[1..]
+                            .iter()
+                            .map(|s| Row::new(s.to_string()))
+                            .collect(),
+                    );
+                    self.cursor.y += clipboard.len() - 1;
+                    self.cursor.x = self.rows[self.cursor.y].max_x();
+                    self.cursor.last_x = self.cursor.x;
+                    self.rows[self.cursor.y].push_str(&string);
+                    self.rows.append(&mut rows);
+                    self.modified = true;
+                    self.highlight(self.cursor.y - clipboard.len() + 1);
+                    self.scroll();
+                    self.draw_range.full_expand_end();
+                }
             }
             Key::Alt(b'<') => {
                 let prev_cursor = self.cursor;
@@ -429,6 +475,15 @@ impl Buffer {
                     self.highlight_region(prev_cursor);
                 }
                 self.scroll();
+            }
+            Key::Alt(b'w') => {
+                if let Some(anchor) = self.anchor {
+                    let mut strings = self.extract_region(anchor);
+                    clipboard.clear();
+                    clipboard.append(&mut strings);
+                    self.unhighlight_region(anchor);
+                    self.anchor = None;
+                }
             }
             Key::Char(ch) => {
                 if let Some(anchor) = self.anchor {
@@ -472,6 +527,21 @@ impl Buffer {
 }
 
 impl Buffer {
+    fn extract_region(&self, anchor: Pos) -> Vec<String> {
+        let pos1 = cmp::min(anchor, self.cursor.as_pos());
+        let pos2 = cmp::max(anchor, self.cursor.as_pos());
+        let mut strings = Vec::new();
+
+        for y in pos1.y..=pos2.y {
+            let row = &self.rows[y];
+            let x1 = if y == pos1.y { pos1.x } else { 0 };
+            let x2 = if y == pos2.y { pos2.x } else { row.max_x() };
+            let s = &row.string[row.x_to_idx(x1)..row.x_to_idx(x2)];
+            strings.push(s.to_string());
+        }
+        strings
+    }
+
     fn highlight_region(&mut self, prev_cursor: Cursor) {
         let pos1 = cmp::min(prev_cursor.as_pos(), self.cursor.as_pos());
         let pos2 = cmp::max(prev_cursor.as_pos(), self.cursor.as_pos());
