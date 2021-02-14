@@ -126,10 +126,16 @@ impl Editor {
     }
 
     fn read_key(&mut self) -> Result<Key, KeyError> {
-        let byte = self.read_byte()?;
+        let mut buf = [0];
 
-        match byte {
-            0..=26 | 28..=31 => Ok(Key::Ctrl(b'@' + byte)),
+        while self.stdin.read(&mut buf)? == 0 {
+            if self.screen_resized.load(Ordering::Relaxed) {
+                return Err(KeyError::Interrupted);
+            }
+        }
+
+        match buf[0] {
+            0..=26 | 28..=31 => Ok(Key::Ctrl(b'@' + buf[0])),
             27 => match self.read_escape_sequence()? {
                 [0, 0, 0] => Ok(Key::Escape),
                 [b, 0, 0] => Ok(Key::Alt(b)),
@@ -150,24 +156,13 @@ impl Editor {
                 [b'[', b'8', b'~'] => Ok(Key::End),
                 _ => Ok(Key::Unknown),
             },
-            32..=126 => Ok(Key::Char(byte as char)),
+            32..=126 => Ok(Key::Char(buf[0] as char)),
             127 => Ok(Key::Backspace),
-            _ => match self.read_utf8(byte)? {
+            _ => match self.read_utf8(buf[0])? {
                 Some(ch) => Ok(Key::Char(ch)),
                 None => Ok(Key::Unknown),
             },
         }
-    }
-
-    fn read_byte(&mut self) -> Result<u8, KeyError> {
-        let mut buf = [0];
-
-        while self.stdin.read(&mut buf)? == 0 {
-            if self.screen_resized.load(Ordering::Relaxed) {
-                return Err(KeyError::Interrupted);
-            }
-        }
-        Ok(buf[0])
     }
 
     fn read_escape_sequence(&mut self) -> io::Result<[u8; 3]> {
