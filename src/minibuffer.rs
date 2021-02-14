@@ -7,8 +7,8 @@ use crate::key::Key;
 use crate::row::Row;
 
 pub struct Minibuffer {
-    pub pos: Pos,
-    pub size: Size,
+    pos: Pos,
+    size: Size,
     offset: Pos,
     cursor: Cursor,
     row: Row,
@@ -49,6 +49,13 @@ impl Minibuffer {
 
     pub fn get_input(&self) -> String {
         self.row.string[self.prompt_len..].to_string()
+    }
+
+    pub fn resize(&mut self, pos: Pos, size: Size) {
+        self.pos = pos;
+        self.size = size;
+        self.scroll();
+        self.draw = true;
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {

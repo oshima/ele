@@ -28,8 +28,8 @@ pub struct Buffer {
     syntax: Box<dyn Syntax>,
     pub filename: Option<String>,
     pub modified: bool,
-    pub pos: Pos,
-    pub size: Size,
+    pos: Pos,
+    size: Size,
     offset: Pos,
     cursor: Cursor,
     anchor: Option<Pos>,
@@ -104,6 +104,13 @@ impl Buffer {
         Ok(())
     }
 
+    pub fn resize(&mut self, pos: Pos, size: Size) {
+        self.pos = pos;
+        self.size = size;
+        self.scroll();
+        self.draw_range.full_expand();
+    }
+
     pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
         if let (Some(start), Some(end)) = self.draw_range.as_tuple() {
             let (top, bottom) = (self.offset.y, self.offset.y + self.size.h);
@@ -153,12 +160,14 @@ impl Buffer {
         )?;
         canvas.set_fg_color(Fg::Default)?;
         canvas.set_bg_color(Bg::StatusBar)?;
+        canvas.write(b"\x1b[K")?;
 
         if left_len <= self.size.w {
             canvas.write(b" ")?;
             canvas.write(filename.as_bytes())?;
             canvas.write(b" ")?;
             canvas.write(modified.as_bytes())?;
+            canvas.write(b"\x1b[K")?;
         }
 
         for _ in 0..padding {
@@ -173,9 +182,10 @@ impl Buffer {
             canvas.write(b" ")?;
             canvas.write(syntax.as_bytes())?;
             canvas.write(b" ")?;
+            canvas.reset_color()?;
+            canvas.write(b"\x1b[K")?;
         }
-
-        canvas.reset_color()
+        Ok(())
     }
 
     pub fn draw_cursor(&self, canvas: &mut Canvas) -> io::Result<()> {

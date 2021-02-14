@@ -1,10 +1,13 @@
+use signal_hook::{self, consts::signal::SIGWINCH};
 use std::io::{self, Read, Write};
 use std::str;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use crate::buffer::Buffer;
 use crate::canvas::Canvas;
 use crate::coord::{Pos, Size};
-use crate::key::Key;
+use crate::key::{Key, KeyError};
 use crate::minibuffer::Minibuffer;
 
 #[derive(PartialEq)]
@@ -25,6 +28,7 @@ pub struct Editor {
     buffer: Buffer,
     minibuffer: Minibuffer,
     clipboard: Vec<String>,
+    screen_resized: Arc<AtomicBool>,
 }
 
 impl Editor {
@@ -37,38 +41,54 @@ impl Editor {
             buffer: Buffer::new(filename)?,
             minibuffer: Minibuffer::new(),
             clipboard: Vec::new(),
+            screen_resized: Arc::new(AtomicBool::new(true)),
         };
 
         // switch to alternate screen buffer
         editor.stdout.write(b"\x1b[?1049h")?;
         editor.stdout.flush()?;
 
-        let Size { w, h } = editor.get_window_size()?;
-        editor.buffer.pos = Pos::new(0, 0);
-        editor.buffer.size = Size::new(w, h - 2);
-        editor.minibuffer.pos = Pos::new(0, h - 1);
-        editor.minibuffer.size = Size::new(w, 1);
+        // detect screen resizing
+        signal_hook::flag::register(SIGWINCH, Arc::clone(&editor.screen_resized))?;
+
         Ok(editor)
     }
 
-    fn get_window_size(&mut self) -> io::Result<Size> {
+    pub fn run(&mut self) -> io::Result<()> {
+        while self.state != State::Quitted {
+            if self.screen_resized.swap(false, Ordering::Relaxed) {
+                self.resize()?;
+            }
+
+            self.refresh_screen()?;
+
+            match self.read_key() {
+                Ok(key) => self.process_keypress(key)?,
+                Err(KeyError::IoError(e)) => return Err(e),
+                Err(KeyError::Interrupted) => (),
+            }
+        }
+        Ok(())
+    }
+
+    fn resize(&mut self) -> io::Result<()> {
         self.stdout.write(b"\x1b[999C\x1b[999B")?;
         self.stdout.write(b"\x1b[6n")?;
         self.stdout.flush()?;
 
         let mut buf = [0];
         let mut num = 0;
-        let mut size = Size::new(0, 0);
+        let (mut w, mut h) = (0, 0);
 
         while self.stdin.read(&mut buf)? == 1 {
             match buf[0] {
                 b'\x1b' | b'[' => (),
                 b';' => {
-                    size.h = num;
+                    h = num;
                     num = 0;
                 }
                 b'R' => {
-                    size.w = num;
+                    w = num;
                     break;
                 }
                 ch => {
@@ -76,39 +96,23 @@ impl Editor {
                 }
             }
         }
-        Ok(size)
-    }
 
-    pub fn run(&mut self) -> io::Result<()> {
-        while self.state != State::Quitted {
-            self.refresh_screen()?;
-
-            let key = self.read_key()?;
-            self.process_keypress(key)?;
-        }
+        self.buffer.resize(Pos::new(0, 0), Size::new(w, h - 2));
+        self.minibuffer.resize(Pos::new(0, h - 1), Size::new(w, 1));
         Ok(())
     }
 
     fn refresh_screen(&mut self) -> io::Result<()> {
         self.canvas.write(b"\x1b[?25l")?;
 
+        self.buffer.draw(&mut self.canvas)?;
+        self.minibuffer.draw(&mut self.canvas)?;
+
         match self.state {
-            State::Default => {
-                self.buffer.draw(&mut self.canvas)?;
-                self.minibuffer.draw(&mut self.canvas)?;
+            State::Default | State::CtrlX => {
                 self.buffer.draw_cursor(&mut self.canvas)?;
             }
-            State::Search { .. } => {
-                self.buffer.draw(&mut self.canvas)?;
-                self.minibuffer.draw(&mut self.canvas)?;
-                self.minibuffer.draw_cursor(&mut self.canvas)?;
-            }
-            State::CtrlX => {
-                self.minibuffer.draw(&mut self.canvas)?;
-                self.buffer.draw_cursor(&mut self.canvas)?;
-            }
-            State::Save | State::Quit => {
-                self.minibuffer.draw(&mut self.canvas)?;
+            State::Search { .. } | State::Save | State::Quit => {
                 self.minibuffer.draw_cursor(&mut self.canvas)?;
             }
             State::Quitted => unreachable!(),
@@ -121,7 +125,7 @@ impl Editor {
         self.stdout.flush()
     }
 
-    fn read_key(&mut self) -> io::Result<Key> {
+    fn read_key(&mut self) -> Result<Key, KeyError> {
         let byte = self.read_byte()?;
 
         match byte {
@@ -155,14 +159,17 @@ impl Editor {
         }
     }
 
-    #[inline]
-    fn read_byte(&mut self) -> io::Result<u8> {
+    fn read_byte(&mut self) -> Result<u8, KeyError> {
         let mut buf = [0];
-        while self.stdin.read(&mut buf)? == 0 {}
+
+        while self.stdin.read(&mut buf)? == 0 {
+            if self.screen_resized.load(Ordering::Relaxed) {
+                return Err(KeyError::Interrupted);
+            }
+        }
         Ok(buf[0])
     }
 
-    #[inline]
     fn read_escape_sequence(&mut self) -> io::Result<[u8; 3]> {
         let mut buf = [0; 3];
         self.stdin.read(&mut buf)?; // can result in a timeout
@@ -173,7 +180,7 @@ impl Editor {
         let mut buf = [first_byte, 0, 0, 0];
 
         for i in 1..buf.len() {
-            buf[i] = self.read_byte()?;
+            self.stdin.read(&mut buf[i..=i])?;
 
             if let Ok(s) = str::from_utf8(&buf[0..=i]) {
                 return Ok(s.chars().next());

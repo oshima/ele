@@ -1,3 +1,5 @@
+use std::io;
+
 pub enum Key {
     ArrowLeft,
     ArrowRight,
@@ -14,4 +16,15 @@ pub enum Key {
     Alt(u8),
     Char(char),
     Unknown,
+}
+
+pub enum KeyError {
+    IoError(io::Error),
+    Interrupted,
+}
+
+impl From<io::Error> for KeyError {
+    fn from(error: io::Error) -> Self {
+        Self::IoError(error)
+    }
 }
