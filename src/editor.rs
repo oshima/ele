@@ -60,7 +60,7 @@ impl Editor {
                 self.resize()?;
             }
 
-            self.refresh_screen()?;
+            self.draw()?;
 
             match self.read_key() {
                 Ok(key) => self.process_keypress(key)?,
@@ -102,7 +102,7 @@ impl Editor {
         Ok(())
     }
 
-    fn refresh_screen(&mut self) -> io::Result<()> {
+    fn draw(&mut self) -> io::Result<()> {
         self.canvas.write(b"\x1b[?25l")?;
 
         self.buffer.draw(&mut self.canvas)?;
