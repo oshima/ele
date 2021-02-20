@@ -700,6 +700,8 @@ impl Buffer {
         if restore {
             self.offset = self.search.orig_offset;
             self.cursor = self.search.orig_cursor;
+        } else if self.anchor.is_some() {
+            self.highlight_region(self.search.orig_cursor);
         }
         self.draw_range.full_expand();
     }
