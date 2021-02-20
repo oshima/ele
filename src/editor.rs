@@ -65,7 +65,7 @@ impl Editor {
             match self.read_key() {
                 Ok(key) => self.process_keypress(key)?,
                 Err(KeyError::IoError(e)) => return Err(e),
-                Err(KeyError::Interrupted) => (),
+                _ => (),
             }
         }
         Ok(())
@@ -154,13 +154,13 @@ impl Editor {
                 [b'[', b'6', b'~'] => Ok(Key::PageDown),
                 [b'[', b'7', b'~'] => Ok(Key::Home),
                 [b'[', b'8', b'~'] => Ok(Key::End),
-                _ => Ok(Key::Unknown),
+                _ => Err(KeyError::UnknownKey),
             },
             32..=126 => Ok(Key::Char(buf[0] as char)),
             127 => Ok(Key::Backspace),
             _ => match self.read_utf8(buf[0])? {
                 Some(ch) => Ok(Key::Char(ch)),
-                None => Ok(Key::Unknown),
+                None => Err(KeyError::UnknownKey),
             },
         }
     }

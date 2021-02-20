@@ -15,12 +15,12 @@ pub enum Key {
     Ctrl(u8),
     Alt(u8),
     Char(char),
-    Unknown,
 }
 
 pub enum KeyError {
     IoError(io::Error),
     Interrupted,
+    UnknownKey,
 }
 
 impl From<io::Error> for KeyError {
