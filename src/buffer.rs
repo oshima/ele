@@ -504,8 +504,9 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
+                let max_x = self.rows[self.cursor.y].max_x();
                 self.rows[self.cursor.y].insert(self.cursor.x, ch);
-                self.cursor.x = self.rows[self.cursor.y].next_x(self.cursor.x);
+                self.cursor.x += self.rows[self.cursor.y].max_x() - max_x;
                 self.cursor.last_x = self.cursor.x;
                 self.modified = true;
                 self.highlight(self.cursor.y);

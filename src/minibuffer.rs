@@ -147,8 +147,9 @@ impl Minibuffer {
             }
             Key::Char(ch) => {
                 if self.cursor.x >= self.prompt_len {
+                    let max_x = self.row.max_x();
                     self.row.insert(self.cursor.x, ch);
-                    self.cursor.x = self.row.next_x(self.cursor.x);
+                    self.cursor.x += self.row.max_x() - max_x;
                     self.highlight();
                     self.scroll();
                 }

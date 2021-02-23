@@ -10,7 +10,17 @@ use crate::face::{Bg, Fg};
 use crate::util::UintVec;
 
 pub const TAB_WIDTH: usize = 4;
+const ZWJ_WIDTH: usize = 1;
 const TOMBSTONE: usize = 0;
+
+#[inline]
+fn char_width(ch: char, x: usize) -> usize {
+    match ch {
+        '\t' => TAB_WIDTH - x % TAB_WIDTH,
+        '\u{200d}' => ZWJ_WIDTH,
+        _ => ch.width().unwrap_or(0),
+    }
+}
 
 pub type HlContext = u32;
 
@@ -116,15 +126,6 @@ impl Row {
     }
 
     #[inline]
-    fn char_width(&self, x: usize) -> usize {
-        let mut width = 1;
-        while !self.is_char_boundary(x + width) {
-            width += 1;
-        }
-        width
-    }
-
-    #[inline]
     fn is_char_boundary(&self, x: usize) -> bool {
         match self.x_to_idx.as_ref() {
             Some(v) => x == 0 || v.get(x) != TOMBSTONE,
@@ -141,8 +142,11 @@ impl Row {
     }
 
     pub fn remove(&mut self, x: usize) {
-        let idx = self.x_to_idx(x);
-        self.string.remove(idx);
+        let from = self.x_to_idx(x);
+        let to = self.x_to_idx(self.next_x(x));
+        let string = self.string.split_off(to);
+        self.string.truncate(from);
+        self.string.push_str(&string);
         if self.x_to_idx.is_some() {
             self.update();
         }
@@ -207,10 +211,7 @@ impl Row {
         x_to_idx.clear();
 
         for (idx, ch) in self.string.char_indices() {
-            let width = match ch {
-                '\t' => TAB_WIDTH - x_to_idx.len() % TAB_WIDTH,
-                _ => ch.width().unwrap_or(0),
-            };
+            let width = char_width(ch, x_to_idx.len());
             for i in 0..width {
                 x_to_idx.push(if i == 0 { idx } else { TOMBSTONE });
             }
@@ -243,20 +244,30 @@ impl Row {
 
         for (idx, ch) in self.string[start..end].char_indices() {
             let idx = start + idx;
-            let width = self.char_width(x);
+            let width = char_width(ch, x);
             let (fg, bg) = self.faces[idx];
 
             canvas.set_fg_color(fg)?;
             canvas.set_bg_color(bg)?;
 
-            if ch == '\t' {
-                for _ in 0..width {
-                    canvas.write(b" ")?;
-                }
-            } else {
-                let s = &self.string[idx..(idx + ch.len_utf8())];
-                canvas.write(s.as_bytes())?;
-            }
+            match ch {
+                '\t' => {
+                    for _ in 0..width {
+                        canvas.write(b" ")?;
+                    }
+                },
+                '\u{200d}' => {
+                    canvas.write(b"\x1b[4m")?;
+                    for _ in 0..width {
+                        canvas.write(b" ")?;
+                    }
+                    canvas.write(b"\x1b[24m")?;
+                },
+                _ => {
+                    let s = &self.string[idx..(idx + ch.len_utf8())];
+                    canvas.write(s.as_bytes())?;
+                },
+            };
 
             x += width;
         }
