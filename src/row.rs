@@ -41,7 +41,7 @@ impl Row {
             faces: Vec::new(),
             trailing_bg: Bg::Default,
         };
-        row.update();
+        row.update_mappings();
         row
     }
 
@@ -137,7 +137,7 @@ impl Row {
         let idx = self.x_to_idx(x);
         self.string.insert(idx, ch);
         if self.x_to_idx.is_some() || ch == '\t' || !ch.is_ascii() {
-            self.update();
+            self.update_mappings();
         }
     }
 
@@ -148,14 +148,14 @@ impl Row {
         self.string.truncate(from);
         self.string.push_str(&string);
         if self.x_to_idx.is_some() {
-            self.update();
+            self.update_mappings();
         }
     }
 
     pub fn clear(&mut self) {
         self.string.clear();
         if self.x_to_idx.is_some() {
-            self.update();
+            self.update_mappings();
         }
     }
 
@@ -163,7 +163,7 @@ impl Row {
         let idx = self.x_to_idx(x);
         self.string.truncate(idx);
         if self.x_to_idx.is_some() {
-            self.update();
+            self.update_mappings();
         }
     }
 
@@ -171,20 +171,20 @@ impl Row {
         let idx = self.x_to_idx(x);
         let string = self.string.split_off(idx);
         if self.x_to_idx.is_some() {
-            self.update();
+            self.update_mappings();
         }
         string
     }
 
     pub fn push_str(&mut self, string: &str) {
         self.string.push_str(string);
-        self.update();
+        self.update_mappings();
     }
 
     pub fn insert_str(&mut self, x: usize, string: &str) {
         let idx = self.x_to_idx(x);
         self.string.insert_str(idx, string);
-        self.update();
+        self.update_mappings();
     }
 
     pub fn remove_str(&mut self, from_x: usize, to_x: usize) -> String {
@@ -194,12 +194,12 @@ impl Row {
         let removed = self.string.split_off(from);
         self.string.push_str(&string);
         if self.x_to_idx.is_some() {
-            self.update();
+            self.update_mappings();
         }
         removed
     }
 
-    fn update(&mut self) {
+    fn update_mappings(&mut self) {
         let x_to_idx = self.x_to_idx.get_or_insert(Box::new(UintVec::new()));
         let mut need_mappings = false;
 
