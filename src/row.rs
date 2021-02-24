@@ -200,11 +200,6 @@ impl Row {
     }
 
     fn update(&mut self) {
-        if self.string.is_empty() {
-            self.x_to_idx = None;
-            return;
-        }
-
         let x_to_idx = self.x_to_idx.get_or_insert(Box::new(UintVec::new()));
         let mut need_mappings = false;
 
@@ -212,6 +207,7 @@ impl Row {
 
         for (idx, ch) in self.string.char_indices() {
             let width = char_width(ch, x_to_idx.len());
+
             for i in 0..width {
                 x_to_idx.push(if i == 0 { idx } else { TOMBSTONE });
             }
@@ -220,11 +216,12 @@ impl Row {
             }
         }
 
-        if need_mappings {
-            x_to_idx.push(self.string.len());
-        } else {
+        if !need_mappings {
             self.x_to_idx = None;
+            return;
         }
+
+        x_to_idx.push(self.string.len());
     }
 
     pub fn draw(&self, canvas: &mut Canvas, x_range: Range<usize>) -> io::Result<()> {
@@ -255,18 +252,18 @@ impl Row {
                     for _ in 0..width {
                         canvas.write(b" ")?;
                     }
-                },
+                }
                 '\u{200d}' => {
                     canvas.write(b"\x1b[4m")?;
                     for _ in 0..width {
                         canvas.write(b" ")?;
                     }
                     canvas.write(b"\x1b[24m")?;
-                },
+                }
                 _ => {
                     let s = &self.string[idx..(idx + ch.len_utf8())];
                     canvas.write(s.as_bytes())?;
-                },
+                }
             };
 
             x += width;
