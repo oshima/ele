@@ -14,12 +14,16 @@ const ZWJ_WIDTH: usize = 1;
 const TOMBSTONE: usize = 0;
 
 #[inline]
-fn char_width(ch: char, x: usize) -> usize {
+fn char_width(x: usize, ch: char) -> usize {
     match ch {
         '\t' => TAB_WIDTH - x % TAB_WIDTH,
         '\u{200d}' => ZWJ_WIDTH,
         _ => ch.width().unwrap_or(0),
     }
+}
+
+pub fn str_width(x: usize, s: &str) -> usize {
+    s.chars().fold(0, |w, ch| w + char_width(x + w, ch))
 }
 
 pub type HlContext = u32;
@@ -141,15 +145,16 @@ impl Row {
         }
     }
 
-    pub fn remove(&mut self, x: usize) {
+    pub fn remove(&mut self, x: usize) -> String {
         let from = self.x_to_idx(x);
         let to = self.x_to_idx(self.next_x(x));
         let string = self.string.split_off(to);
-        self.string.truncate(from);
+        let removed = self.string.split_off(from);
         self.string.push_str(&string);
         if self.x_to_idx.is_some() {
             self.update_mappings();
         }
+        removed
     }
 
     pub fn clear(&mut self) {
@@ -206,7 +211,7 @@ impl Row {
         x_to_idx.clear();
 
         for (idx, ch) in self.string.char_indices() {
-            let width = char_width(ch, x_to_idx.len());
+            let width = char_width(x_to_idx.len(), ch);
 
             for i in 0..width {
                 x_to_idx.push(if i == 0 { idx } else { TOMBSTONE });
@@ -241,7 +246,7 @@ impl Row {
 
         for (idx, ch) in self.string[start..end].char_indices() {
             let idx = start + idx;
-            let width = char_width(ch, x);
+            let width = char_width(x, ch);
             let (fg, bg) = self.faces[idx];
 
             canvas.set_fg_color(fg)?;

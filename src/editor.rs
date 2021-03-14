@@ -27,7 +27,7 @@ pub struct Editor {
     state: State,
     buffer: Buffer,
     minibuffer: Minibuffer,
-    clipboard: Vec<String>,
+    clipboard: String,
     screen_resized: Arc<AtomicBool>,
 }
 
@@ -40,7 +40,7 @@ impl Editor {
             state: State::Default,
             buffer: Buffer::new(filename)?,
             minibuffer: Minibuffer::new(),
-            clipboard: Vec::new(),
+            clipboard: String::new(),
             screen_resized: Arc::new(AtomicBool::new(true)),
         };
 
