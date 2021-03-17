@@ -22,10 +22,6 @@ fn char_width(x: usize, ch: char) -> usize {
     }
 }
 
-pub fn str_width(x: usize, s: &str) -> usize {
-    s.chars().fold(0, |w, ch| w + char_width(x + w, ch))
-}
-
 pub type HlContext = u32;
 
 pub struct Row {
@@ -135,6 +131,10 @@ impl Row {
             Some(v) => x == 0 || v.get(x) != TOMBSTONE,
             None => true,
         }
+    }
+
+    pub fn read(&self, x1: usize, x2: usize) -> String {
+        self.string[self.x_to_idx(x1)..self.x_to_idx(x2)].to_string()
     }
 
     pub fn insert(&mut self, x: usize, ch: char) {
