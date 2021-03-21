@@ -4,11 +4,12 @@ use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::ops::Range;
 
 use crate::canvas::Canvas;
-use crate::coord::{Cursor, Pos, Size};
+use crate::coord::{Pos, Size};
 use crate::event::Event;
 use crate::face::{Bg, Fg};
 use crate::key::Key;
-use crate::row::{Row, TAB_WIDTH};
+use crate::row::Row;
+use crate::rows::{Rows, RowsMethods};
 use crate::syntax::{Indent, Syntax};
 use crate::util::ExpandableRange;
 
@@ -17,7 +18,7 @@ struct Search {
     matches: Vec<Match>,
     match_idx: usize,
     orig_offset: Pos,
-    orig_cursor: Cursor,
+    orig_cursor: Pos,
 }
 
 struct Match {
@@ -32,9 +33,10 @@ pub struct Buffer {
     pos: Pos,
     size: Size,
     offset: Pos,
-    cursor: Cursor,
+    cursor: Pos,
     anchor: Option<Pos>,
-    rows: Vec<Row>,
+    saved_x: usize,
+    rows: Rows,
     draw_range: ExpandableRange,
     undo_list: Vec<Event>,
     redo_list: Vec<Event>,
@@ -50,9 +52,10 @@ impl Buffer {
             pos: Pos::new(0, 0),
             size: Size::new(0, 0),
             offset: Pos::new(0, 0),
-            cursor: Cursor::new(0, 0),
+            cursor: Pos::new(0, 0),
             anchor: None,
-            rows: Vec::new(),
+            saved_x: 0,
+            rows: Rows::new(),
             draw_range: Default::default(),
             undo_list: Vec::new(),
             redo_list: Vec::new(),
@@ -205,109 +208,89 @@ impl Buffer {
     pub fn process_keypress(&mut self, key: Key, clipboard: &mut String) {
         match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
-                if self.cursor.x > 0 {
-                    let prev_cursor = self.cursor;
-                    self.cursor.x = self.rows[self.cursor.y].prev_x(self.cursor.x);
-                    self.cursor.last_x = self.cursor.x;
+                if let Some(pos) = self.rows.prev_pos(self.cursor) {
                     if self.anchor.is_some() {
-                        self.highlight_region(prev_cursor);
+                        self.highlight_region(pos);
                     }
-                    self.scroll();
-                } else if self.cursor.y > 0 {
-                    let prev_cursor = self.cursor;
-                    self.cursor.y -= 1;
-                    self.cursor.x = self.rows[self.cursor.y].max_x();
-                    self.cursor.last_x = self.cursor.x;
-                    if self.anchor.is_some() {
-                        self.highlight_region(prev_cursor);
-                    }
+                    self.cursor = pos;
+                    self.saved_x = pos.x;
                     self.scroll();
                 }
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
-                if self.cursor.x < self.rows[self.cursor.y].max_x() {
-                    let prev_cursor = self.cursor;
-                    self.cursor.x = self.rows[self.cursor.y].next_x(self.cursor.x);
-                    self.cursor.last_x = self.cursor.x;
+                if let Some(pos) = self.rows.next_pos(self.cursor) {
                     if self.anchor.is_some() {
-                        self.highlight_region(prev_cursor);
+                        self.highlight_region(pos);
                     }
-                    self.scroll();
-                } else if self.cursor.y < self.rows.len() - 1 {
-                    let prev_cursor = self.cursor;
-                    self.cursor.y += 1;
-                    self.cursor.x = 0;
-                    self.cursor.last_x = self.cursor.x;
-                    if self.anchor.is_some() {
-                        self.highlight_region(prev_cursor);
-                    }
+                    self.cursor = pos;
+                    self.saved_x = pos.x;
                     self.scroll();
                 }
             }
             Key::ArrowUp | Key::Ctrl(b'P') => {
-                if self.cursor.y > 0 {
-                    let prev_cursor = self.cursor;
-                    self.cursor.y -= 1;
-                    self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
+                if let Some(pos) = self.rows.upper_pos(Pos::new(self.saved_x, self.cursor.y)) {
                     if self.anchor.is_some() {
-                        self.highlight_region(prev_cursor);
+                        self.highlight_region(pos);
                     }
+                    self.cursor = pos;
                     self.scroll();
                 }
             }
             Key::ArrowDown | Key::Ctrl(b'N') => {
-                if self.cursor.y < self.rows.len() - 1 {
-                    let prev_cursor = self.cursor;
-                    self.cursor.y += 1;
-                    self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
+                if let Some(pos) = self.rows.lower_pos(Pos::new(self.saved_x, self.cursor.y)) {
                     if self.anchor.is_some() {
-                        self.highlight_region(prev_cursor);
+                        self.highlight_region(pos);
                     }
+                    self.cursor = pos;
                     self.scroll();
                 }
             }
             Key::Home | Key::Ctrl(b'A') => {
-                let prev_cursor = self.cursor;
                 let x = self.rows[self.cursor.y].first_letter_x();
-                self.cursor.x = if self.cursor.x == x { 0 } else { x };
-                self.cursor.last_x = self.cursor.x;
+                let pos = Pos::new(if self.cursor.x == x { 0 } else { x }, self.cursor.y);
                 if self.anchor.is_some() {
-                    self.highlight_region(prev_cursor);
+                    self.highlight_region(pos);
                 }
+                self.cursor = pos;
+                self.saved_x = pos.x;
                 self.scroll();
             }
             Key::End | Key::Ctrl(b'E') => {
-                let prev_cursor = self.cursor;
-                self.cursor.x = self.rows[self.cursor.y].max_x();
-                self.cursor.last_x = self.cursor.x;
+                let pos = Pos::new(self.rows[self.cursor.y].max_x(), self.cursor.y);
                 if self.anchor.is_some() {
-                    self.highlight_region(prev_cursor);
+                    self.highlight_region(pos);
                 }
+                self.cursor = pos;
+                self.saved_x = pos.x;
                 self.scroll();
             }
             Key::PageUp | Key::Alt(b'v') => {
                 if self.offset.y > 0 {
-                    let prev_cursor = self.cursor;
-                    self.cursor.y -= cmp::min(self.size.h, self.offset.y);
-                    self.offset.y -= cmp::min(self.size.h, self.offset.y);
-                    self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
+                    let delta = cmp::min(self.size.h, self.offset.y);
+                    let pos = Pos::new(
+                        self.rows[self.cursor.y - delta].prev_fit_x(self.saved_x),
+                        self.cursor.y - delta,
+                    );
                     if self.anchor.is_some() {
-                        self.highlight_region(prev_cursor);
+                        self.highlight_region(pos);
                     }
-                    self.scroll();
+                    self.cursor = pos;
+                    self.offset.y -= delta;
                     self.draw_range.full_expand();
                 }
             }
             Key::PageDown | Key::Ctrl(b'V') => {
                 if self.offset.y + self.size.h < self.rows.len() {
-                    let prev_cursor = self.cursor;
-                    self.cursor.y += cmp::min(self.size.h, self.rows.len() - self.cursor.y - 1);
-                    self.offset.y += self.size.h;
-                    self.cursor.x = self.rows[self.cursor.y].prev_fit_x(self.cursor.last_x);
+                    let delta = cmp::min(self.size.h, self.rows.len() - 1 - self.cursor.y);
+                    let pos = Pos::new(
+                        self.rows[self.cursor.y + delta].prev_fit_x(self.saved_x),
+                        self.cursor.y + delta,
+                    );
                     if self.anchor.is_some() {
-                        self.highlight_region(prev_cursor);
+                        self.highlight_region(pos);
                     }
-                    self.scroll();
+                    self.cursor = pos;
+                    self.offset.y += self.size.h;
                     self.draw_range.full_expand();
                 }
             }
@@ -315,43 +298,19 @@ impl Buffer {
                 if let Some(anchor) = self.anchor {
                     self.remove_region(anchor);
                     self.anchor = None;
-                } else if self.cursor.x > 0 {
-                    let pos1 = Pos::new(
-                        self.rows[self.cursor.y].prev_x(self.cursor.x),
-                        self.cursor.y,
-                    );
-                    let pos2 = self.cursor.as_pos();
-                    let event = Event::Delete(pos1, pos2, true);
+                } else if let Some(pos) = self.rows.prev_pos(self.cursor) {
+                    let event = Event::Delete(pos, self.cursor, true);
                     let reverse = self.process_event(event);
                     self.undo_list.push(reverse);
-                } else if self.cursor.y > 0 {
-                    let pos1 = Pos::new(
-                        self.rows[self.cursor.y - 1].max_x(),
-                        self.cursor.y - 1,
-                    );
-                    let pos2 = self.cursor.as_pos();
-                    let event = Event::Delete(pos1, pos2, true);
-                    let reverse = self.process_event(event);
-                    self.undo_list.push(reverse);
+                    self.scroll();
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
                 if let Some(anchor) = self.anchor {
                     self.remove_region(anchor);
                     self.anchor = None;
-                } else if self.cursor.x < self.rows[self.cursor.y].max_x() {
-                    let pos1 = self.cursor.as_pos();
-                    let pos2 = Pos::new(
-                        self.rows[self.cursor.y].next_x(self.cursor.x),
-                        self.cursor.y,
-                    );
-                    let event = Event::Delete(pos1, pos2, false);
-                    let reverse = self.process_event(event);
-                    self.undo_list.push(reverse);
-                } else if self.cursor.y < self.rows.len() - 1 {
-                    let pos1 = self.cursor.as_pos();
-                    let pos2 = Pos::new(0, self.cursor.y + 1);
-                    let event = Event::Delete(pos1, pos2, false);
+                } else if let Some(pos) = self.rows.next_pos(self.cursor) {
+                    let event = Event::Delete(self.cursor, pos, false);
                     let reverse = self.process_event(event);
                     self.undo_list.push(reverse);
                 }
@@ -360,7 +319,7 @@ impl Buffer {
                 if let Some(anchor) = self.anchor {
                     self.unhighlight_region(anchor);
                 }
-                self.anchor = Some(self.cursor.as_pos());
+                self.anchor = Some(self.cursor);
             }
             Key::Ctrl(b'G') => {
                 if let Some(anchor) = self.anchor {
@@ -374,44 +333,45 @@ impl Buffer {
                 }
                 match self.syntax.indent() {
                     Indent::None => {
-                        self.rows[self.cursor.y].insert(self.cursor.x, '\t');
-                        self.cursor.x = self.rows[self.cursor.y].next_x(self.cursor.x);
+                        let event = Event::Insert(self.cursor, "\t".into(), true);
+                        let reverse = self.process_event(event);
+                        self.undo_list.push(reverse);
+                        self.scroll();
                     }
                     Indent::Tab => {
-                        self.rows[self.cursor.y].insert(0, '\t');
-                        self.cursor.x += TAB_WIDTH;
+                        let event = Event::Indent(self.cursor.y, "\t".into());
+                        let reverse = self.process_event(event);
+                        self.undo_list.push(reverse);
+                        self.scroll();
                     }
                     Indent::Spaces(n) => {
                         let x = self.rows[self.cursor.y].first_letter_x();
-                        let spaces = " ".repeat(n - x % n);
-                        self.rows[self.cursor.y].insert_str(0, &spaces);
-                        self.cursor.x += spaces.len();
+                        let event = Event::Indent(self.cursor.y, " ".repeat(n - x % n));
+                        let reverse = self.process_event(event);
+                        self.undo_list.push(reverse);
+                        self.scroll();
                     }
                 }
-                self.cursor.last_x = self.cursor.x;
-                self.modified = true;
-                self.highlight(self.cursor.y);
-                self.scroll();
             }
             Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
                 if let Some(anchor) = self.anchor {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
-                let event = Event::Insert(self.cursor.as_pos(), "\n".into(), true);
+                let event = Event::Insert(self.cursor, "\n".into(), true);
                 let reverse = self.process_event(event);
                 self.undo_list.push(reverse);
+                self.scroll();
             }
             Key::Ctrl(b'K') => {
                 if let Some(anchor) = self.anchor {
                     self.unhighlight_region(anchor);
                     self.anchor = None;
                 }
-                let pos1 = self.cursor.as_pos();
-                let pos2 = Pos::new(self.rows[self.cursor.y].max_x(), self.cursor.y);
+                let pos = Pos::new(self.rows[self.cursor.y].max_x(), self.cursor.y);
                 clipboard.clear();
-                clipboard.push_str(&self.read(pos1, pos2));
-                let event = Event::Delete(pos1, pos2, false);
+                clipboard.push_str(&self.rows.read_text(self.cursor, pos));
+                let event = Event::Delete(self.cursor, pos, false);
                 let reverse = self.process_event(event);
                 self.undo_list.push(reverse);
             }
@@ -420,13 +380,13 @@ impl Buffer {
                     self.unhighlight_region(anchor);
                     self.anchor = None;
                 }
-                let pos1 = Pos::new(0, self.cursor.y);
-                let pos2 = self.cursor.as_pos();
+                let pos = Pos::new(0, self.cursor.y);
                 clipboard.clear();
-                clipboard.push_str(&self.read(pos1, pos2));
-                let event = Event::Delete(pos1, pos2, true);
+                clipboard.push_str(&self.rows.read_text(pos, self.cursor));
+                let event = Event::Delete(pos, self.cursor, true);
                 let reverse = self.process_event(event);
                 self.undo_list.push(reverse);
+                self.scroll();
             }
             Key::Ctrl(b'W') => {
                 if let Some(anchor) = self.anchor {
@@ -441,33 +401,33 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
-                let event = Event::Insert(self.cursor.as_pos(), clipboard.clone(), true);
+                let event = Event::Insert(self.cursor, clipboard.clone(), true);
                 let reverse = self.process_event(event);
                 self.undo_list.push(reverse);
+                self.scroll();
             }
             Key::Ctrl(b'_') => {
                 if let Some(event) = self.undo_list.pop() {
                     self.process_event(event);
+                    self.scroll_center();
                 }
             }
             Key::Alt(b'<') => {
-                let prev_cursor = self.cursor;
-                self.cursor.y = 0;
-                self.cursor.x = 0;
-                self.cursor.last_x = self.cursor.x;
+                let pos = Pos::new(0, 0);
                 if self.anchor.is_some() {
-                    self.highlight_region(prev_cursor);
+                    self.highlight_region(pos);
                 }
+                self.cursor = pos;
+                self.saved_x = pos.x;
                 self.scroll();
             }
             Key::Alt(b'>') => {
-                let prev_cursor = self.cursor;
-                self.cursor.y = self.rows.len() - 1;
-                self.cursor.x = self.rows[self.cursor.y].max_x();
-                self.cursor.last_x = self.cursor.x;
+                let pos = self.rows.max_pos();
                 if self.anchor.is_some() {
-                    self.highlight_region(prev_cursor);
+                    self.highlight_region(pos);
                 }
+                self.cursor = pos;
+                self.saved_x = pos.x;
                 self.scroll();
             }
             Key::Alt(b'w') => {
@@ -483,9 +443,10 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
-                let event = Event::Insert(self.cursor.as_pos(), ch.to_string(), true);
+                let event = Event::Insert(self.cursor, ch.to_string(), true);
                 let reverse = self.process_event(event);
                 self.undo_list.push(reverse);
+                self.scroll();
             }
             _ => (),
         }
@@ -494,81 +455,39 @@ impl Buffer {
     fn process_event(&mut self, event: Event) -> Event {
         match event {
             Event::Insert(pos1, string, mv) => {
-                let pos2 = self.insert(pos1, &string);
+                let pos2 = self.rows.insert_text(pos1, &string);
+                self.cursor = if mv { pos2 } else { pos1 };
+                self.saved_x = if mv { pos2.x } else { pos1.x };
                 self.highlight(pos1.y);
                 if pos1.y < pos2.y {
                     self.draw_range.full_expand_end();
                 }
-                self.jump_to(if mv { pos2 } else { pos1 });
                 Event::Delete(pos1, pos2, mv)
             }
             Event::Delete(pos1, pos2, mv) => {
-                let string = self.remove(pos1, pos2);
+                let string = self.rows.remove_text(pos1, pos2);
+                self.cursor = pos1;
+                self.saved_x = pos1.x;
                 self.highlight(pos1.y);
                 if pos1.y < pos2.y {
                     self.draw_range.full_expand_end();
                 }
-                self.jump_to(pos1);
                 Event::Insert(pos1, string, mv)
             }
-        }
-    }
-
-    // todo: Rows
-    fn read(&self, pos1: Pos, pos2: Pos) -> String {
-        let mut strings = Vec::new();
-
-        for y in pos1.y..=pos2.y {
-            let row = &self.rows[y];
-            let x1 = if y == pos1.y { pos1.x } else { 0 };
-            let x2 = if y == pos2.y { pos2.x } else { row.max_x() };
-            strings.push(row.read(x1, x2));
-        }
-        strings.join("\n")
-    }
-
-    // todo: Rows
-    fn insert(&mut self, pos: Pos, text: &str) -> Pos {
-        let strs: Vec<&str> = text.split('\n').collect();
-
-        if strs.len() == 1 {
-            let max_x = self.rows[pos.y].max_x();
-            self.rows[pos.y].insert_str(pos.x, strs[0]); // todo: return x
-            let delta_x = self.rows[pos.y].max_x() - max_x;
-            Pos::new(pos.x + delta_x, pos.y)
-        } else {
-            let string = self.rows[pos.y].split_off(pos.x);
-            let mut rows = self.rows.split_off(pos.y + 1);
-            self.rows[pos.y].push_str(&strs[0]);
-            self.rows
-                .append(&mut strs[1..].iter().map(|s| Row::new(s.to_string())).collect());
-            let y = self.rows.len() - 1;
-            let x = self.rows[y].max_x();
-            self.rows[y].push_str(&string);
-            self.rows.append(&mut rows);
-            Pos::new(x, y)
-        }
-    }
-
-    // todo: Rows
-    fn remove(&mut self, pos1: Pos, pos2: Pos) -> String {
-        if pos1.y == pos2.y {
-            self.rows[pos1.y].remove_str(pos1.x, pos2.x)
-        } else {
-            let mut removed = vec![self.rows[pos1.y].split_off(pos1.x)];
-            let string = self.rows[pos2.y].split_off(pos2.x);
-            let mut rows = self.rows.split_off(pos2.y + 1);
-            self.rows[pos1.y].push_str(&string);
-            removed.append(
-                &mut self
-                    .rows
-                    .split_off(pos1.y + 1)
-                    .into_iter()
-                    .map(|row| row.string)
-                    .collect(),
-            );
-            self.rows.append(&mut rows);
-            removed.join("\n")
+            Event::Indent(y, string) => {
+                let width = self.rows[y].insert_str(0, &string);
+                self.cursor.x += width;
+                self.saved_x += width;
+                self.highlight(y);
+                Event::Unindent(y, width)
+            }
+            Event::Unindent(y, width) => {
+                let string = self.rows[y].remove_str(0, width);
+                self.cursor.x -= width;
+                self.saved_x -= width;
+                self.highlight(y);
+                Event::Indent(y, string)
+            }
         }
     }
 
@@ -578,29 +497,6 @@ impl Buffer {
     }
 
     fn scroll(&mut self) {
-        if self.cursor.y < self.offset.y {
-            self.offset.y = self.cursor.y;
-            self.draw_range.full_expand();
-        }
-        if self.cursor.y >= self.offset.y + self.size.h {
-            self.offset.y = self.cursor.y - self.size.h + 1;
-            self.draw_range.full_expand();
-        }
-        if self.cursor.x < self.offset.x {
-            self.offset.x = self.cursor.x;
-            self.draw_range.full_expand();
-        }
-        if self.cursor.x >= self.offset.x + self.size.w {
-            self.offset.x = self.cursor.x - self.size.w + 1;
-            self.draw_range.full_expand();
-        }
-    }
-
-    fn scroll_to(&mut self, pos: Pos) {
-        self.cursor.x = pos.x;
-        self.cursor.y = pos.y;
-        self.cursor.last_x = pos.x;
-
         if self.cursor.x < self.offset.x {
             self.offset.x = self.cursor.x;
             self.draw_range.full_expand();
@@ -619,17 +515,13 @@ impl Buffer {
         }
     }
 
-    fn jump_to(&mut self, pos: Pos) {
-        self.cursor.x = pos.x;
-        self.cursor.y = pos.y;
-        self.cursor.last_x = pos.x;
-
-        if pos.x < self.offset.x || pos.x >= self.offset.x + self.size.w {
-            self.offset.x = pos.x.saturating_sub(self.size.w / 2);
+    fn scroll_center(&mut self) {
+        if self.cursor.x < self.offset.x || self.cursor.x >= self.offset.x + self.size.w {
+            self.offset.x = self.cursor.x.saturating_sub(self.size.w / 2);
             self.draw_range.full_expand();
         }
-        if pos.y < self.offset.y || pos.y >= self.offset.y + self.size.h {
-            self.offset.y = pos.y.saturating_sub(self.size.h / 2);
+        if self.cursor.y < self.offset.y || self.cursor.y >= self.offset.y + self.size.h {
+            self.offset.y = self.cursor.y.saturating_sub(self.size.h / 2);
             self.draw_range.full_expand();
         }
     }
@@ -637,14 +529,14 @@ impl Buffer {
 
 impl Buffer {
     fn read_region(&self, anchor: Pos) -> String {
-        let pos1 = cmp::min(anchor, self.cursor.as_pos());
-        let pos2 = cmp::max(anchor, self.cursor.as_pos());
-        self.read(pos1, pos2)
+        let pos1 = self.cursor.min(anchor);
+        let pos2 = self.cursor.max(anchor);
+        self.rows.read_text(pos1, pos2)
     }
 
-    fn highlight_region(&mut self, prev_cursor: Cursor) {
-        let pos1 = cmp::min(prev_cursor.as_pos(), self.cursor.as_pos());
-        let pos2 = cmp::max(prev_cursor.as_pos(), self.cursor.as_pos());
+    fn highlight_region(&mut self, pos: Pos) {
+        let pos1 = self.cursor.min(pos);
+        let pos2 = self.cursor.max(pos);
 
         for y in pos1.y..=pos2.y {
             let row = &mut self.rows[y];
@@ -668,8 +560,8 @@ impl Buffer {
     }
 
     fn unhighlight_region(&mut self, anchor: Pos) {
-        let pos1 = cmp::min(anchor, self.cursor.as_pos());
-        let pos2 = cmp::max(anchor, self.cursor.as_pos());
+        let pos1 = self.cursor.min(anchor);
+        let pos2 = self.cursor.max(anchor);
 
         for y in pos1.y..=pos2.y {
             let row = &mut self.rows[y];
@@ -687,12 +579,13 @@ impl Buffer {
     }
 
     fn remove_region(&mut self, anchor: Pos) {
-        let pos1 = cmp::min(anchor, self.cursor.as_pos());
-        let pos2 = cmp::max(anchor, self.cursor.as_pos());
-        let mv = pos2 == self.cursor.as_pos();
+        let pos1 = self.cursor.min(anchor);
+        let pos2 = self.cursor.max(anchor);
+        let mv = pos2 == self.cursor;
         let event = Event::Delete(pos1, pos2, mv);
         let reverse = self.process_event(event);
         self.undo_list.push(reverse);
+        self.scroll();
         self.rows[pos1.y].trailing_bg = Bg::Default;
     }
 }
@@ -713,13 +606,12 @@ impl Buffer {
         }
 
         let mut matches = self.search.matches.iter();
-        let cursor_pos = self.cursor.as_pos();
         self.search.match_idx = if backward {
             matches
-                .rposition(|m| m.pos < cursor_pos)
+                .rposition(|m| m.pos < self.cursor)
                 .unwrap_or(self.search.matches.len() - 1)
         } else {
-            matches.position(|m| m.pos >= cursor_pos).unwrap_or(0)
+            matches.position(|m| m.pos >= self.cursor).unwrap_or(0)
         };
 
         self.search.orig_offset = self.offset;
@@ -767,29 +659,24 @@ impl Buffer {
             let idx = row.x_to_idx(mat.pos.x);
             row.faces[idx..(idx + mat.faces.len())].swap_with_slice(&mut mat.faces);
         }
-
         self.search.matches.clear();
+
         if restore {
             self.offset = self.search.orig_offset;
             self.cursor = self.search.orig_cursor;
-        } else if self.anchor.is_some() {
-            self.highlight_region(self.search.orig_cursor);
+        } else {
+            self.saved_x = self.cursor.x;
+            if self.anchor.is_some() {
+                self.highlight_region(self.search.orig_cursor);
+            }
         }
         self.draw_range.full_expand();
     }
 
     fn move_to_match(&mut self) {
         let mat = &self.search.matches[self.search.match_idx];
-
-        if mat.pos.x < self.offset.x || mat.pos.x >= self.offset.x + self.size.w {
-            self.offset.x = mat.pos.x.saturating_sub(self.size.w / 2);
-        }
-        if mat.pos.y < self.offset.y || mat.pos.y >= self.offset.y + self.size.h {
-            self.offset.y = mat.pos.y.saturating_sub(self.size.h / 2);
-        }
-        self.cursor.x = mat.pos.x;
-        self.cursor.y = mat.pos.y;
-        self.cursor.last_x = mat.pos.x;
+        self.cursor = mat.pos;
+        self.scroll_center();
     }
 
     fn highlight_match(&mut self, current: bool) {
@@ -801,7 +688,6 @@ impl Buffer {
         } else {
             (Fg::Match, Bg::Match)
         };
-
         for i in idx..(idx + mat.faces.len()) {
             row.faces[i] = face;
         }

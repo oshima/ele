@@ -9,7 +9,7 @@ use crate::canvas::Canvas;
 use crate::face::{Bg, Fg};
 use crate::util::UintVec;
 
-pub const TAB_WIDTH: usize = 4;
+const TAB_WIDTH: usize = 4;
 const ZWJ_WIDTH: usize = 1;
 const TOMBSTONE: usize = 0;
 
@@ -20,6 +20,10 @@ fn char_width(x: usize, ch: char) -> usize {
         '\u{200d}' => ZWJ_WIDTH,
         _ => ch.width().unwrap_or(0),
     }
+}
+
+fn str_width(x: usize, string: &str) -> usize {
+    string.chars().fold(0, |w, ch| w + char_width(x + w, ch))
 }
 
 pub type HlContext = u32;
@@ -186,10 +190,11 @@ impl Row {
         self.update_mappings();
     }
 
-    pub fn insert_str(&mut self, x: usize, string: &str) {
+    pub fn insert_str(&mut self, x: usize, string: &str) -> usize {
         let idx = self.x_to_idx(x);
         self.string.insert_str(idx, string);
         self.update_mappings();
+        x + str_width(x, string)
     }
 
     pub fn remove_str(&mut self, from_x: usize, to_x: usize) -> String {
