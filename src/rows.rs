@@ -23,10 +23,7 @@ pub trait RowsMethods {
 
 impl RowsMethods for Rows {
     fn max_pos(&self) -> Pos {
-        Pos::new(
-            self[self.len() - 1].max_x(),
-            self.len() - 1,
-        )
+        Pos::new(self[self.len() - 1].max_x(), self.len() - 1)
     }
 
     fn prev_pos(&self, pos: Pos) -> Option<Pos> {

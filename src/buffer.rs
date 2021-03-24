@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::ops::Range;
 
+use self::UndoRedo::*;
 use crate::canvas::Canvas;
 use crate::coord::{Pos, Size};
 use crate::event::Event;
@@ -12,6 +13,14 @@ use crate::row::Row;
 use crate::rows::{Rows, RowsMethods};
 use crate::syntax::{Indent, Syntax};
 use crate::util::ExpandableRange;
+
+#[derive(Clone, Copy)]
+enum UndoRedo {
+    WillUndo,
+    WillRedo,
+    Undoing,
+    Redoing,
+}
 
 #[derive(Default)]
 struct Search {
@@ -40,6 +49,7 @@ pub struct Buffer {
     draw_range: ExpandableRange,
     undo_list: Vec<Event>,
     redo_list: Vec<Event>,
+    undo_redo: UndoRedo,
     search: Search,
 }
 
@@ -59,6 +69,7 @@ impl Buffer {
             draw_range: Default::default(),
             undo_list: Vec::new(),
             redo_list: Vec::new(),
+            undo_redo: WillUndo,
             search: Default::default(),
         };
         buffer.init()?;
@@ -216,6 +227,7 @@ impl Buffer {
                     self.saved_x = pos.x;
                     self.scroll();
                 }
+                self.switch_undo_redo();
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
                 if let Some(pos) = self.rows.next_pos(self.cursor) {
@@ -226,6 +238,7 @@ impl Buffer {
                     self.saved_x = pos.x;
                     self.scroll();
                 }
+                self.switch_undo_redo();
             }
             Key::ArrowUp | Key::Ctrl(b'P') => {
                 if let Some(pos) = self.rows.upper_pos(Pos::new(self.saved_x, self.cursor.y)) {
@@ -235,6 +248,7 @@ impl Buffer {
                     self.cursor = pos;
                     self.scroll();
                 }
+                self.switch_undo_redo();
             }
             Key::ArrowDown | Key::Ctrl(b'N') => {
                 if let Some(pos) = self.rows.lower_pos(Pos::new(self.saved_x, self.cursor.y)) {
@@ -244,6 +258,7 @@ impl Buffer {
                     self.cursor = pos;
                     self.scroll();
                 }
+                self.switch_undo_redo();
             }
             Key::Home | Key::Ctrl(b'A') => {
                 let x = self.rows[self.cursor.y].first_letter_x();
@@ -254,6 +269,7 @@ impl Buffer {
                 self.cursor = pos;
                 self.saved_x = pos.x;
                 self.scroll();
+                self.switch_undo_redo();
             }
             Key::End | Key::Ctrl(b'E') => {
                 let pos = Pos::new(self.rows[self.cursor.y].max_x(), self.cursor.y);
@@ -263,6 +279,7 @@ impl Buffer {
                 self.cursor = pos;
                 self.saved_x = pos.x;
                 self.scroll();
+                self.switch_undo_redo();
             }
             Key::PageUp | Key::Alt(b'v') => {
                 if self.offset.y > 0 {
@@ -278,6 +295,7 @@ impl Buffer {
                     self.offset.y -= delta;
                     self.draw_range.full_expand();
                 }
+                self.switch_undo_redo();
             }
             Key::PageDown | Key::Ctrl(b'V') => {
                 if self.offset.y + self.size.h < self.rows.len() {
@@ -293,6 +311,7 @@ impl Buffer {
                     self.offset.y += self.size.h;
                     self.draw_range.full_expand();
                 }
+                self.switch_undo_redo();
             }
             Key::Backspace | Key::Ctrl(b'H') => {
                 if let Some(anchor) = self.anchor {
@@ -302,6 +321,8 @@ impl Buffer {
                     let event = Event::Delete(pos, self.cursor, true);
                     let reverse = self.process_event(event);
                     self.undo_list.push(reverse);
+                    self.redo_list.clear();
+                    self.undo_redo = WillUndo;
                     self.scroll();
                 }
             }
@@ -313,6 +334,8 @@ impl Buffer {
                     let event = Event::Delete(self.cursor, pos, false);
                     let reverse = self.process_event(event);
                     self.undo_list.push(reverse);
+                    self.redo_list.clear();
+                    self.undo_redo = WillUndo;
                 }
             }
             Key::Ctrl(b'@') => {
@@ -320,38 +343,32 @@ impl Buffer {
                     self.unhighlight_region(anchor);
                 }
                 self.anchor = Some(self.cursor);
+                self.switch_undo_redo();
             }
             Key::Ctrl(b'G') => {
                 if let Some(anchor) = self.anchor {
                     self.unhighlight_region(anchor);
                 }
                 self.anchor = None;
+                self.switch_undo_redo();
             }
             Key::Ctrl(b'I') => {
                 if self.anchor.is_some() {
                     return; // TODO
                 }
-                match self.syntax.indent() {
-                    Indent::None => {
-                        let event = Event::Insert(self.cursor, "\t".into(), true);
-                        let reverse = self.process_event(event);
-                        self.undo_list.push(reverse);
-                        self.scroll();
-                    }
-                    Indent::Tab => {
-                        let event = Event::Indent(self.cursor.y, "\t".into());
-                        let reverse = self.process_event(event);
-                        self.undo_list.push(reverse);
-                        self.scroll();
-                    }
+                let event = match self.syntax.indent() {
+                    Indent::None => Event::Insert(self.cursor, "\t".into(), true),
+                    Indent::Tab => Event::Indent(self.cursor, "\t".into()),
                     Indent::Spaces(n) => {
                         let x = self.rows[self.cursor.y].first_letter_x();
-                        let event = Event::Indent(self.cursor.y, " ".repeat(n - x % n));
-                        let reverse = self.process_event(event);
-                        self.undo_list.push(reverse);
-                        self.scroll();
+                        Event::Indent(self.cursor, " ".repeat(n - x % n))
                     }
-                }
+                };
+                let reverse = self.process_event(event);
+                self.undo_list.push(reverse);
+                self.redo_list.clear();
+                self.undo_redo = WillUndo;
+                self.scroll();
             }
             Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
                 if let Some(anchor) = self.anchor {
@@ -361,6 +378,8 @@ impl Buffer {
                 let event = Event::Insert(self.cursor, "\n".into(), true);
                 let reverse = self.process_event(event);
                 self.undo_list.push(reverse);
+                self.redo_list.clear();
+                self.undo_redo = WillUndo;
                 self.scroll();
             }
             Key::Ctrl(b'K') => {
@@ -374,6 +393,8 @@ impl Buffer {
                 let event = Event::Delete(self.cursor, pos, false);
                 let reverse = self.process_event(event);
                 self.undo_list.push(reverse);
+                self.redo_list.clear();
+                self.undo_redo = WillUndo;
             }
             Key::Ctrl(b'U') => {
                 if let Some(anchor) = self.anchor {
@@ -386,6 +407,8 @@ impl Buffer {
                 let event = Event::Delete(pos, self.cursor, true);
                 let reverse = self.process_event(event);
                 self.undo_list.push(reverse);
+                self.redo_list.clear();
+                self.undo_redo = WillUndo;
                 self.scroll();
             }
             Key::Ctrl(b'W') => {
@@ -395,6 +418,7 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
+                self.switch_undo_redo();
             }
             Key::Ctrl(b'Y') => {
                 if let Some(anchor) = self.anchor {
@@ -404,14 +428,28 @@ impl Buffer {
                 let event = Event::Insert(self.cursor, clipboard.clone(), true);
                 let reverse = self.process_event(event);
                 self.undo_list.push(reverse);
+                self.redo_list.clear();
+                self.undo_redo = WillUndo;
                 self.scroll();
             }
-            Key::Ctrl(b'_') => {
-                if let Some(event) = self.undo_list.pop() {
-                    self.process_event(event);
-                    self.scroll_center();
+            Key::Ctrl(b'_') => match self.undo_redo {
+                WillUndo | Undoing => {
+                    if let Some(event) = self.undo_list.pop() {
+                        let reverse = self.process_event(event);
+                        self.redo_list.push(reverse);
+                        self.undo_redo = Undoing;
+                        self.scroll_center();
+                    }
                 }
-            }
+                WillRedo | Redoing => {
+                    if let Some(event) = self.redo_list.pop() {
+                        let reverse = self.process_event(event);
+                        self.undo_list.push(reverse);
+                        self.undo_redo = Redoing;
+                        self.scroll_center();
+                    }
+                }
+            },
             Key::Alt(b'<') => {
                 let pos = Pos::new(0, 0);
                 if self.anchor.is_some() {
@@ -420,6 +458,7 @@ impl Buffer {
                 self.cursor = pos;
                 self.saved_x = pos.x;
                 self.scroll();
+                self.switch_undo_redo();
             }
             Key::Alt(b'>') => {
                 let pos = self.rows.max_pos();
@@ -429,6 +468,7 @@ impl Buffer {
                 self.cursor = pos;
                 self.saved_x = pos.x;
                 self.scroll();
+                self.switch_undo_redo();
             }
             Key::Alt(b'w') => {
                 if let Some(anchor) = self.anchor {
@@ -437,6 +477,7 @@ impl Buffer {
                     self.unhighlight_region(anchor);
                     self.anchor = None;
                 }
+                self.switch_undo_redo();
             }
             Key::Char(ch) => {
                 if let Some(anchor) = self.anchor {
@@ -446,6 +487,8 @@ impl Buffer {
                 let event = Event::Insert(self.cursor, ch.to_string(), true);
                 let reverse = self.process_event(event);
                 self.undo_list.push(reverse);
+                self.redo_list.clear();
+                self.undo_redo = WillUndo;
                 self.scroll();
             }
             _ => (),
@@ -474,21 +517,29 @@ impl Buffer {
                 }
                 Event::Insert(pos1, string, mv)
             }
-            Event::Indent(y, string) => {
-                let width = self.rows[y].insert_str(0, &string);
-                self.cursor.x += width;
-                self.saved_x += width;
-                self.highlight(y);
-                Event::Unindent(y, width)
+            Event::Indent(pos, string) => {
+                let width = self.rows[pos.y].insert_str(0, &string);
+                self.cursor = Pos::new(pos.x + width, pos.y);
+                self.saved_x = pos.x + width;
+                self.highlight(pos.y);
+                Event::Unindent(self.cursor, width)
             }
-            Event::Unindent(y, width) => {
-                let string = self.rows[y].remove_str(0, width);
-                self.cursor.x -= width;
-                self.saved_x -= width;
-                self.highlight(y);
-                Event::Indent(y, string)
+            Event::Unindent(pos, width) => {
+                let string = self.rows[pos.y].remove_str(0, width);
+                self.cursor = Pos::new(pos.x - width, pos.y);
+                self.saved_x = pos.x - width;
+                self.highlight(pos.y);
+                Event::Indent(self.cursor, string)
             }
         }
+    }
+
+    fn switch_undo_redo(&mut self) {
+        match self.undo_redo {
+            Undoing => self.undo_redo = WillRedo,
+            Redoing => self.undo_redo = WillUndo,
+            _ => (),
+        };
     }
 
     fn highlight(&mut self, y: usize) {
@@ -585,6 +636,8 @@ impl Buffer {
         let event = Event::Delete(pos1, pos2, mv);
         let reverse = self.process_event(event);
         self.undo_list.push(reverse);
+        self.redo_list.clear();
+        self.undo_redo = WillUndo;
         self.scroll();
         self.rows[pos1.y].trailing_bg = Bg::Default;
     }
