@@ -47,6 +47,7 @@ pub struct Buffer {
     saved_x: usize,
     rows: Rows,
     draw_range: ExpandableRange,
+    last_key: Option<Key>,
     undo_list: Vec<Event>,
     redo_list: Vec<Event>,
     undo_redo: UndoRedo,
@@ -67,6 +68,7 @@ impl Buffer {
             saved_x: 0,
             rows: Rows::new(),
             draw_range: Default::default(),
+            last_key: None,
             undo_list: Vec::new(),
             redo_list: Vec::new(),
             undo_redo: WillUndo,
@@ -319,10 +321,8 @@ impl Buffer {
                     self.anchor = None;
                 } else if let Some(pos) = self.rows.prev_pos(self.cursor) {
                     let event = Event::Delete(pos, self.cursor, true);
-                    let reverse = self.process_event(event);
-                    self.undo_list.push(reverse);
-                    self.redo_list.clear();
-                    self.undo_redo = WillUndo;
+                    let revent = self.process_event(event);
+                    self.push_event(revent, matches!(self.last_key, Some(Key::Ctrl(b'H'))));
                     self.scroll();
                 }
             }
@@ -332,10 +332,8 @@ impl Buffer {
                     self.anchor = None;
                 } else if let Some(pos) = self.rows.next_pos(self.cursor) {
                     let event = Event::Delete(self.cursor, pos, false);
-                    let reverse = self.process_event(event);
-                    self.undo_list.push(reverse);
-                    self.redo_list.clear();
-                    self.undo_redo = WillUndo;
+                    let revent = self.process_event(event);
+                    self.push_event(revent, matches!(self.last_key, Some(Key::Ctrl(b'D'))));
                 }
             }
             Key::Ctrl(b'@') => {
@@ -364,10 +362,8 @@ impl Buffer {
                         Event::Indent(self.cursor, " ".repeat(n - x % n))
                     }
                 };
-                let reverse = self.process_event(event);
-                self.undo_list.push(reverse);
-                self.redo_list.clear();
-                self.undo_redo = WillUndo;
+                let revent = self.process_event(event);
+                self.push_event(revent, matches!(self.last_key, Some(Key::Ctrl(b'I'))));
                 self.scroll();
             }
             Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
@@ -376,10 +372,8 @@ impl Buffer {
                     self.anchor = None;
                 }
                 let event = Event::Insert(self.cursor, "\n".into(), true);
-                let reverse = self.process_event(event);
-                self.undo_list.push(reverse);
-                self.redo_list.clear();
-                self.undo_redo = WillUndo;
+                let revent = self.process_event(event);
+                self.push_event(revent, matches!(self.last_key, Some(Key::Ctrl(b'J')) | Some(Key::Ctrl(b'M'))));
                 self.scroll();
             }
             Key::Ctrl(b'K') => {
@@ -391,10 +385,8 @@ impl Buffer {
                 clipboard.clear();
                 clipboard.push_str(&self.rows.read_text(self.cursor, pos));
                 let event = Event::Delete(self.cursor, pos, false);
-                let reverse = self.process_event(event);
-                self.undo_list.push(reverse);
-                self.redo_list.clear();
-                self.undo_redo = WillUndo;
+                let revent = self.process_event(event);
+                self.push_event(revent, false);
             }
             Key::Ctrl(b'U') => {
                 if let Some(anchor) = self.anchor {
@@ -405,10 +397,8 @@ impl Buffer {
                 clipboard.clear();
                 clipboard.push_str(&self.rows.read_text(pos, self.cursor));
                 let event = Event::Delete(pos, self.cursor, true);
-                let reverse = self.process_event(event);
-                self.undo_list.push(reverse);
-                self.redo_list.clear();
-                self.undo_redo = WillUndo;
+                let revent = self.process_event(event);
+                self.push_event(revent, false);
                 self.scroll();
             }
             Key::Ctrl(b'W') => {
@@ -426,10 +416,8 @@ impl Buffer {
                     self.anchor = None;
                 }
                 let event = Event::Insert(self.cursor, clipboard.clone(), true);
-                let reverse = self.process_event(event);
-                self.undo_list.push(reverse);
-                self.redo_list.clear();
-                self.undo_redo = WillUndo;
+                let revent = self.process_event(event);
+                self.push_event(revent, false);
                 self.scroll();
             }
             Key::Ctrl(b'_') => match self.undo_redo {
@@ -485,14 +473,14 @@ impl Buffer {
                     self.anchor = None;
                 }
                 let event = Event::Insert(self.cursor, ch.to_string(), true);
-                let reverse = self.process_event(event);
-                self.undo_list.push(reverse);
-                self.redo_list.clear();
-                self.undo_redo = WillUndo;
+                let revent = self.process_event(event);
+                self.push_event(revent, matches!(self.last_key, Some(Key::Char(_))));
                 self.scroll();
             }
             _ => (),
         }
+
+        self.last_key = Some(key);
     }
 
     fn process_event(&mut self, event: Event) -> Event {
@@ -531,6 +519,20 @@ impl Buffer {
                 self.highlight(pos.y);
                 Event::Indent(self.cursor, string)
             }
+        }
+    }
+
+    fn push_event(&mut self, event: Event, merge: bool) {
+        if merge {
+            if let Some(last_event) = self.undo_list.pop() {
+                if let Some(event) = last_event.merge(event) {
+                    self.undo_list.push(event);
+                }
+            }
+        } else {
+            self.undo_list.push(event);
+            self.redo_list.clear();
+            self.undo_redo = WillUndo;
         }
     }
 
@@ -632,12 +634,9 @@ impl Buffer {
     fn remove_region(&mut self, anchor: Pos) {
         let pos1 = self.cursor.min(anchor);
         let pos2 = self.cursor.max(anchor);
-        let mv = pos2 == self.cursor;
-        let event = Event::Delete(pos1, pos2, mv);
-        let reverse = self.process_event(event);
-        self.undo_list.push(reverse);
-        self.redo_list.clear();
-        self.undo_redo = WillUndo;
+        let event = Event::Delete(pos1, pos2, self.cursor > anchor);
+        let revent = self.process_event(event);
+        self.push_event(revent, false);
         self.scroll();
         self.rows[pos1.y].trailing_bg = Bg::Default;
     }
