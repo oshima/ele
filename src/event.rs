@@ -2,8 +2,10 @@ use self::Event::*;
 use crate::coord::Pos;
 
 pub enum Event {
-    Insert(Pos, String, bool),
-    Delete(Pos, Pos, bool),
+    Insert(Pos, String),
+    InsertMv(Pos, String),
+    Remove(Pos, Pos),
+    RemoveMv(Pos, Pos),
     Indent(Pos, String),
     Unindent(Pos, usize),
 }
@@ -11,18 +13,20 @@ pub enum Event {
 impl Event {
     pub fn merge(self, other: Self) -> Option<Self> {
         match self {
-            Insert(pos1, string1, mv) => match other {
-                Insert(pos2, string2, _) => {
-                    if mv {
-                        Some(Insert(pos2, string2 + &string1, mv))
-                    } else {
-                        Some(Insert(pos1, string1 + &string2, mv))
-                    }
-                },
+            Insert(pos, string1) => match other {
+                Insert(_, string2) => Some(Insert(pos, string1 + &string2)),
                 _ => None,
             },
-            Delete(pos1, _, mv) => match other {
-                Delete(_, pos2, _) => Some(Delete(pos1, pos2, mv)),
+            InsertMv(_, string1) => match other {
+                InsertMv(pos, string2) => Some(InsertMv(pos, string2 + &string1)),
+                _ => None,
+            },
+            Remove(pos1, _) => match other {
+                Remove(_, pos2) => Some(Remove(pos1, pos2)),
+                _ => None,
+            },
+            RemoveMv(pos1, _) => match other {
+                RemoveMv(_, pos2) => Some(RemoveMv(pos1, pos2)),
                 _ => None,
             },
             Indent(pos, string1) => match other {
