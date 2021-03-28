@@ -38,16 +38,3 @@ impl Size {
         Self { w, h }
     }
 }
-
-#[derive(Clone, Copy, Default)]
-pub struct Cursor {
-    pub x: usize,
-    pub y: usize,
-    pub last_x: usize,
-}
-
-impl Cursor {
-    pub fn new(x: usize, y: usize) -> Self {
-        Self { x, y, last_x: x }
-    }
-}

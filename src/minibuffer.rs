@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 use crate::canvas::Canvas;
-use crate::coord::{Cursor, Pos, Size};
+use crate::coord::{Pos, Size};
 use crate::face::{Bg, Fg};
 use crate::key::Key;
 use crate::row::Row;
@@ -9,10 +9,10 @@ use crate::row::Row;
 pub struct Minibuffer {
     pos: Pos,
     size: Size,
-    offset: Pos,
-    cursor: Cursor,
-    row: Row,
+    offset: usize,
+    cursor: usize,
     prompt_len: usize,
+    row: Row,
     draw: bool,
 }
 
@@ -21,10 +21,10 @@ impl Minibuffer {
         Self {
             pos: Pos::new(0, 0),
             size: Size::new(0, 0),
-            offset: Pos::new(0, 0),
-            cursor: Cursor::new(0, 0),
-            row: Row::new(String::new()),
+            offset: 0,
+            cursor: 0,
             prompt_len: 0,
+            row: Row::new(String::new()),
             draw: true,
         }
     }
@@ -32,8 +32,8 @@ impl Minibuffer {
     pub fn set_message(&mut self, string: &str) {
         self.row.clear();
         self.row.push_str(string);
-        self.offset.x = 0;
-        self.cursor.x = 0;
+        self.offset = 0;
+        self.cursor = 0;
         self.prompt_len = 0;
         self.highlight();
     }
@@ -41,8 +41,8 @@ impl Minibuffer {
     pub fn set_prompt(&mut self, string: &str) {
         self.row.clear();
         self.row.push_str(string);
-        self.offset.x = 0;
-        self.cursor.x = self.row.max_x();
+        self.offset = 0;
+        self.cursor = self.row.max_x();
         self.prompt_len = self.row.max_x();
         self.highlight();
     }
@@ -65,7 +65,7 @@ impl Minibuffer {
 
         write!(canvas, "\x1b[{};{}H", self.pos.y + 1, self.pos.x + 1)?;
 
-        let x_range = self.offset.x..(self.offset.x + self.size.w);
+        let x_range = self.offset..(self.offset + self.size.w);
         self.row.draw(canvas, x_range)?;
 
         canvas.write(b"\x1b[K")?;
@@ -79,26 +79,26 @@ impl Minibuffer {
             canvas,
             "\x1b[{};{}H",
             self.pos.y + 1,
-            self.pos.x + self.cursor.x - self.offset.x + 1,
+            self.pos.x + self.cursor - self.offset + 1,
         )
     }
 
     pub fn process_keypress(&mut self, key: Key) {
         match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
-                if self.cursor.x > 0 {
-                    self.cursor.x = self.row.prev_x(self.cursor.x);
+                if self.cursor > 0 {
+                    self.cursor = self.row.prev_x(self.cursor);
                     self.scroll();
                 }
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
-                if self.cursor.x < self.row.max_x() {
-                    self.cursor.x = self.row.next_x(self.cursor.x);
+                if self.cursor < self.row.max_x() {
+                    self.cursor = self.row.next_x(self.cursor);
                     self.scroll();
                 }
             }
             Key::Home | Key::Ctrl(b'A') => {
-                self.cursor.x = if self.cursor.x == self.prompt_len {
+                self.cursor = if self.cursor == self.prompt_len {
                     0
                 } else {
                     self.prompt_len
@@ -106,50 +106,51 @@ impl Minibuffer {
                 self.scroll();
             }
             Key::End | Key::Ctrl(b'E') => {
-                self.cursor.x = self.row.max_x();
+                self.cursor = self.row.max_x();
                 self.scroll();
             }
             Key::Backspace | Key::Ctrl(b'H') => {
-                if self.cursor.x > self.prompt_len {
-                    self.cursor.x = self.row.prev_x(self.cursor.x);
-                    self.row.remove(self.cursor.x);
+                if self.cursor > self.prompt_len {
+                    let x = self.row.prev_x(self.cursor);
+                    self.row.remove_str(x, self.cursor);
+                    self.cursor = x;
                     self.highlight();
                     self.scroll();
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
-                if self.cursor.x >= self.prompt_len && self.cursor.x < self.row.max_x() {
-                    self.row.remove(self.cursor.x);
+                if self.cursor >= self.prompt_len && self.cursor < self.row.max_x() {
+                    let x = self.row.next_x(self.cursor);
+                    self.row.remove_str(self.cursor, x);
                     self.highlight();
                 }
             }
             Key::Ctrl(b'I') => {
-                if self.cursor.x >= self.prompt_len {
-                    self.row.insert(self.cursor.x, '\t');
-                    self.cursor.x = self.row.next_x(self.cursor.x);
+                if self.cursor >= self.prompt_len {
+                    let x = self.row.insert_str(self.cursor, "\t");
+                    self.cursor = x;
                     self.highlight();
                     self.scroll();
                 }
             }
             Key::Ctrl(b'K') => {
-                if self.cursor.x >= self.prompt_len {
-                    self.row.truncate(self.cursor.x);
+                if self.cursor >= self.prompt_len {
+                    self.row.truncate(self.cursor);
                     self.highlight();
                 }
             }
             Key::Ctrl(b'U') => {
-                if self.cursor.x > self.prompt_len {
-                    self.row.remove_str(self.prompt_len, self.cursor.x);
-                    self.cursor.x = self.prompt_len;
+                if self.cursor > self.prompt_len {
+                    self.row.remove_str(self.prompt_len, self.cursor);
+                    self.cursor = self.prompt_len;
                     self.highlight();
                     self.scroll();
                 }
             }
             Key::Char(ch) => {
-                if self.cursor.x >= self.prompt_len {
-                    let max_x = self.row.max_x();
-                    self.row.insert(self.cursor.x, ch);
-                    self.cursor.x += self.row.max_x() - max_x;
+                if self.cursor >= self.prompt_len {
+                    let x = self.row.insert_str(self.cursor, &ch.to_string());
+                    self.cursor = x;
                     self.highlight();
                     self.scroll();
                 }
@@ -170,12 +171,12 @@ impl Minibuffer {
     }
 
     fn scroll(&mut self) {
-        if self.cursor.x < self.offset.x {
-            self.offset.x = self.cursor.x;
+        if self.cursor < self.offset {
+            self.offset = self.cursor;
             self.draw = true;
         }
-        if self.cursor.x >= self.offset.x + self.size.w {
-            self.offset.x = self.cursor.x - self.size.w + 1;
+        if self.cursor >= self.offset + self.size.w {
+            self.offset = self.cursor - self.size.w + 1;
             self.draw = true;
         }
     }

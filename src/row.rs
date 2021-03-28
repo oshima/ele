@@ -141,48 +141,11 @@ impl Row {
         self.string[self.x_to_idx(x1)..self.x_to_idx(x2)].to_string()
     }
 
-    pub fn insert(&mut self, x: usize, ch: char) {
-        let idx = self.x_to_idx(x);
-        self.string.insert(idx, ch);
-        if self.x_to_idx.is_some() || ch == '\t' || !ch.is_ascii() {
-            self.update_mappings();
-        }
-    }
-
-    pub fn remove(&mut self, x: usize) -> String {
-        let from = self.x_to_idx(x);
-        let to = self.x_to_idx(self.next_x(x));
-        let string = self.string.split_off(to);
-        let removed = self.string.split_off(from);
-        self.string.push_str(&string);
-        if self.x_to_idx.is_some() {
-            self.update_mappings();
-        }
-        removed
-    }
-
     pub fn clear(&mut self) {
         self.string.clear();
         if self.x_to_idx.is_some() {
             self.update_mappings();
         }
-    }
-
-    pub fn truncate(&mut self, x: usize) {
-        let idx = self.x_to_idx(x);
-        self.string.truncate(idx);
-        if self.x_to_idx.is_some() {
-            self.update_mappings();
-        }
-    }
-
-    pub fn split_off(&mut self, x: usize) -> String {
-        let idx = self.x_to_idx(x);
-        let string = self.string.split_off(idx);
-        if self.x_to_idx.is_some() {
-            self.update_mappings();
-        }
-        string
     }
 
     pub fn push_str(&mut self, string: &str) {
@@ -207,6 +170,23 @@ impl Row {
             self.update_mappings();
         }
         removed
+    }
+
+    pub fn truncate(&mut self, x: usize) {
+        let idx = self.x_to_idx(x);
+        self.string.truncate(idx);
+        if self.x_to_idx.is_some() {
+            self.update_mappings();
+        }
+    }
+
+    pub fn split_off(&mut self, x: usize) -> String {
+        let idx = self.x_to_idx(x);
+        let string = self.string.split_off(idx);
+        if self.x_to_idx.is_some() {
+            self.update_mappings();
+        }
+        string
     }
 
     fn update_mappings(&mut self) {
