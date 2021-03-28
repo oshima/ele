@@ -263,7 +263,11 @@ impl Buffer {
                 self.switch_undo_redo();
             }
             Key::ArrowUp | Key::Ctrl(b'P') => {
-                if let Some(pos) = self.rows.upper_pos(Pos::new(self.saved_x, self.cursor.y)) {
+                if self.cursor.y > 0 {
+                    let pos = Pos::new(
+                        self.rows[self.cursor.y - 1].prev_fit_x(self.saved_x),
+                        self.cursor.y - 1,
+                    );
                     if self.anchor.is_some() {
                         self.highlight_region(pos);
                     }
@@ -273,7 +277,11 @@ impl Buffer {
                 self.switch_undo_redo();
             }
             Key::ArrowDown | Key::Ctrl(b'N') => {
-                if let Some(pos) = self.rows.lower_pos(Pos::new(self.saved_x, self.cursor.y)) {
+                if self.cursor.y < self.rows.len() - 1 {
+                    let pos = Pos::new(
+                        self.rows[self.cursor.y + 1].prev_fit_x(self.saved_x),
+                        self.cursor.y + 1,
+                    );
                     if self.anchor.is_some() {
                         self.highlight_region(pos);
                     }

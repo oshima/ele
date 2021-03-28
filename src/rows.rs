@@ -10,10 +10,6 @@ pub trait RowsMethods {
 
     fn next_pos(&self, pos: Pos) -> Option<Pos>;
 
-    fn upper_pos(&self, pos: Pos) -> Option<Pos>;
-
-    fn lower_pos(&self, pos: Pos) -> Option<Pos>;
-
     fn read_text(&self, pos1: Pos, pos2: Pos) -> String;
 
     fn insert_text(&mut self, pos: Pos, text: &str) -> Pos;
@@ -27,8 +23,8 @@ impl RowsMethods for Rows {
     }
 
     fn prev_pos(&self, pos: Pos) -> Option<Pos> {
-        if pos.x > 0 {
-            Some(Pos::new(self[pos.y].prev_x(pos.x), pos.y))
+        if let Some(x) = self[pos.y].prev_x(pos.x) {
+            Some(Pos::new(x, pos.y))
         } else if pos.y > 0 {
             Some(Pos::new(self[pos.y - 1].max_x(), pos.y - 1))
         } else {
@@ -37,26 +33,10 @@ impl RowsMethods for Rows {
     }
 
     fn next_pos(&self, pos: Pos) -> Option<Pos> {
-        if pos.x < self[pos.y].max_x() {
-            Some(Pos::new(self[pos.y].next_x(pos.x), pos.y))
+        if let Some(x) = self[pos.y].next_x(pos.x) {
+            Some(Pos::new(x, pos.y))
         } else if pos.y < self.len() - 1 {
             Some(Pos::new(0, pos.y + 1))
-        } else {
-            None
-        }
-    }
-
-    fn upper_pos(&self, pos: Pos) -> Option<Pos> {
-        if pos.y > 0 {
-            Some(Pos::new(self[pos.y - 1].prev_fit_x(pos.x), pos.y - 1))
-        } else {
-            None
-        }
-    }
-
-    fn lower_pos(&self, pos: Pos) -> Option<Pos> {
-        if pos.y < self.len() - 1 {
-            Some(Pos::new(self[pos.y + 1].prev_fit_x(pos.x), pos.y + 1))
         } else {
             None
         }

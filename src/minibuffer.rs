@@ -86,14 +86,14 @@ impl Minibuffer {
     pub fn process_keypress(&mut self, key: Key) {
         match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
-                if self.cursor > 0 {
-                    self.cursor = self.row.prev_x(self.cursor);
+                if let Some(x) = self.row.prev_x(self.cursor) {
+                    self.cursor = x;
                     self.scroll();
                 }
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
-                if self.cursor < self.row.max_x() {
-                    self.cursor = self.row.next_x(self.cursor);
+                if let Some(x) = self.row.next_x(self.cursor) {
+                    self.cursor = x;
                     self.scroll();
                 }
             }
@@ -111,18 +111,20 @@ impl Minibuffer {
             }
             Key::Backspace | Key::Ctrl(b'H') => {
                 if self.cursor > self.prompt_len {
-                    let x = self.row.prev_x(self.cursor);
-                    self.row.remove_str(x, self.cursor);
-                    self.cursor = x;
-                    self.highlight();
-                    self.scroll();
+                    if let Some(x) = self.row.prev_x(self.cursor) {
+                        self.row.remove_str(x, self.cursor);
+                        self.cursor = x;
+                        self.highlight();
+                        self.scroll();
+                    }
                 }
             }
             Key::Delete | Key::Ctrl(b'D') => {
-                if self.cursor >= self.prompt_len && self.cursor < self.row.max_x() {
-                    let x = self.row.next_x(self.cursor);
-                    self.row.remove_str(self.cursor, x);
-                    self.highlight();
+                if self.cursor >= self.prompt_len {
+                    if let Some(x) = self.row.next_x(self.cursor) {
+                        self.row.remove_str(self.cursor, x);
+                        self.highlight();
+                    }
                 }
             }
             Key::Ctrl(b'I') => {

@@ -80,20 +80,28 @@ impl Row {
         }
     }
 
-    pub fn prev_x(&self, x: usize) -> usize {
-        let mut x = x - 1;
-        while !self.is_char_boundary(x) {
-            x -= 1;
+    pub fn prev_x(&self, x: usize) -> Option<usize> {
+        if x > 0 {
+            let mut x = x - 1;
+            while !self.is_char_boundary(x) {
+                x -= 1;
+            }
+            Some(x)
+        } else {
+            None
         }
-        x
     }
 
-    pub fn next_x(&self, x: usize) -> usize {
-        let mut x = x + 1;
-        while !self.is_char_boundary(x) {
-            x += 1;
+    pub fn next_x(&self, x: usize) -> Option<usize> {
+        if x < self.max_x() {
+            let mut x = x + 1;
+            while !self.is_char_boundary(x) {
+                x += 1;
+            }
+            Some(x)
+        } else {
+            None
         }
-        x
     }
 
     pub fn prev_fit_x(&self, proposed_x: usize) -> usize {
@@ -114,12 +122,11 @@ impl Row {
 
     pub fn first_letter_x(&self) -> usize {
         let mut x = 0;
-        let max_x = self.max_x();
-        while x < max_x {
+        while let Some(next_x) = self.next_x(x) {
             if !self.char_at(x).is_ascii_whitespace() {
                 return x;
             }
-            x = self.next_x(x);
+            x = next_x;
         }
         x
     }
@@ -137,15 +144,15 @@ impl Row {
         }
     }
 
-    pub fn read(&self, x1: usize, x2: usize) -> String {
-        self.string[self.x_to_idx(x1)..self.x_to_idx(x2)].to_string()
-    }
-
     pub fn clear(&mut self) {
         self.string.clear();
         if self.x_to_idx.is_some() {
             self.update_mappings();
         }
+    }
+
+    pub fn read(&self, x1: usize, x2: usize) -> String {
+        self.string[self.x_to_idx(x1)..self.x_to_idx(x2)].to_string()
     }
 
     pub fn push_str(&mut self, string: &str) {
