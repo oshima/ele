@@ -4,11 +4,13 @@ mod buffer;
 mod canvas;
 mod coord;
 mod editor;
+mod event;
 mod face;
 mod key;
 mod minibuffer;
 mod raw_mode;
 mod row;
+mod rows;
 mod syntax;
 mod util;
 

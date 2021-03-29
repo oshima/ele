@@ -9,17 +9,21 @@ use crate::canvas::Canvas;
 use crate::face::{Bg, Fg};
 use crate::util::UintVec;
 
-pub const TAB_WIDTH: usize = 4;
+const TAB_WIDTH: usize = 4;
 const ZWJ_WIDTH: usize = 1;
 const TOMBSTONE: usize = 0;
 
 #[inline]
-fn char_width(ch: char, x: usize) -> usize {
+fn char_width(x: usize, ch: char) -> usize {
     match ch {
         '\t' => TAB_WIDTH - x % TAB_WIDTH,
         '\u{200d}' => ZWJ_WIDTH,
         _ => ch.width().unwrap_or(0),
     }
+}
+
+fn str_width(x: usize, string: &str) -> usize {
+    string.chars().fold(0, |w, ch| w + char_width(x + w, ch))
 }
 
 pub type HlContext = u32;
@@ -76,20 +80,28 @@ impl Row {
         }
     }
 
-    pub fn prev_x(&self, x: usize) -> usize {
-        let mut x = x - 1;
-        while !self.is_char_boundary(x) {
-            x -= 1;
+    pub fn prev_x(&self, x: usize) -> Option<usize> {
+        if x > 0 {
+            let mut x = x - 1;
+            while !self.is_char_boundary(x) {
+                x -= 1;
+            }
+            Some(x)
+        } else {
+            None
         }
-        x
     }
 
-    pub fn next_x(&self, x: usize) -> usize {
-        let mut x = x + 1;
-        while !self.is_char_boundary(x) {
-            x += 1;
+    pub fn next_x(&self, x: usize) -> Option<usize> {
+        if x < self.max_x() {
+            let mut x = x + 1;
+            while !self.is_char_boundary(x) {
+                x += 1;
+            }
+            Some(x)
+        } else {
+            None
         }
-        x
     }
 
     pub fn prev_fit_x(&self, proposed_x: usize) -> usize {
@@ -110,12 +122,11 @@ impl Row {
 
     pub fn first_letter_x(&self) -> usize {
         let mut x = 0;
-        let max_x = self.max_x();
-        while x < max_x {
+        while let Some(next_x) = self.next_x(x) {
             if !self.char_at(x).is_ascii_whitespace() {
                 return x;
             }
-            x = self.next_x(x);
+            x = next_x;
         }
         x
     }
@@ -133,30 +144,39 @@ impl Row {
         }
     }
 
-    pub fn insert(&mut self, x: usize, ch: char) {
-        let idx = self.x_to_idx(x);
-        self.string.insert(idx, ch);
-        if self.x_to_idx.is_some() || ch == '\t' || !ch.is_ascii() {
-            self.update_mappings();
-        }
-    }
-
-    pub fn remove(&mut self, x: usize) {
-        let from = self.x_to_idx(x);
-        let to = self.x_to_idx(self.next_x(x));
-        let string = self.string.split_off(to);
-        self.string.truncate(from);
-        self.string.push_str(&string);
-        if self.x_to_idx.is_some() {
-            self.update_mappings();
-        }
-    }
-
     pub fn clear(&mut self) {
         self.string.clear();
         if self.x_to_idx.is_some() {
             self.update_mappings();
         }
+    }
+
+    pub fn read(&self, x1: usize, x2: usize) -> String {
+        self.string[self.x_to_idx(x1)..self.x_to_idx(x2)].to_string()
+    }
+
+    pub fn push_str(&mut self, string: &str) {
+        self.string.push_str(string);
+        self.update_mappings();
+    }
+
+    pub fn insert_str(&mut self, x: usize, string: &str) -> usize {
+        let idx = self.x_to_idx(x);
+        self.string.insert_str(idx, string);
+        self.update_mappings();
+        x + str_width(x, string)
+    }
+
+    pub fn remove_str(&mut self, from_x: usize, to_x: usize) -> String {
+        let from = self.x_to_idx(from_x);
+        let to = self.x_to_idx(to_x);
+        let string = self.string.split_off(to);
+        let removed = self.string.split_off(from);
+        self.string.push_str(&string);
+        if self.x_to_idx.is_some() {
+            self.update_mappings();
+        }
+        removed
     }
 
     pub fn truncate(&mut self, x: usize) {
@@ -176,29 +196,6 @@ impl Row {
         string
     }
 
-    pub fn push_str(&mut self, string: &str) {
-        self.string.push_str(string);
-        self.update_mappings();
-    }
-
-    pub fn insert_str(&mut self, x: usize, string: &str) {
-        let idx = self.x_to_idx(x);
-        self.string.insert_str(idx, string);
-        self.update_mappings();
-    }
-
-    pub fn remove_str(&mut self, from_x: usize, to_x: usize) -> String {
-        let from = self.x_to_idx(from_x);
-        let to = self.x_to_idx(to_x);
-        let string = self.string.split_off(to);
-        let removed = self.string.split_off(from);
-        self.string.push_str(&string);
-        if self.x_to_idx.is_some() {
-            self.update_mappings();
-        }
-        removed
-    }
-
     fn update_mappings(&mut self) {
         let x_to_idx = self.x_to_idx.get_or_insert(Box::new(UintVec::new()));
         let mut need_mappings = false;
@@ -206,7 +203,7 @@ impl Row {
         x_to_idx.clear();
 
         for (idx, ch) in self.string.char_indices() {
-            let width = char_width(ch, x_to_idx.len());
+            let width = char_width(x_to_idx.len(), ch);
 
             for i in 0..width {
                 x_to_idx.push(if i == 0 { idx } else { TOMBSTONE });
@@ -241,7 +238,7 @@ impl Row {
 
         for (idx, ch) in self.string[start..end].char_indices() {
             let idx = start + idx;
-            let width = char_width(ch, x);
+            let width = char_width(x, ch);
             let (fg, bg) = self.faces[idx];
 
             canvas.set_fg_color(fg)?;
