@@ -1,3 +1,7 @@
+use std::io::{self, Write};
+use std::ops::Range;
+
+use crate::canvas::Canvas;
 use crate::coord::Pos;
 use crate::row::Row;
 
@@ -15,6 +19,13 @@ pub trait RowsMethods {
     fn insert_text(&mut self, pos: Pos, text: &str) -> Pos;
 
     fn remove_text(&mut self, pos1: Pos, pos2: Pos) -> String;
+
+    fn draw(
+        &self,
+        canvas: &mut Canvas,
+        x_range: Range<usize>,
+        y_range: Range<usize>,
+    ) -> io::Result<()>;
 }
 
 impl RowsMethods for Rows {
@@ -90,5 +101,21 @@ impl RowsMethods for Rows {
             self.append(&mut rows);
             removed.join("\n")
         }
+    }
+
+    fn draw(
+        &self,
+        canvas: &mut Canvas,
+        x_range: Range<usize>,
+        y_range: Range<usize>,
+    ) -> io::Result<()> {
+        for y in y_range {
+            if y < self.len() {
+                self[y].draw(canvas, x_range.clone())?;
+            }
+            canvas.write(b"\x1b[K")?;
+            canvas.write(b"\r\n")?;
+        }
+        Ok(())
     }
 }

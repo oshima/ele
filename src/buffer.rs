@@ -1,7 +1,6 @@
 use std::cmp;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
-use std::ops::Range;
 
 use crate::canvas::Canvas;
 use crate::coord::{Pos, Size};
@@ -144,33 +143,28 @@ impl Buffer {
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
-        if let (Some(start), Some(end)) = self.draw_range.as_tuple() {
+        if let Some((start, end)) = self.draw_range.as_tuple() {
             let (top, bottom) = (self.offset.y, self.offset.y + self.size.h);
             let y_range = start.max(top)..end.min(bottom);
-            self.draw_rows(canvas, y_range)?;
+            let x_range = self.offset.x..(self.offset.x + self.size.w);
+            write!(
+                canvas,
+                "\x1b[{};{}H",
+                self.pos.y + y_range.start - self.offset.y + 1,
+                self.pos.x + 1,
+            )?;
+            self.rows.draw(canvas, x_range, y_range)?;
         }
-        self.draw_status_bar(canvas)?;
 
-        self.draw_range.clear();
-        Ok(())
-    }
-
-    fn draw_rows(&self, canvas: &mut Canvas, y_range: Range<usize>) -> io::Result<()> {
         write!(
             canvas,
             "\x1b[{};{}H",
-            self.pos.y + y_range.start - self.offset.y + 1,
+            self.pos.y + self.size.h + 1,
             self.pos.x + 1,
         )?;
+        self.draw_status_bar(canvas)?;
 
-        for y in y_range {
-            if y < self.rows.len() {
-                let x_range = self.offset.x..(self.offset.x + self.size.w);
-                self.rows[y].draw(canvas, x_range)?;
-            }
-            canvas.write(b"\x1b[K")?;
-            canvas.write(b"\r\n")?;
-        }
+        self.draw_range.clear();
         Ok(())
     }
 
@@ -184,12 +178,6 @@ impl Buffer {
         let right_len = cursor.len() + syntax.len() + 4;
         let padding = self.size.w.saturating_sub(left_len + right_len);
 
-        write!(
-            canvas,
-            "\x1b[{};{}H",
-            self.pos.y + self.size.h + 1,
-            self.pos.x + 1,
-        )?;
         canvas.set_fg_color(Fg::Default)?;
         canvas.set_bg_color(Bg::StatusBar)?;
         canvas.write(b"\x1b[K")?;

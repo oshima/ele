@@ -44,7 +44,10 @@ impl ExpandableRange {
         self.end = None;
     }
 
-    pub fn as_tuple(&self) -> (Option<usize>, Option<usize>) {
-        (self.start, self.end)
+    pub fn as_tuple(&self) -> Option<(usize, usize)> {
+        match (self.start, self.end) {
+            (Some(start), Some(end)) => Some((start, end)),
+            _ => None,
+        }
     }
 }
