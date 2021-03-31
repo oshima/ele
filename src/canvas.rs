@@ -53,83 +53,83 @@ impl Canvas {
             fg_colors: Default::default(),
             bg_colors: Default::default(),
         };
-        canvas.define_colors();
+        canvas.map_colors();
         canvas
     }
 
-    fn define_colors(&mut self) {
+    fn map_colors(&mut self) {
         // TODO: load config file
 
         // default: Tomorrow Night Bright
         match self.term {
             Term::TrueColor => {
-                self.define_fg_color(Fg::Default, b"\x1b[38;2;234;234;234m");
-                self.define_fg_color(Fg::Keyword, b"\x1b[38;2;195;151;216m");
-                self.define_fg_color(Fg::Type, b"\x1b[38;2;231;197;71m");
-                self.define_fg_color(Fg::Module, b"\x1b[38;2;112;192;177m");
-                self.define_fg_color(Fg::Variable, b"\x1b[38;2;231;140;69m");
-                self.define_fg_color(Fg::Function, b"\x1b[38;2;122;166;218m");
-                self.define_fg_color(Fg::Macro, b"\x1b[38;2;112;192;177m");
-                self.define_fg_color(Fg::String, b"\x1b[38;2;185;202;74m");
-                self.define_fg_color(Fg::Comment, b"\x1b[38;2;150;152;150m");
-                self.define_fg_color(Fg::Prompt, b"\x1b[38;2;122;166;218m");
-                self.define_fg_color(Fg::Match, b"\x1b[38;2;0;0;0m");
-                self.define_fg_color(Fg::CurrentMatch, b"\x1b[38;2;0;0;0m");
+                self.map_fg_color(Fg::Default, fg_color!(234, 234, 234));
+                self.map_fg_color(Fg::Keyword, fg_color!(195, 151, 216));
+                self.map_fg_color(Fg::Type, fg_color!(231, 197, 71));
+                self.map_fg_color(Fg::Module, fg_color!(112, 192, 177));
+                self.map_fg_color(Fg::Variable, fg_color!(231, 140, 69));
+                self.map_fg_color(Fg::Function, fg_color!(122, 166, 218));
+                self.map_fg_color(Fg::Macro, fg_color!(112, 192, 177));
+                self.map_fg_color(Fg::String, fg_color!(185, 202, 74));
+                self.map_fg_color(Fg::Comment, fg_color!(150, 152, 150));
+                self.map_fg_color(Fg::Prompt, fg_color!(122, 166, 218));
+                self.map_fg_color(Fg::Match, fg_color!(0, 0, 0));
+                self.map_fg_color(Fg::CurrentMatch, fg_color!(0, 0, 0));
 
-                self.define_bg_color(Bg::Default, b"\x1b[48;2;0;0;0m");
-                self.define_bg_color(Bg::Region, b"\x1b[48;2;66;66;66m");
-                self.define_bg_color(Bg::StatusBar, b"\x1b[48;2;28;28;28m");
-                self.define_bg_color(Bg::Match, b"\x1b[48;2;231;197;71m");
-                self.define_bg_color(Bg::CurrentMatch, b"\x1b[48;2;231;140;69m");
+                self.map_bg_color(Bg::Default, bg_color!(0, 0, 0));
+                self.map_bg_color(Bg::Region, bg_color!(66, 66, 66));
+                self.map_bg_color(Bg::StatusBar, bg_color!(28, 28, 28));
+                self.map_bg_color(Bg::Match, bg_color!(231, 197, 71));
+                self.map_bg_color(Bg::CurrentMatch, bg_color!(231, 140, 69));
             }
             Term::Color256 => {
-                self.define_fg_color(Fg::Default, b"\x1b[38;5;255m");
-                self.define_fg_color(Fg::Keyword, b"\x1b[38;5;182m");
-                self.define_fg_color(Fg::Type, b"\x1b[38;5;179m");
-                self.define_fg_color(Fg::Module, b"\x1b[38;5;115m");
-                self.define_fg_color(Fg::Variable, b"\x1b[38;5;173m");
-                self.define_fg_color(Fg::Function, b"\x1b[38;5;110m");
-                self.define_fg_color(Fg::Macro, b"\x1b[38;5;115m");
-                self.define_fg_color(Fg::String, b"\x1b[38;5;143m");
-                self.define_fg_color(Fg::Comment, b"\x1b[38;5;246m");
-                self.define_fg_color(Fg::Prompt, b"\x1b[38;5;110m");
-                self.define_fg_color(Fg::Match, b"\x1b[38;5;16m");
-                self.define_fg_color(Fg::CurrentMatch, b"\x1b[38;5;16m");
+                self.map_fg_color(Fg::Default, fg_color256!(255));
+                self.map_fg_color(Fg::Keyword, fg_color256!(182));
+                self.map_fg_color(Fg::Type, fg_color256!(179));
+                self.map_fg_color(Fg::Module, fg_color256!(115));
+                self.map_fg_color(Fg::Variable, fg_color256!(173));
+                self.map_fg_color(Fg::Function, fg_color256!(110));
+                self.map_fg_color(Fg::Macro, fg_color256!(115));
+                self.map_fg_color(Fg::String, fg_color256!(143));
+                self.map_fg_color(Fg::Comment, fg_color256!(246));
+                self.map_fg_color(Fg::Prompt, fg_color256!(110));
+                self.map_fg_color(Fg::Match, fg_color256!(16));
+                self.map_fg_color(Fg::CurrentMatch, fg_color256!(16));
 
-                self.define_bg_color(Bg::Default, b"\x1b[48;5;16m");
-                self.define_bg_color(Bg::Region, b"\x1b[48;5;238m");
-                self.define_bg_color(Bg::StatusBar, b"\x1b[48;5;234m");
-                self.define_bg_color(Bg::Match, b"\x1b[48;5;179m");
-                self.define_bg_color(Bg::CurrentMatch, b"\x1b[48;5;173m");
+                self.map_bg_color(Bg::Default, bg_color256!(16));
+                self.map_bg_color(Bg::Region, bg_color256!(238));
+                self.map_bg_color(Bg::StatusBar, bg_color256!(234));
+                self.map_bg_color(Bg::Match, bg_color256!(179));
+                self.map_bg_color(Bg::CurrentMatch, bg_color256!(173));
             }
             Term::Color16 => {
-                self.define_fg_color(Fg::Default, b"\x1b[37m");
-                self.define_fg_color(Fg::Keyword, b"\x1b[35m");
-                self.define_fg_color(Fg::Type, b"\x1b[33m");
-                self.define_fg_color(Fg::Module, b"\x1b[36m");
-                self.define_fg_color(Fg::Variable, b"\x1b[31m");
-                self.define_fg_color(Fg::Function, b"\x1b[34m");
-                self.define_fg_color(Fg::Macro, b"\x1b[36m");
-                self.define_fg_color(Fg::String, b"\x1b[32m");
-                self.define_fg_color(Fg::Comment, b"\x1b[36m");
-                self.define_fg_color(Fg::Prompt, b"\x1b[34m");
-                self.define_fg_color(Fg::Match, b"\x1b[30m");
-                self.define_fg_color(Fg::CurrentMatch, b"\x1b[30m");
+                self.map_fg_color(Fg::Default, fg_color16!(white));
+                self.map_fg_color(Fg::Keyword, fg_color16!(magenta));
+                self.map_fg_color(Fg::Type, fg_color16!(yellow));
+                self.map_fg_color(Fg::Module, fg_color16!(cyan));
+                self.map_fg_color(Fg::Variable, fg_color16!(red));
+                self.map_fg_color(Fg::Function, fg_color16!(blue));
+                self.map_fg_color(Fg::Macro, fg_color16!(cyan));
+                self.map_fg_color(Fg::String, fg_color16!(green));
+                self.map_fg_color(Fg::Comment, fg_color16!(cyan));
+                self.map_fg_color(Fg::Prompt, fg_color16!(blue));
+                self.map_fg_color(Fg::Match, fg_color16!(black));
+                self.map_fg_color(Fg::CurrentMatch, fg_color16!(black));
 
-                self.define_bg_color(Bg::Default, b"\x1b[40m");
-                self.define_bg_color(Bg::Region, b"\x1b[100m");
-                self.define_bg_color(Bg::StatusBar, b"\x1b[100m");
-                self.define_bg_color(Bg::Match, b"\x1b[43m");
-                self.define_bg_color(Bg::CurrentMatch, b"\x1b[41m");
+                self.map_bg_color(Bg::Default, bg_color16!(black));
+                self.map_bg_color(Bg::Region, bg_color16!(bright_black));
+                self.map_bg_color(Bg::StatusBar, bg_color16!(bright_black));
+                self.map_bg_color(Bg::Match, bg_color16!(yellow));
+                self.map_bg_color(Bg::CurrentMatch, bg_color16!(red));
             }
         }
     }
 
-    fn define_fg_color(&mut self, fg: Fg, color: &[u8]) {
+    fn map_fg_color(&mut self, fg: Fg, color: &[u8]) {
         self.fg_colors[fg as usize].extend_from_slice(color);
     }
 
-    fn define_bg_color(&mut self, bg: Bg, color: &[u8]) {
+    fn map_bg_color(&mut self, bg: Bg, color: &[u8]) {
         self.bg_colors[bg as usize].extend_from_slice(color);
     }
 

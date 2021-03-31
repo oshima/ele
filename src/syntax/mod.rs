@@ -8,7 +8,8 @@ use crate::syntax::rust::Rust;
 
 pub trait Syntax {
     fn name(&self) -> &'static str;
-    fn color(&self, term: Term) -> &'static [u8];
+    fn fg_color(&self, term: Term) -> &'static [u8];
+    fn bg_color(&self, term: Term) -> &'static [u8];
     fn indent(&self) -> Indent;
     fn highlight(&self, rows: &mut [Row]) -> usize;
 }

@@ -23,11 +23,19 @@ impl Syntax for Rust {
         "Rust"
     }
 
-    fn color(&self, term: Term) -> &'static [u8] {
+    fn fg_color(&self, term: Term) -> &'static [u8] {
         match term {
-            Term::TrueColor => b"\x1b[38;2;0;0;0m\x1b[48;2;222;165;132m",
-            Term::Color256 => b"\x1b[38;5;16m\x1b[48;5;180m",
-            Term::Color16 => b"\x1b[30m\x1b[41m",
+            Term::TrueColor => fg_color!(0, 0, 0),
+            Term::Color256 => fg_color256!(16),
+            Term::Color16 => fg_color16!(black),
+        }
+    }
+
+    fn bg_color(&self, term: Term) -> &'static [u8] {
+        match term {
+            Term::TrueColor => bg_color!(222, 165, 132),
+            Term::Color256 => bg_color256!(180),
+            Term::Color16 => bg_color16!(red),
         }
     }
 

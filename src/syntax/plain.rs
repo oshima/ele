@@ -13,11 +13,19 @@ impl Syntax for Plain {
         "Plain"
     }
 
-    fn color(&self, term: Term) -> &'static [u8] {
+    fn fg_color(&self, term: Term) -> &'static [u8] {
         match term {
-            Term::TrueColor => b"\x1b[38;2;0;0;0m\x1b[48;2;255;255;255m",
-            Term::Color256 => b"\x1b[38;5;16m\x1b[48;5;231m",
-            Term::Color16 => b"\x1b[30m\x1b[47m",
+            Term::TrueColor => fg_color!(0, 0, 0),
+            Term::Color256 => fg_color256!(16),
+            Term::Color16 => fg_color16!(black),
+        }
+    }
+
+    fn bg_color(&self, term: Term) -> &'static [u8] {
+        match term {
+            Term::TrueColor => bg_color!(255, 255, 255),
+            Term::Color256 => bg_color256!(231),
+            Term::Color16 => bg_color16!(white),
         }
     }
 

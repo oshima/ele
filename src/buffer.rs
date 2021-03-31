@@ -198,7 +198,8 @@ impl Buffer {
             canvas.write(b" ")?;
             canvas.write(cursor.as_bytes())?;
             canvas.write(b" ")?;
-            canvas.write(self.syntax.color(canvas.term))?;
+            canvas.write(self.syntax.fg_color(canvas.term))?;
+            canvas.write(self.syntax.bg_color(canvas.term))?;
             canvas.write(b" ")?;
             canvas.write(syntax.as_bytes())?;
             canvas.write(b" ")?;

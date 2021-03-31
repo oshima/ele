@@ -1,5 +1,8 @@
 #![allow(clippy::unused_io_amount)]
 
+#[macro_use]
+mod color;
+
 mod buffer;
 mod canvas;
 mod coord;
