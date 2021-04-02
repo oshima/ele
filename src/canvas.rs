@@ -134,6 +134,11 @@ impl Canvas {
     }
 
     #[inline]
+    pub fn set_cursor(&mut self, x: usize, y: usize) -> io::Result<()> {
+        write!(self.bytes, "\x1b[{};{}H", y + 1, x + 1)
+    }
+
+    #[inline]
     pub fn set_fg_color(&mut self, fg: Fg) -> io::Result<()> {
         if self.fg != Some(fg) {
             self.bytes.write(&self.fg_colors[fg as usize])?;
@@ -156,6 +161,14 @@ impl Canvas {
         self.bytes.write(b"\x1b[m")?;
         self.fg = None;
         self.bg = None;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn write_repeat(&mut self, buf: &[u8], n: usize) -> io::Result<()> {
+        for _ in 0..n {
+            self.bytes.write(buf)?;
+        }
         Ok(())
     }
 

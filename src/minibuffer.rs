@@ -59,28 +59,20 @@ impl Minibuffer {
     }
 
     pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
-        if !self.draw {
-            return Ok(());
+        if self.draw {
+            let x_range = self.offset..(self.offset + self.size.w);
+
+            canvas.set_cursor(self.pos.x, self.pos.y)?;
+            self.row.draw(canvas, x_range)?;
+            canvas.write(b"\x1b[K")?;
+
+            self.draw = false;
         }
-
-        write!(canvas, "\x1b[{};{}H", self.pos.y + 1, self.pos.x + 1)?;
-
-        let x_range = self.offset..(self.offset + self.size.w);
-        self.row.draw(canvas, x_range)?;
-
-        canvas.write(b"\x1b[K")?;
-
-        self.draw = false;
         Ok(())
     }
 
     pub fn draw_cursor(&self, canvas: &mut Canvas) -> io::Result<()> {
-        write!(
-            canvas,
-            "\x1b[{};{}H",
-            self.pos.y + 1,
-            self.pos.x + self.cursor - self.offset + 1,
-        )
+        canvas.set_cursor(self.pos.x + self.cursor - self.offset, self.pos.y)
     }
 
     pub fn process_keypress(&mut self, key: Key) {

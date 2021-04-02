@@ -229,9 +229,7 @@ impl Row {
 
         if x_range.start < start_x {
             canvas.set_bg_color(self.faces[start - 1].1)?;
-            for _ in 0..(start_x - x_range.start) {
-                canvas.write(b" ")?;
-            }
+            canvas.write_repeat(b" ", start_x - x_range.start)?;
         }
 
         let mut x = start_x;
@@ -246,15 +244,11 @@ impl Row {
 
             match ch {
                 '\t' => {
-                    for _ in 0..width {
-                        canvas.write(b" ")?;
-                    }
+                    canvas.write_repeat(b" ", width)?;
                 }
                 '\u{200d}' => {
                     canvas.write(b"\x1b[4m")?;
-                    for _ in 0..width {
-                        canvas.write(b" ")?;
-                    }
+                    canvas.write_repeat(b" ", width)?;
                     canvas.write(b"\x1b[24m")?;
                 }
                 _ => {
@@ -268,9 +262,7 @@ impl Row {
 
         if end_x < x_range.end && x_range.end <= self.max_x() {
             canvas.set_bg_color(self.faces[end].1)?;
-            for _ in 0..(x_range.end - end_x) {
-                canvas.write(b" ")?;
-            }
+            canvas.write_repeat(b" ", x_range.end - end_x)?;
         }
 
         canvas.set_bg_color(self.trailing_bg)?;

@@ -147,25 +147,18 @@ impl Buffer {
             let (top, bottom) = (self.offset.y, self.offset.y + self.size.h);
             let y_range = start.max(top)..end.min(bottom);
             let x_range = self.offset.x..(self.offset.x + self.size.w);
-            write!(
-                canvas,
-                "\x1b[{};{}H",
-                self.pos.y + y_range.start - self.offset.y + 1,
-                self.pos.x + 1,
+
+            canvas.set_cursor(
+                self.pos.x,
+                self.pos.y + y_range.start - self.offset.y,
             )?;
             self.rows.draw(canvas, x_range, y_range)?;
+
+            self.draw_range.clear();
         }
 
-        write!(
-            canvas,
-            "\x1b[{};{}H",
-            self.pos.y + self.size.h + 1,
-            self.pos.x + 1,
-        )?;
-        self.draw_status_bar(canvas)?;
-
-        self.draw_range.clear();
-        Ok(())
+        canvas.set_cursor(self.pos.x, self.pos.y + self.size.h)?;
+        self.draw_status_bar(canvas)
     }
 
     fn draw_status_bar(&self, canvas: &mut Canvas) -> io::Result<()> {
@@ -190,9 +183,7 @@ impl Buffer {
             canvas.write(b"\x1b[K")?;
         }
 
-        for _ in 0..padding {
-            canvas.write(b" ")?;
-        }
+        canvas.write_repeat(b" ", padding)?;
 
         if left_len + right_len <= self.size.w {
             canvas.write(b" ")?;
@@ -210,11 +201,9 @@ impl Buffer {
     }
 
     pub fn draw_cursor(&self, canvas: &mut Canvas) -> io::Result<()> {
-        write!(
-            canvas,
-            "\x1b[{};{}H",
-            self.pos.y + self.cursor.y - self.offset.y + 1,
-            self.pos.x + self.cursor.x - self.offset.x + 1,
+        canvas.set_cursor(
+            self.pos.x + self.cursor.x - self.offset.x,
+            self.pos.y + self.cursor.y - self.offset.y,
         )
     }
 
