@@ -25,8 +25,8 @@ impl Term {
 pub struct Canvas {
     pub term: Term,
     bytes: Vec<u8>,
-    fg: Option<Fg>,
-    bg: Option<Bg>,
+    current_fg: Option<Fg>,
+    current_bg: Option<Bg>,
     fg_colors: [Vec<u8>; 12],
     bg_colors: [Vec<u8>; 5],
 }
@@ -48,8 +48,8 @@ impl Canvas {
         let mut canvas = Self {
             term: Term::detect(),
             bytes: Vec::new(),
-            fg: None,
-            bg: None,
+            current_fg: None,
+            current_bg: None,
             fg_colors: Default::default(),
             bg_colors: Default::default(),
         };
@@ -58,9 +58,8 @@ impl Canvas {
     }
 
     fn map_colors(&mut self) {
+        // Tomorrow Night Bright
         // TODO: load config file
-
-        // default: Tomorrow Night Bright
         match self.term {
             Term::TrueColor => {
                 self.map_fg_color(Fg::Default, fg_color!(234, 234, 234));
@@ -75,7 +74,6 @@ impl Canvas {
                 self.map_fg_color(Fg::Prompt, fg_color!(122, 166, 218));
                 self.map_fg_color(Fg::Match, fg_color!(0, 0, 0));
                 self.map_fg_color(Fg::CurrentMatch, fg_color!(0, 0, 0));
-
                 self.map_bg_color(Bg::Default, bg_color!(0, 0, 0));
                 self.map_bg_color(Bg::Region, bg_color!(66, 66, 66));
                 self.map_bg_color(Bg::StatusBar, bg_color!(28, 28, 28));
@@ -95,7 +93,6 @@ impl Canvas {
                 self.map_fg_color(Fg::Prompt, fg_color256!(110));
                 self.map_fg_color(Fg::Match, fg_color256!(16));
                 self.map_fg_color(Fg::CurrentMatch, fg_color256!(16));
-
                 self.map_bg_color(Bg::Default, bg_color256!(16));
                 self.map_bg_color(Bg::Region, bg_color256!(238));
                 self.map_bg_color(Bg::StatusBar, bg_color256!(234));
@@ -115,7 +112,6 @@ impl Canvas {
                 self.map_fg_color(Fg::Prompt, fg_color16!(blue));
                 self.map_fg_color(Fg::Match, fg_color16!(black));
                 self.map_fg_color(Fg::CurrentMatch, fg_color16!(black));
-
                 self.map_bg_color(Bg::Default, bg_color16!(black));
                 self.map_bg_color(Bg::Region, bg_color16!(bright_black));
                 self.map_bg_color(Bg::StatusBar, bg_color16!(bright_black));
@@ -140,18 +136,18 @@ impl Canvas {
 
     #[inline]
     pub fn set_fg_color(&mut self, fg: Fg) -> io::Result<()> {
-        if self.fg != Some(fg) {
+        if self.current_fg != Some(fg) {
             self.bytes.write(&self.fg_colors[fg as usize])?;
-            self.fg.replace(fg);
+            self.current_fg = Some(fg);
         }
         Ok(())
     }
 
     #[inline]
     pub fn set_bg_color(&mut self, bg: Bg) -> io::Result<()> {
-        if self.bg != Some(bg) {
+        if self.current_bg != Some(bg) {
             self.bytes.write(&self.bg_colors[bg as usize])?;
-            self.bg.replace(bg);
+            self.current_bg = Some(bg);
         }
         Ok(())
     }
@@ -159,8 +155,8 @@ impl Canvas {
     #[inline]
     pub fn reset_color(&mut self) -> io::Result<()> {
         self.bytes.write(b"\x1b[m")?;
-        self.fg = None;
-        self.bg = None;
+        self.current_fg = None;
+        self.current_bg = None;
         Ok(())
     }
 
@@ -175,8 +171,8 @@ impl Canvas {
     #[inline]
     pub fn clear(&mut self) {
         self.bytes.clear();
-        self.fg = None;
-        self.bg = None;
+        self.current_fg = None;
+        self.current_bg = None;
     }
 
     #[inline]

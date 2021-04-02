@@ -148,10 +148,7 @@ impl Buffer {
             let y_range = start.max(top)..end.min(bottom);
             let x_range = self.offset.x..(self.offset.x + self.size.w);
 
-            canvas.set_cursor(
-                self.pos.x,
-                self.pos.y + y_range.start - self.offset.y,
-            )?;
+            canvas.set_cursor(self.pos.x, self.pos.y + y_range.start - self.offset.y)?;
             self.rows.draw(canvas, x_range, y_range)?;
 
             self.draw_range.clear();
