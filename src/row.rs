@@ -265,7 +265,6 @@ impl Row {
             canvas.write_repeat(b" ", x_range.end - end_x)?;
         }
 
-        canvas.set_bg_color(self.trailing_bg)?;
-        Ok(())
+        canvas.set_bg_color(self.trailing_bg)
     }
 }
