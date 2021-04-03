@@ -253,7 +253,7 @@ impl Buffer {
                 }
             }
             Key::Home | Key::Ctrl(b'A') => {
-                let x = self.rows[self.cursor.y].first_letter_x();
+                let x = self.rows[self.cursor.y].beginning_of_code_x();
                 let pos = Pos::new(if self.cursor.x == x { 0 } else { x }, self.cursor.y);
                 if self.anchor.is_some() {
                     self.highlight_region(pos);
@@ -350,7 +350,7 @@ impl Buffer {
                     Indent::None => Event::InsertMv(self.cursor, "\t".into(), None),
                     Indent::Tab => Event::Indent(self.cursor, "\t".into(), None),
                     Indent::Spaces(n) => {
-                        let x = self.rows[self.cursor.y].first_letter_x();
+                        let x = self.rows[self.cursor.y].beginning_of_code_x();
                         Event::Indent(self.cursor, " ".repeat(n - x % n), None)
                     }
                 };
@@ -454,6 +454,49 @@ impl Buffer {
                 self.cursor = pos;
                 self.saved_x = pos.x;
                 self.scroll();
+            }
+            Key::Alt(b'b') => {
+                if let Some(pos) = self.rows.prev_word_pos(self.cursor) {
+                    if self.anchor.is_some() {
+                        self.highlight_region(pos);
+                    }
+                    self.cursor = pos;
+                    self.saved_x = pos.x;
+                    self.scroll();
+                }
+            }
+            Key::Alt(b'd') => {
+                if let Some(anchor) = self.anchor {
+                    self.unhighlight_region(anchor);
+                    self.anchor = None;
+                }
+                if let Some(pos) = self.rows.next_word_pos(self.cursor) {
+                    let event = Event::Remove(self.cursor, pos, None);
+                    let revent = self.process_event(event);
+                    self.push_event(revent);
+                }
+            }
+            Key::Alt(b'f') => {
+                if let Some(pos) = self.rows.next_word_pos(self.cursor) {
+                    if self.anchor.is_some() {
+                        self.highlight_region(pos);
+                    }
+                    self.cursor = pos;
+                    self.saved_x = pos.x;
+                    self.scroll();
+                }
+            }
+            Key::Alt(b'h') => {
+                if let Some(anchor) = self.anchor {
+                    self.unhighlight_region(anchor);
+                    self.anchor = None;
+                }
+                if let Some(pos) = self.rows.prev_word_pos(self.cursor) {
+                    let event = Event::RemoveMv(pos, self.cursor, None);
+                    let revent = self.process_event(event);
+                    self.push_event(revent);
+                    self.scroll();
+                }
             }
             Key::Alt(b'w') => {
                 if let Some(anchor) = self.anchor {

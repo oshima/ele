@@ -120,10 +120,61 @@ impl Row {
         x
     }
 
-    pub fn first_letter_x(&self) -> usize {
-        let mut x = 0;
+    pub fn first_word_x(&self) -> Option<usize> {
+        if self.is_word_delim(0) {
+            self.next_word_x(0)
+        } else {
+            Some(0)
+        }
+    }
+
+    pub fn last_word_x(&self) -> Option<usize> {
+        self.prev_word_x(self.max_x())
+    }
+
+    pub fn prev_word_x(&self, x: usize) -> Option<usize> {
+        let mut x = x;
+        let mut in_word = false;
+
+        while let Some(prev_x) = self.prev_x(x) {
+            if in_word {
+                if self.is_word_delim(prev_x) {
+                    return Some(x);
+                }
+            } else {
+                if !self.is_word_delim(prev_x) {
+                    in_word = true;
+                }
+            }
+            x = prev_x;
+        }
+        if in_word { Some(0) } else { None }
+    }
+
+    pub fn next_word_x(&self, x: usize) -> Option<usize> {
+        let mut x = x;
+        let mut in_word = !self.is_word_delim(x);
+
         while let Some(next_x) = self.next_x(x) {
-            if !self.char_at(x).is_ascii_whitespace() {
+            if in_word {
+                if self.is_word_delim(next_x) {
+                    in_word = false;
+                }
+            } else {
+                if !self.is_word_delim(next_x) {
+                    return Some(next_x);
+                }
+            }
+            x = next_x;
+        }
+        None
+    }
+
+    pub fn beginning_of_code_x(&self) -> usize {
+        let mut x = 0;
+
+        while let Some(next_x) = self.next_x(x) {
+            if !self.char_at(x).unwrap().is_ascii_whitespace() {
                 return x;
             }
             x = next_x;
@@ -131,9 +182,14 @@ impl Row {
         x
     }
 
-    fn char_at(&self, x: usize) -> char {
+    fn char_at(&self, x: usize) -> Option<char> {
         let idx = self.x_to_idx(x);
-        self.string[idx..].chars().next().unwrap()
+        self.string[idx..].chars().next()
+    }
+
+    fn is_word_delim(&self, x: usize) -> bool {
+        self.char_at(x)
+            .map_or(true, |ch| ch.is_ascii_whitespace() || ch.is_ascii_punctuation())
     }
 
     #[inline]

@@ -9,17 +9,13 @@ pub type Rows = Vec<Row>;
 
 pub trait RowsMethods {
     fn max_pos(&self) -> Pos;
-
     fn prev_pos(&self, pos: Pos) -> Option<Pos>;
-
     fn next_pos(&self, pos: Pos) -> Option<Pos>;
-
+    fn prev_word_pos(&self, pos: Pos) -> Option<Pos>;
+    fn next_word_pos(&self, pos: Pos) -> Option<Pos>;
     fn read_text(&self, pos1: Pos, pos2: Pos) -> String;
-
     fn insert_text(&mut self, pos: Pos, text: &str) -> Pos;
-
     fn remove_text(&mut self, pos1: Pos, pos2: Pos) -> String;
-
     fn draw(
         &self,
         canvas: &mut Canvas,
@@ -51,6 +47,30 @@ impl RowsMethods for Rows {
         } else {
             None
         }
+    }
+
+    fn prev_word_pos(&self, pos: Pos) -> Option<Pos> {
+        if let Some(x) = self[pos.y].prev_word_x(pos.x) {
+            return Some(Pos::new(x, pos.y));
+        }
+        for y in (0..pos.y).rev() {
+            if let Some(x) = self[y].last_word_x() {
+                return Some(Pos::new(x, y));
+            }
+        }
+        None
+    }
+
+    fn next_word_pos(&self, pos: Pos) -> Option<Pos> {
+        if let Some(x) = self[pos.y].next_word_x(pos.x) {
+            return Some(Pos::new(x, pos.y));
+        }
+        for y in (pos.y + 1)..self.len() {
+            if let Some(x) = self[y].first_word_x() {
+                return Some(Pos::new(x, y));
+            }
+        }
+        None
     }
 
     fn read_text(&self, pos1: Pos, pos2: Pos) -> String {
