@@ -148,11 +148,7 @@ impl Row {
             }
             x = prev_x;
         }
-        if in_word {
-            Some(0)
-        } else {
-            None
-        }
+        in_word.then(|| 0)
     }
 
     pub fn next_word_x(&self, x: usize) -> Option<usize> {
@@ -186,9 +182,12 @@ impl Row {
         x
     }
 
-    fn char_at(&self, x: usize) -> Option<char> {
-        let idx = self.x_to_idx(x);
-        self.string[idx..].chars().next()
+    #[inline]
+    fn is_char_boundary(&self, x: usize) -> bool {
+        match self.x_to_idx.as_ref() {
+            Some(v) => x == 0 || v.get(x) != TOMBSTONE,
+            None => true,
+        }
     }
 
     fn is_word_delim(&self, x: usize) -> bool {
@@ -197,12 +196,9 @@ impl Row {
         })
     }
 
-    #[inline]
-    fn is_char_boundary(&self, x: usize) -> bool {
-        match self.x_to_idx.as_ref() {
-            Some(v) => x == 0 || v.get(x) != TOMBSTONE,
-            None => true,
-        }
+    fn char_at(&self, x: usize) -> Option<char> {
+        let idx = self.x_to_idx(x);
+        self.string[idx..].chars().next()
     }
 
     pub fn clear(&mut self) {
@@ -228,11 +224,11 @@ impl Row {
         x + str_width(x, string)
     }
 
-    pub fn remove_str(&mut self, from_x: usize, to_x: usize) -> String {
-        let from = self.x_to_idx(from_x);
-        let to = self.x_to_idx(to_x);
-        let string = self.string.split_off(to);
-        let removed = self.string.split_off(from);
+    pub fn remove_str(&mut self, x1: usize, x2: usize) -> String {
+        let idx1 = self.x_to_idx(x1);
+        let idx2 = self.x_to_idx(x2);
+        let string = self.string.split_off(idx2);
+        let removed = self.string.split_off(idx1);
         self.string.push_str(&string);
         if self.x_to_idx.is_some() {
             self.update_mappings();

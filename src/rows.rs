@@ -86,16 +86,16 @@ impl RowsMethods for Rows {
     }
 
     fn insert_text(&mut self, pos: Pos, text: &str) -> Pos {
-        let strs: Vec<&str> = text.split('\n').collect();
+        let strings: Vec<&str> = text.split('\n').collect();
 
-        if strs.len() == 1 {
-            let x = self[pos.y].insert_str(pos.x, strs[0]);
+        if strings.len() == 1 {
+            let x = self[pos.y].insert_str(pos.x, strings[0]);
             Pos::new(x, pos.y)
         } else {
             let string = self[pos.y].split_off(pos.x);
             let mut rows = self.split_off(pos.y + 1);
-            self[pos.y].push_str(&strs[0]);
-            self.append(&mut strs[1..].iter().map(|s| Row::new(s.to_string())).collect());
+            self[pos.y].push_str(strings[0]);
+            self.append(&mut strings[1..].iter().map(|&s| Row::new(s.into())).collect());
             let pos = self.last_pos();
             self[pos.y].push_str(&string);
             self.append(&mut rows);
