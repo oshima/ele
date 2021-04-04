@@ -73,7 +73,7 @@ impl Row {
     }
 
     #[inline]
-    pub fn max_x(&self) -> usize {
+    pub fn last_x(&self) -> usize {
         match self.x_to_idx.as_ref() {
             Some(v) => v.len() - 1,
             None => self.string.len(),
@@ -93,7 +93,7 @@ impl Row {
     }
 
     pub fn next_x(&self, x: usize) -> Option<usize> {
-        if x < self.max_x() {
+        if x < self.last_x() {
             let mut x = x + 1;
             while !self.is_char_boundary(x) {
                 x += 1;
@@ -105,7 +105,7 @@ impl Row {
     }
 
     pub fn prev_fit_x(&self, proposed_x: usize) -> usize {
-        let mut x = cmp::min(proposed_x, self.max_x());
+        let mut x = cmp::min(proposed_x, self.last_x());
         while !self.is_char_boundary(x) {
             x -= 1;
         }
@@ -113,7 +113,7 @@ impl Row {
     }
 
     pub fn next_fit_x(&self, proposed_x: usize) -> usize {
-        let mut x = cmp::min(proposed_x, self.max_x());
+        let mut x = cmp::min(proposed_x, self.last_x());
         while !self.is_char_boundary(x) {
             x += 1;
         }
@@ -129,7 +129,7 @@ impl Row {
     }
 
     pub fn last_word_x(&self) -> Option<usize> {
-        self.prev_word_x(self.max_x())
+        self.prev_word_x(self.last_x())
     }
 
     pub fn prev_word_x(&self, x: usize) -> Option<usize> {
@@ -148,7 +148,11 @@ impl Row {
             }
             x = prev_x;
         }
-        if in_word { Some(0) } else { None }
+        if in_word {
+            Some(0)
+        } else {
+            None
+        }
     }
 
     pub fn next_word_x(&self, x: usize) -> Option<usize> {
@@ -188,8 +192,9 @@ impl Row {
     }
 
     fn is_word_delim(&self, x: usize) -> bool {
-        self.char_at(x)
-            .map_or(true, |ch| ch.is_ascii_whitespace() || ch.is_ascii_punctuation())
+        self.char_at(x).map_or(true, |ch| {
+            ch.is_ascii_whitespace() || ch.is_ascii_punctuation()
+        })
     }
 
     #[inline]
@@ -316,7 +321,7 @@ impl Row {
             x += width;
         }
 
-        if end_x < x_range.end && x_range.end <= self.max_x() {
+        if end_x < x_range.end && x_range.end <= self.last_x() {
             canvas.set_bg_color(self.faces[end].1)?;
             canvas.write_repeat(b" ", x_range.end - end_x)?;
         }

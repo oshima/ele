@@ -263,7 +263,7 @@ impl Buffer {
                 self.scroll();
             }
             Key::End | Key::Ctrl(b'E') => {
-                let pos = Pos::new(self.rows[self.cursor.y].max_x(), self.cursor.y);
+                let pos = Pos::new(self.rows[self.cursor.y].last_x(), self.cursor.y);
                 if self.anchor.is_some() {
                     self.highlight_region(pos);
                 }
@@ -381,7 +381,7 @@ impl Buffer {
                     self.unhighlight_region(anchor);
                     self.anchor = None;
                 }
-                let pos = Pos::new(self.rows[self.cursor.y].max_x(), self.cursor.y);
+                let pos = Pos::new(self.rows[self.cursor.y].last_x(), self.cursor.y);
                 clipboard.clear();
                 clipboard.push_str(&self.rows.read_text(self.cursor, pos));
                 let event = Event::Remove(self.cursor, pos, None);
@@ -447,7 +447,7 @@ impl Buffer {
                 self.scroll();
             }
             Key::Alt(b'>') => {
-                let pos = self.rows.max_pos();
+                let pos = self.rows.last_pos();
                 if self.anchor.is_some() {
                     self.highlight_region(pos);
                 }
@@ -647,7 +647,7 @@ impl Buffer {
         for y in pos1.y..=pos2.y {
             let row = &mut self.rows[y];
             let x1 = if y == pos1.y { pos1.x } else { 0 };
-            let x2 = if y == pos2.y { pos2.x } else { row.max_x() };
+            let x2 = if y == pos2.y { pos2.x } else { row.last_x() };
 
             for i in row.x_to_idx(x1)..row.x_to_idx(x2) {
                 row.faces[i].1 = match row.faces[i].1 {
@@ -672,7 +672,7 @@ impl Buffer {
         for y in pos1.y..=pos2.y {
             let row = &mut self.rows[y];
             let x1 = if y == pos1.y { pos1.x } else { 0 };
-            let x2 = if y == pos2.y { pos2.x } else { row.max_x() };
+            let x2 = if y == pos2.y { pos2.x } else { row.last_x() };
 
             for i in row.x_to_idx(x1)..row.x_to_idx(x2) {
                 row.faces[i].1 = Bg::Default;

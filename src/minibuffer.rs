@@ -42,8 +42,8 @@ impl Minibuffer {
         self.row.clear();
         self.row.push_str(string);
         self.offset = 0;
-        self.cursor = self.row.max_x();
-        self.prompt_len = self.row.max_x();
+        self.cursor = self.row.last_x();
+        self.prompt_len = self.row.last_x();
         self.highlight();
     }
 
@@ -98,7 +98,7 @@ impl Minibuffer {
                 self.scroll();
             }
             Key::End | Key::Ctrl(b'E') => {
-                self.cursor = self.row.max_x();
+                self.cursor = self.row.last_x();
                 self.scroll();
             }
             Key::Backspace | Key::Ctrl(b'H') => {
