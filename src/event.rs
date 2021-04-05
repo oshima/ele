@@ -1,52 +1,47 @@
-use self::Event::*;
 use crate::coord::Pos;
 
 pub enum Event {
-    Insert(Pos, String, Option<u64>),
-    InsertMv(Pos, String, Option<u64>),
-    Remove(Pos, Pos, Option<u64>),
-    RemoveMv(Pos, Pos, Option<u64>),
-    Indent(Pos, String, Option<u64>),
-    Unindent(Pos, usize, Option<u64>),
+    Insert(Pos, String, u64),
+    InsertMv(Pos, String, u64),
+    Remove(Pos, Pos, u64),
+    RemoveMv(Pos, Pos, u64),
+    Indent(Pos, String, u64),
+    Unindent(Pos, usize, u64),
 }
 
 impl Event {
     pub fn merge(self, other: Self) -> Option<Self> {
         match (self, other) {
-            (Insert(pos, str1, _), Insert(_, str2, _)) => Some(Insert(pos, str1 + &str2, None)),
-            (InsertMv(_, str1, _), InsertMv(pos, str2, _)) => {
-                Some(InsertMv(pos, str2 + &str1, None))
+            (Self::Insert(pos, str1, id), Self::Insert(_, str2, _)) => {
+                Some(Self::Insert(pos, str1 + &str2, id))
             }
-            (Remove(pos1, _, _), Remove(_, pos2, _)) => Some(Remove(pos1, pos2, None)),
-            (RemoveMv(pos1, _, _), RemoveMv(_, pos2, _)) => Some(RemoveMv(pos1, pos2, None)),
-            (Indent(pos, str1, _), Indent(_, str2, _)) => Some(Indent(pos, str2 + &str1, None)),
-            (Unindent(_, width1, _), Unindent(pos, width2, _)) => {
-                Some(Unindent(pos, width1 + width2, None))
+            (Self::InsertMv(_, str1, id), Self::InsertMv(pos, str2, _)) => {
+                Some(Self::InsertMv(pos, str2 + &str1, id))
+            }
+            (Self::Remove(pos1, _, id), Self::Remove(_, pos2, _)) => {
+                Some(Self::Remove(pos1, pos2, id))
+            }
+            (Self::RemoveMv(pos1, _, id), Self::RemoveMv(_, pos2, _)) => {
+                Some(Self::RemoveMv(pos1, pos2, id))
+            }
+            (Self::Indent(pos, str1, id), Self::Indent(_, str2, _)) => {
+                Some(Self::Indent(pos, str2 + &str1, id))
+            }
+            (Self::Unindent(_, width1, id), Self::Unindent(pos, width2, _)) => {
+                Some(Self::Unindent(pos, width1 + width2, id))
             }
             _ => None,
         }
     }
 
-    pub fn stamp(&mut self, clock: u64) {
-        let stamp = match self {
-            Insert(_, _, stamp) => stamp,
-            InsertMv(_, _, stamp) => stamp,
-            Remove(_, _, stamp) => stamp,
-            RemoveMv(_, _, stamp) => stamp,
-            Indent(_, _, stamp) => stamp,
-            Unindent(_, _, stamp) => stamp,
-        };
-        stamp.replace(clock);
-    }
-
-    pub fn get_stamp(&self) -> Option<u64> {
+    pub fn id(&self) -> u64 {
         match self {
-            Insert(_, _, stamp) => *stamp,
-            InsertMv(_, _, stamp) => *stamp,
-            Remove(_, _, stamp) => *stamp,
-            RemoveMv(_, _, stamp) => *stamp,
-            Indent(_, _, stamp) => *stamp,
-            Unindent(_, _, stamp) => *stamp,
+            Self::Insert(_, _, id) => *id,
+            Self::InsertMv(_, _, id) => *id,
+            Self::Remove(_, _, id) => *id,
+            Self::RemoveMv(_, _, id) => *id,
+            Self::Indent(_, _, id) => *id,
+            Self::Unindent(_, _, id) => *id,
         }
     }
 }

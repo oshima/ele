@@ -29,7 +29,6 @@ pub struct Editor {
     minibuffer: Minibuffer,
     clipboard: String,
     screen_resized: Arc<AtomicBool>,
-    clock: u64,
 }
 
 impl Editor {
@@ -43,7 +42,6 @@ impl Editor {
             minibuffer: Minibuffer::new(),
             clipboard: String::new(),
             screen_resized: Arc::new(AtomicBool::new(true)),
-            clock: 0,
         };
 
         // switch to alternate screen buffer
@@ -69,8 +67,6 @@ impl Editor {
                 Err(KeyError::IoError(e)) => return Err(e),
                 _ => (),
             }
-
-            self.clock += 1;
         }
         Ok(())
     }
@@ -238,7 +234,7 @@ impl Editor {
                         self.minibuffer.set_prompt("Save as: ");
                         self.state = State::Save;
                     } else {
-                        self.buffer.save(self.clock)?;
+                        self.buffer.save()?;
                         self.minibuffer.set_message("Saved");
                         self.state = State::Default;
                     }
@@ -265,7 +261,7 @@ impl Editor {
                 Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
                     let input = self.minibuffer.get_input();
                     self.buffer.filename = Some(input);
-                    self.buffer.save(self.clock)?;
+                    self.buffer.save()?;
                     self.minibuffer.set_message("");
                     self.state = State::Default;
                 }

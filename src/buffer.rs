@@ -39,8 +39,9 @@ pub struct Buffer {
     undo: bool,
     undo_list: Vec<Event>,
     redo_list: Vec<Event>,
+    eid: u64,
+    saved_eid: Option<u64>,
     last_key: Option<Key>,
-    saved_at: Option<u64>,
     search: Search,
 }
 
@@ -60,8 +61,9 @@ impl Buffer {
             undo: false,
             undo_list: Vec::new(),
             redo_list: Vec::new(),
+            eid: 0,
+            saved_eid: None,
             last_key: None,
-            saved_at: None,
             search: Default::default(),
         };
         buffer.init()?;
@@ -94,7 +96,7 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn save(&mut self, clock: u64) -> io::Result<()> {
+    pub fn save(&mut self) -> io::Result<()> {
         if let Some(filename) = self.filename.as_deref() {
             let file = File::create(filename)?;
             let mut writer = BufWriter::new(file);
@@ -113,26 +115,13 @@ impl Buffer {
             self.last_key = None;
             self.highlight(0);
 
-            if let Some(event) = self.undo_list.last_mut() {
-                event.stamp(clock);
-                self.saved_at = Some(clock);
-            } else {
-                self.saved_at = None;
-            }
+            self.saved_eid = self.undo_list.last().map(|e| e.id());
         }
         Ok(())
     }
 
     pub fn modified(&self) -> bool {
-        if let Some(saved_at) = self.saved_at {
-            if let Some(event) = self.undo_list.last() {
-                event.get_stamp() != Some(saved_at)
-            } else {
-                true
-            }
-        } else {
-            !self.undo_list.is_empty()
-        }
+        self.saved_eid != self.undo_list.last().map(|e| e.id())
     }
 
     pub fn resize(&mut self, pos: Pos, size: Size) {
@@ -306,7 +295,7 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 } else if let Some(pos) = self.rows.prev_pos(self.cursor) {
-                    let event = Event::RemoveMv(pos, self.cursor, None);
+                    let event = Event::RemoveMv(pos, self.cursor, self.eid);
                     let revent = self.process_event(event);
                     if let Some(Key::Backspace) | Some(Key::Ctrl(b'H')) = self.last_key {
                         self.merge_event(revent);
@@ -321,7 +310,7 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 } else if let Some(pos) = self.rows.next_pos(self.cursor) {
-                    let event = Event::Remove(self.cursor, pos, None);
+                    let event = Event::Remove(self.cursor, pos, self.eid);
                     let revent = self.process_event(event);
                     if let Some(Key::Delete) | Some(Key::Ctrl(b'D')) = self.last_key {
                         self.merge_event(revent);
@@ -347,11 +336,11 @@ impl Buffer {
                     return; // TODO
                 }
                 let event = match self.syntax.indent() {
-                    Indent::None => Event::InsertMv(self.cursor, "\t".into(), None),
-                    Indent::Tab => Event::Indent(self.cursor, "\t".into(), None),
+                    Indent::None => Event::InsertMv(self.cursor, "\t".into(), self.eid),
+                    Indent::Tab => Event::Indent(self.cursor, "\t".into(), self.eid),
                     Indent::Spaces(n) => {
                         let x = self.rows[self.cursor.y].beginning_of_code_x();
-                        Event::Indent(self.cursor, " ".repeat(n - x % n), None)
+                        Event::Indent(self.cursor, " ".repeat(n - x % n), self.eid)
                     }
                 };
                 let revent = self.process_event(event);
@@ -367,7 +356,7 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
-                let event = Event::InsertMv(self.cursor, "\n".into(), None);
+                let event = Event::InsertMv(self.cursor, "\n".into(), self.eid);
                 let revent = self.process_event(event);
                 if let Some(Key::Ctrl(b'J')) | Some(Key::Ctrl(b'M')) = self.last_key {
                     self.merge_event(revent);
@@ -384,7 +373,7 @@ impl Buffer {
                 let pos = Pos::new(self.rows[self.cursor.y].last_x(), self.cursor.y);
                 clipboard.clear();
                 clipboard.push_str(&self.rows.read_text(self.cursor, pos));
-                let event = Event::Remove(self.cursor, pos, None);
+                let event = Event::Remove(self.cursor, pos, self.eid);
                 let revent = self.process_event(event);
                 self.push_event(revent);
             }
@@ -396,7 +385,7 @@ impl Buffer {
                 let pos = Pos::new(0, self.cursor.y);
                 clipboard.clear();
                 clipboard.push_str(&self.rows.read_text(pos, self.cursor));
-                let event = Event::RemoveMv(pos, self.cursor, None);
+                let event = Event::RemoveMv(pos, self.cursor, self.eid);
                 let revent = self.process_event(event);
                 self.push_event(revent);
                 self.scroll();
@@ -414,7 +403,7 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
-                let event = Event::InsertMv(self.cursor, clipboard.clone(), None);
+                let event = Event::InsertMv(self.cursor, clipboard.clone(), self.eid);
                 let revent = self.process_event(event);
                 self.push_event(revent);
                 self.scroll();
@@ -471,7 +460,7 @@ impl Buffer {
                     self.anchor = None;
                 }
                 if let Some(pos) = self.rows.next_word_pos(self.cursor) {
-                    let event = Event::Remove(self.cursor, pos, None);
+                    let event = Event::Remove(self.cursor, pos, self.eid);
                     let revent = self.process_event(event);
                     self.push_event(revent);
                 }
@@ -492,7 +481,7 @@ impl Buffer {
                     self.anchor = None;
                 }
                 if let Some(pos) = self.rows.prev_word_pos(self.cursor) {
-                    let event = Event::RemoveMv(pos, self.cursor, None);
+                    let event = Event::RemoveMv(pos, self.cursor, self.eid);
                     let revent = self.process_event(event);
                     self.push_event(revent);
                     self.scroll();
@@ -511,7 +500,7 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
-                let event = Event::InsertMv(self.cursor, ch.to_string(), None);
+                let event = Event::InsertMv(self.cursor, ch.to_string(), self.eid);
                 let revent = self.process_event(event);
                 if let Some(Key::Char(_)) = self.last_key {
                     self.merge_event(revent);
@@ -523,12 +512,13 @@ impl Buffer {
             _ => (),
         }
 
+        self.eid += 1;
         self.last_key = Some(key);
     }
 
     fn process_event(&mut self, event: Event) -> Event {
         match event {
-            Event::Insert(pos1, string, stamp) => {
+            Event::Insert(pos1, string, id) => {
                 let pos2 = self.rows.insert_text(pos1, &string);
                 self.cursor = pos1;
                 self.saved_x = pos1.x;
@@ -536,9 +526,9 @@ impl Buffer {
                 if pos1.y < pos2.y {
                     self.draw_range.full_expand_end();
                 }
-                Event::Remove(pos1, pos2, stamp)
+                Event::Remove(pos1, pos2, id)
             }
-            Event::InsertMv(pos1, string, stamp) => {
+            Event::InsertMv(pos1, string, id) => {
                 let pos2 = self.rows.insert_text(pos1, &string);
                 self.cursor = pos2;
                 self.saved_x = pos2.x;
@@ -546,9 +536,9 @@ impl Buffer {
                 if pos1.y < pos2.y {
                     self.draw_range.full_expand_end();
                 }
-                Event::RemoveMv(pos1, pos2, stamp)
+                Event::RemoveMv(pos1, pos2, id)
             }
-            Event::Remove(pos1, pos2, stamp) => {
+            Event::Remove(pos1, pos2, id) => {
                 let string = self.rows.remove_text(pos1, pos2);
                 self.cursor = pos1;
                 self.saved_x = pos1.x;
@@ -556,9 +546,9 @@ impl Buffer {
                 if pos1.y < pos2.y {
                     self.draw_range.full_expand_end();
                 }
-                Event::Insert(pos1, string, stamp)
+                Event::Insert(pos1, string, id)
             }
-            Event::RemoveMv(pos1, pos2, stamp) => {
+            Event::RemoveMv(pos1, pos2, id) => {
                 let string = self.rows.remove_text(pos1, pos2);
                 self.cursor = pos1;
                 self.saved_x = pos1.x;
@@ -566,21 +556,21 @@ impl Buffer {
                 if pos1.y < pos2.y {
                     self.draw_range.full_expand_end();
                 }
-                Event::InsertMv(pos1, string, stamp)
+                Event::InsertMv(pos1, string, id)
             }
-            Event::Indent(pos, string, stamp) => {
+            Event::Indent(pos, string, id) => {
                 let width = self.rows[pos.y].insert_str(0, &string);
                 self.cursor = Pos::new(pos.x + width, pos.y);
                 self.saved_x = pos.x + width;
                 self.highlight(pos.y);
-                Event::Unindent(self.cursor, width, stamp)
+                Event::Unindent(self.cursor, width, id)
             }
-            Event::Unindent(pos, width, stamp) => {
+            Event::Unindent(pos, width, id) => {
                 let string = self.rows[pos.y].remove_str(0, width);
                 self.cursor = Pos::new(pos.x - width, pos.y);
                 self.saved_x = pos.x - width;
                 self.highlight(pos.y);
-                Event::Indent(self.cursor, string, stamp)
+                Event::Indent(self.cursor, string, id)
             }
         }
     }
@@ -688,9 +678,9 @@ impl Buffer {
         let pos1 = self.cursor.min(anchor);
         let pos2 = self.cursor.max(anchor);
         let event = if self.cursor < anchor {
-            Event::Remove(pos1, pos2, None)
+            Event::Remove(pos1, pos2, self.eid)
         } else {
-            Event::RemoveMv(pos1, pos2, None)
+            Event::RemoveMv(pos1, pos2, self.eid)
         };
         let revent = self.process_event(event);
         self.push_event(revent);
