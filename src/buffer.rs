@@ -133,8 +133,7 @@ impl Buffer {
 
     pub fn draw(&mut self, canvas: &mut Canvas) -> io::Result<()> {
         if let Some((start, end)) = self.draw_range.as_tuple() {
-            let (top, bottom) = (self.offset.y, self.offset.y + self.size.h);
-            let y_range = start.max(top)..end.min(bottom);
+            let y_range = start.max(self.offset.y)..end.min(self.offset.y + self.size.h);
             let x_range = self.offset.x..(self.offset.x + self.size.w);
 
             canvas.set_cursor(self.pos.x, self.pos.y + y_range.start - self.offset.y)?;

@@ -12,12 +12,12 @@ pub enum Term {
 
 impl Term {
     fn detect() -> Self {
-        match env::var("COLORTERM") {
-            Ok(val) if val == "truecolor" => Self::TrueColor,
-            _ => match env::var("TERM") {
-                Ok(val) if val.contains("256color") => Self::Color256,
-                _ => Self::Color16,
-            },
+        if env::var("COLORTERM").map_or(false, |v| v == "truecolor") {
+            Self::TrueColor
+        } else if env::var("TERM").map_or(false, |v| v.contains("256color")) {
+            Self::Color256
+        } else {
+            Self::Color16
         }
     }
 }
