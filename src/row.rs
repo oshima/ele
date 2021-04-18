@@ -121,10 +121,10 @@ impl Row {
     }
 
     pub fn first_word_x(&self) -> Option<usize> {
-        if self.is_word_delim(0) {
-            self.next_word_x(0)
-        } else {
+        if self.is_word_boundary(0) {
             Some(0)
+        } else {
+            self.next_word_x(0)
         }
     }
 
@@ -133,48 +133,25 @@ impl Row {
     }
 
     pub fn prev_word_x(&self, x: usize) -> Option<usize> {
-        let mut x = x;
-        let mut in_word = false;
-
-        while let Some(prev_x) = self.prev_x(x) {
-            if in_word {
-                if self.is_word_delim(prev_x) {
-                    return Some(x);
-                }
-            } else {
-                if !self.is_word_delim(prev_x) {
-                    in_word = true;
-                }
-            }
-            x = prev_x;
+        let mut x = self.prev_x(x)?;
+        while !self.is_word_boundary(x) {
+            x = self.prev_x(x)?;
         }
-        in_word.then(|| 0)
+        Some(x)
     }
 
     pub fn next_word_x(&self, x: usize) -> Option<usize> {
-        let mut x = x;
-        let mut in_word = !self.is_word_delim(x);
-
-        while let Some(next_x) = self.next_x(x) {
-            if in_word {
-                if self.is_word_delim(next_x) {
-                    in_word = false;
-                }
-            } else {
-                if !self.is_word_delim(next_x) {
-                    return Some(next_x);
-                }
-            }
-            x = next_x;
+        let mut x = self.next_x(x)?;
+        while !self.is_word_boundary(x) {
+            x = self.next_x(x)?;
         }
-        None
+        Some(x)
     }
 
     pub fn beginning_of_code_x(&self) -> usize {
         let mut x = 0;
-
         while let Some(next_x) = self.next_x(x) {
-            if !self.char_at(x).unwrap().is_ascii_whitespace() {
+            if !self.char_at(x).is_ascii_whitespace() {
                 return x;
             }
             x = next_x;
@@ -190,15 +167,22 @@ impl Row {
         }
     }
 
-    fn is_word_delim(&self, x: usize) -> bool {
-        self.char_at(x).map_or(true, |ch| {
-            ch.is_ascii_whitespace() || ch.is_ascii_punctuation()
-        })
+    fn is_word_boundary(&self, x: usize) -> bool {
+        let ch = self.char_at(x);
+
+        if ch.is_ascii_whitespace() || ch.is_ascii_punctuation() {
+            false
+        } else if let Some(prev_x) = self.prev_x(x) {
+            let prev_ch = self.char_at(prev_x);
+            prev_ch.is_ascii_whitespace() || prev_ch.is_ascii_punctuation()
+        } else {
+            true
+        }
     }
 
-    fn char_at(&self, x: usize) -> Option<char> {
+    fn char_at(&self, x: usize) -> char {
         let idx = self.x_to_idx(x);
-        self.string[idx..].chars().next()
+        self.string[idx..].chars().next().unwrap_or('\n')
     }
 
     pub fn clear(&mut self) {
