@@ -192,7 +192,7 @@ impl Buffer {
         )
     }
 
-    pub fn process_keypress(&mut self, key: Key, clipboard: &mut String) -> &'static str {
+    pub fn process_key(&mut self, key: Key, clipboard: &mut String) -> &'static str {
         let message = match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if let Some(pos) = self.rows.prev_pos(self.cursor) {

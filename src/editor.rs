@@ -63,7 +63,7 @@ impl Editor {
             self.draw()?;
 
             match self.read_key() {
-                Ok(key) => self.process_keypress(key)?,
+                Ok(key) => self.process_key(key)?,
                 Err(KeyError::IoError(e)) => return Err(e),
                 _ => (),
             }
@@ -184,7 +184,7 @@ impl Editor {
         Ok(None)
     }
 
-    fn process_keypress(&mut self, key: Key) -> io::Result<()> {
+    fn process_key(&mut self, key: Key) -> io::Result<()> {
         match self.state {
             State::Default => match key {
                 Key::Ctrl(b'R') => {
@@ -200,7 +200,7 @@ impl Editor {
                     self.state = State::CtrlX;
                 }
                 _ => {
-                    let message = self.buffer.process_keypress(key, &mut self.clipboard);
+                    let message = self.buffer.process_key(key, &mut self.clipboard);
                     self.minibuffer.set_message(message);
                 }
             },
@@ -223,7 +223,7 @@ impl Editor {
                 }
                 _ => {
                     let prev_input = self.minibuffer.get_input();
-                    self.minibuffer.process_keypress(key);
+                    self.minibuffer.process_key(key);
                     let input = self.minibuffer.get_input();
                     if input != prev_input {
                         self.buffer.clear_matches(true);
@@ -268,7 +268,7 @@ impl Editor {
                     self.minibuffer.set_message("");
                     self.state = State::Default;
                 }
-                _ => self.minibuffer.process_keypress(key),
+                _ => self.minibuffer.process_key(key),
             },
             State::Quit => match key {
                 Key::Ctrl(b'G') => {
@@ -284,7 +284,7 @@ impl Editor {
                         self.state = State::Default;
                     }
                 }
-                _ => self.minibuffer.process_keypress(key),
+                _ => self.minibuffer.process_key(key),
             },
             State::Quitted => unreachable!(),
         }

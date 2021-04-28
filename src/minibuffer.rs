@@ -77,7 +77,7 @@ impl Minibuffer {
         canvas.set_cursor(self.pos.x + self.cursor - self.offset, self.pos.y)
     }
 
-    pub fn process_keypress(&mut self, key: Key) {
+    pub fn process_key(&mut self, key: Key) {
         match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if let Some(x) = self.row.prev_x(self.cursor) {
