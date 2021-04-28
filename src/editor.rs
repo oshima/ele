@@ -199,7 +199,10 @@ impl Editor {
                     self.minibuffer.set_message("C-x [C-s: save] [C-c: quit]");
                     self.state = State::CtrlX;
                 }
-                _ => self.buffer.process_keypress(key, &mut self.clipboard),
+                _ => {
+                    let message = self.buffer.process_keypress(key, &mut self.clipboard);
+                    self.minibuffer.set_message(message);
+                }
             },
             State::Search { backward } => match key {
                 Key::Ctrl(b'G') => {

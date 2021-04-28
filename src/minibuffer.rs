@@ -30,12 +30,14 @@ impl Minibuffer {
     }
 
     pub fn set_message(&mut self, string: &str) {
-        self.row.clear();
-        self.row.push_str(string);
-        self.offset = 0;
-        self.cursor = 0;
-        self.prompt_len = 0;
-        self.highlight();
+        if string != self.row.string {
+            self.row.clear();
+            self.row.push_str(string);
+            self.offset = 0;
+            self.cursor = 0;
+            self.prompt_len = 0;
+            self.highlight();
+        }
     }
 
     pub fn set_prompt(&mut self, string: &str) {

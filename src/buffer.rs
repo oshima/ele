@@ -192,8 +192,8 @@ impl Buffer {
         )
     }
 
-    pub fn process_keypress(&mut self, key: Key, clipboard: &mut String) {
-        match key {
+    pub fn process_keypress(&mut self, key: Key, clipboard: &mut String) -> &'static str {
+        let message = match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if let Some(pos) = self.rows.prev_pos(self.cursor) {
                     if self.anchor.is_some() {
@@ -203,6 +203,7 @@ impl Buffer {
                     self.saved_x = pos.x;
                     self.scroll();
                 }
+                ""
             }
             Key::ArrowRight | Key::Ctrl(b'F') => {
                 if let Some(pos) = self.rows.next_pos(self.cursor) {
@@ -213,6 +214,7 @@ impl Buffer {
                     self.saved_x = pos.x;
                     self.scroll();
                 }
+                ""
             }
             Key::ArrowUp | Key::Ctrl(b'P') => {
                 if self.cursor.y > 0 {
@@ -226,6 +228,7 @@ impl Buffer {
                     self.cursor = pos;
                     self.scroll();
                 }
+                ""
             }
             Key::ArrowDown | Key::Ctrl(b'N') => {
                 if self.cursor.y < self.rows.len() - 1 {
@@ -239,6 +242,7 @@ impl Buffer {
                     self.cursor = pos;
                     self.scroll();
                 }
+                ""
             }
             Key::Home | Key::Ctrl(b'A') => {
                 let x = self.rows[self.cursor.y].beginning_of_code_x();
@@ -249,6 +253,7 @@ impl Buffer {
                 self.cursor = pos;
                 self.saved_x = pos.x;
                 self.scroll();
+                ""
             }
             Key::End | Key::Ctrl(b'E') => {
                 let pos = Pos::new(self.rows[self.cursor.y].last_x(), self.cursor.y);
@@ -258,6 +263,7 @@ impl Buffer {
                 self.cursor = pos;
                 self.saved_x = pos.x;
                 self.scroll();
+                ""
             }
             Key::PageUp | Key::Alt(b'v') => {
                 if self.offset.y > 0 {
@@ -273,6 +279,7 @@ impl Buffer {
                     self.offset.y -= delta;
                     self.draw_range.full_expand();
                 }
+                ""
             }
             Key::PageDown | Key::Ctrl(b'V') => {
                 if self.offset.y + self.size.h < self.rows.len() {
@@ -288,6 +295,7 @@ impl Buffer {
                     self.offset.y += self.size.h;
                     self.draw_range.full_expand();
                 }
+                ""
             }
             Key::Backspace | Key::Ctrl(b'H') => {
                 if let Some(anchor) = self.anchor {
@@ -303,6 +311,7 @@ impl Buffer {
                     }
                     self.scroll();
                 }
+                ""
             }
             Key::Delete | Key::Ctrl(b'D') => {
                 if let Some(anchor) = self.anchor {
@@ -317,22 +326,25 @@ impl Buffer {
                         self.push_event(revent);
                     }
                 }
+                ""
             }
             Key::Ctrl(b'@') => {
                 if let Some(anchor) = self.anchor {
                     self.unhighlight_region(anchor);
                 }
                 self.anchor = Some(self.cursor);
+                "Mark set"
             }
             Key::Ctrl(b'G') => {
                 if let Some(anchor) = self.anchor {
                     self.unhighlight_region(anchor);
                 }
                 self.anchor = None;
+                "Quit"
             }
             Key::Ctrl(b'I') => {
                 if self.anchor.is_some() {
-                    return; // TODO
+                    return ""; // TODO
                 }
                 let event = match self.syntax.indent() {
                     Indent::None => Event::InsertMv(self.cursor, "\t".into(), self.eid),
@@ -349,6 +361,7 @@ impl Buffer {
                     self.push_event(revent);
                 }
                 self.scroll();
+                ""
             }
             Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
                 if let Some(anchor) = self.anchor {
@@ -363,6 +376,7 @@ impl Buffer {
                     self.push_event(revent);
                 }
                 self.scroll();
+                ""
             }
             Key::Ctrl(b'K') => {
                 if let Some(anchor) = self.anchor {
@@ -375,6 +389,7 @@ impl Buffer {
                 let event = Event::Remove(self.cursor, pos, self.eid);
                 let revent = self.process_event(event);
                 self.push_event(revent);
+                ""
             }
             Key::Ctrl(b'U') => {
                 if let Some(anchor) = self.anchor {
@@ -388,6 +403,7 @@ impl Buffer {
                 let revent = self.process_event(event);
                 self.push_event(revent);
                 self.scroll();
+                ""
             }
             Key::Ctrl(b'W') => {
                 if let Some(anchor) = self.anchor {
@@ -396,6 +412,7 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
+                ""
             }
             Key::Ctrl(b'Y') => {
                 if let Some(anchor) = self.anchor {
@@ -406,6 +423,7 @@ impl Buffer {
                 let revent = self.process_event(event);
                 self.push_event(revent);
                 self.scroll();
+                ""
             }
             Key::Ctrl(b'_') => {
                 if !matches!(self.last_key, Some(Key::Ctrl(b'_'))) {
@@ -416,12 +434,18 @@ impl Buffer {
                         let revent = self.process_event(event);
                         self.redo_list.push(revent);
                         self.scroll_center();
+                        "Undo"
+                    } else {
+                        "No further undo information"
                     }
                 } else {
                     if let Some(event) = self.redo_list.pop() {
                         let revent = self.process_event(event);
                         self.undo_list.push(revent);
                         self.scroll_center();
+                        "Redo"
+                    } else {
+                        "No further redo information"
                     }
                 }
             }
@@ -433,6 +457,7 @@ impl Buffer {
                 self.cursor = pos;
                 self.saved_x = pos.x;
                 self.scroll();
+                ""
             }
             Key::Alt(b'>') => {
                 let pos = self.rows.last_pos();
@@ -442,6 +467,7 @@ impl Buffer {
                 self.cursor = pos;
                 self.saved_x = pos.x;
                 self.scroll();
+                ""
             }
             Key::Alt(b'b') => {
                 if let Some(pos) = self.rows.prev_word_pos(self.cursor) {
@@ -452,6 +478,7 @@ impl Buffer {
                     self.saved_x = pos.x;
                     self.scroll();
                 }
+                ""
             }
             Key::Alt(b'd') => {
                 if let Some(anchor) = self.anchor {
@@ -463,6 +490,7 @@ impl Buffer {
                     let revent = self.process_event(event);
                     self.push_event(revent);
                 }
+                ""
             }
             Key::Alt(b'f') => {
                 if let Some(pos) = self.rows.next_word_pos(self.cursor) {
@@ -473,6 +501,7 @@ impl Buffer {
                     self.saved_x = pos.x;
                     self.scroll();
                 }
+                ""
             }
             Key::Alt(b'h') => {
                 if let Some(anchor) = self.anchor {
@@ -485,6 +514,7 @@ impl Buffer {
                     self.push_event(revent);
                     self.scroll();
                 }
+                ""
             }
             Key::Alt(b'w') => {
                 if let Some(anchor) = self.anchor {
@@ -493,6 +523,7 @@ impl Buffer {
                     self.unhighlight_region(anchor);
                     self.anchor = None;
                 }
+                ""
             }
             Key::Char(ch) => {
                 if let Some(anchor) = self.anchor {
@@ -507,12 +538,15 @@ impl Buffer {
                     self.push_event(revent);
                 }
                 self.scroll();
+                ""
             }
-            _ => (),
-        }
+            _ => "",
+        };
 
         self.eid += 1;
         self.last_key = Some(key);
+
+        message
     }
 
     fn process_event(&mut self, event: Event) -> Event {
