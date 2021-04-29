@@ -426,6 +426,10 @@ impl Buffer {
                 ""
             }
             Key::Ctrl(b'_') => {
+                if let Some(anchor) = self.anchor {
+                    self.unhighlight_region(anchor);
+                    self.anchor = None;
+                }
                 if !matches!(self.last_key, Some(Key::Ctrl(b'_'))) {
                     self.undo = !self.undo;
                 }
