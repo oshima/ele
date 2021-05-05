@@ -107,7 +107,7 @@ impl Buffer {
                 if i < len - 1 {
                     writer.write(b"\n")?;
                 }
-                row.hl_context = 0;
+                row.hl_context = None;
             }
 
             self.syntax = Syntax::detect(Some(filename));

@@ -1,10 +1,7 @@
 use crate::canvas::Term;
 use crate::face::{Bg, Fg};
-use crate::row::{HlContext, Row};
+use crate::row::Row;
 use crate::syntax::{Indent, Syntax};
-
-const UNCHECKED: HlContext = 0;
-const DEFAULT: HlContext = 1;
 
 pub struct Plain;
 
@@ -37,10 +34,10 @@ impl Syntax for Plain {
         let mut len = 0;
 
         for (i, row) in rows.iter_mut().enumerate() {
-            if i > 0 && row.hl_context != UNCHECKED {
+            if i > 0 && row.hl_context.is_some() {
                 break;
             }
-            row.hl_context = DEFAULT;
+            row.hl_context = Some(String::new());
             row.faces.clear();
             row.faces
                 .resize(row.string.len(), (Fg::Default, Bg::Default));

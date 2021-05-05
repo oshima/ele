@@ -26,12 +26,10 @@ fn str_width(x: usize, string: &str) -> usize {
     string.chars().fold(0, |w, ch| w + char_width(x + w, ch))
 }
 
-pub type HlContext = u32;
-
 pub struct Row {
     pub string: String,
     x_to_idx: Option<Box<UintVec>>,
-    pub hl_context: HlContext,
+    pub hl_context: Option<String>,
     pub faces: Vec<(Fg, Bg)>,
     pub trailing_bg: Bg,
 }
@@ -41,7 +39,7 @@ impl Row {
         let mut row = Self {
             string,
             x_to_idx: None,
-            hl_context: 0,
+            hl_context: None,
             faces: Vec::new(),
             trailing_bg: Bg::Default,
         };
