@@ -1,7 +1,7 @@
 use crate::canvas::Term;
 use crate::face::{Bg, Fg};
 use crate::row::Row;
-use crate::syntax::{Indent, Syntax};
+use crate::syntax::{IndentType, Syntax};
 
 pub struct Plain;
 
@@ -26,8 +26,8 @@ impl Syntax for Plain {
         }
     }
 
-    fn indent(&self) -> Indent {
-        Indent::None
+    fn indent_type(&self) -> IndentType {
+        IndentType::None
     }
 
     fn highlight(&self, rows: &mut [Row]) -> usize {

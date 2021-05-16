@@ -32,6 +32,7 @@ pub struct Row {
     pub hl_context: Option<String>,
     pub faces: Vec<(Fg, Bg)>,
     pub trailing_bg: Bg,
+    pub indent_level: usize,
 }
 
 impl Row {
@@ -42,6 +43,7 @@ impl Row {
             hl_context: None,
             faces: Vec::new(),
             trailing_bg: Bg::Default,
+            indent_level: 0,
         };
         row.update_mappings();
         row
@@ -192,6 +194,26 @@ impl Row {
 
     pub fn read(&self, x1: usize, x2: usize) -> String {
         self.string[self.x_to_idx(x1)..self.x_to_idx(x2)].to_string()
+    }
+
+    pub fn indent_part(&self) -> &str {
+        let len = self
+            .string
+            .char_indices()
+            .find(|&(_, ch)| !ch.is_ascii_whitespace())
+            .map_or(self.string.len(), |(idx, _)| idx);
+
+        &self.string[..len]
+    }
+
+    pub fn indent(&mut self, string: &str) -> (String, isize) {
+        let len = self.indent_part().len();
+        let code_part = self.string.split_off(len);
+        let indent_part = self.string.split_off(0);
+        let diff = str_width(0, string) as isize - str_width(0, &indent_part) as isize;
+        self.string.push_str(string);
+        self.string.push_str(&code_part);
+        (indent_part, diff)
     }
 
     pub fn push_str(&mut self, string: &str) {

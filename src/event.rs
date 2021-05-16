@@ -6,7 +6,6 @@ pub enum Event {
     Remove(Pos, Pos, u64),
     RemoveMv(Pos, Pos, u64),
     Indent(Pos, String, u64),
-    Unindent(Pos, usize, u64),
 }
 
 impl Event {
@@ -24,12 +23,6 @@ impl Event {
             (Self::RemoveMv(pos1, _, id), Self::RemoveMv(_, pos2, _)) => {
                 Some(Self::RemoveMv(pos1, pos2, id))
             }
-            (Self::Indent(pos, str1, id), Self::Indent(_, str2, _)) => {
-                Some(Self::Indent(pos, str2 + &str1, id))
-            }
-            (Self::Unindent(_, width1, id), Self::Unindent(pos, width2, _)) => {
-                Some(Self::Unindent(pos, width1 + width2, id))
-            }
             _ => None,
         }
     }
@@ -41,7 +34,6 @@ impl Event {
             Self::Remove(_, _, id) => *id,
             Self::RemoveMv(_, _, id) => *id,
             Self::Indent(_, _, id) => *id,
-            Self::Unindent(_, _, id) => *id,
         }
     }
 }

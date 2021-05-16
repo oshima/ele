@@ -9,7 +9,7 @@ use crate::face::{Bg, Fg};
 use crate::key::Key;
 use crate::row::Row;
 use crate::rows::{Rows, RowsMethods};
-use crate::syntax::{Indent, Syntax};
+use crate::syntax::{IndentType, Syntax};
 use crate::util::ExpandableRange;
 
 #[derive(Default)]
@@ -48,7 +48,7 @@ pub struct Buffer {
 impl Buffer {
     pub fn new(filename: Option<String>) -> io::Result<Self> {
         let mut buffer = Self {
-            syntax: Syntax::detect(filename.as_deref()),
+            syntax: <dyn Syntax>::detect(filename.as_deref()),
             filename,
             pos: Pos::new(0, 0),
             size: Size::new(0, 0),
@@ -110,7 +110,7 @@ impl Buffer {
                 row.hl_context = None;
             }
 
-            self.syntax = Syntax::detect(Some(filename));
+            self.syntax = <dyn Syntax>::detect(Some(filename));
             self.anchor = None;
             self.last_key = None;
             self.highlight(0);
@@ -192,7 +192,7 @@ impl Buffer {
         )
     }
 
-    pub fn process_key(&mut self, key: Key, clipboard: &mut String) -> &'static str {
+    pub fn process_key(&mut self, key: Key, clipboard: &mut String) -> &str {
         let message = match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if let Some(pos) = self.rows.prev_pos(self.cursor) {
@@ -228,7 +228,7 @@ impl Buffer {
                     self.cursor = pos;
                     self.scroll();
                 }
-                ""
+                self.rows[self.cursor.y].hl_context.as_deref().unwrap_or("")
             }
             Key::ArrowDown | Key::Ctrl(b'N') => {
                 if self.cursor.y < self.rows.len() - 1 {
@@ -242,7 +242,7 @@ impl Buffer {
                     self.cursor = pos;
                     self.scroll();
                 }
-                ""
+                self.rows[self.cursor.y].hl_context.as_deref().unwrap_or("")
             }
             Key::Home | Key::Ctrl(b'A') => {
                 let x = self.rows[self.cursor.y].beginning_of_code_x();
@@ -343,24 +343,36 @@ impl Buffer {
                 "Quit"
             }
             Key::Ctrl(b'I') => {
-                if self.anchor.is_some() {
-                    return ""; // TODO
-                }
-                let event = match self.syntax.indent() {
-                    Indent::None => Event::InsertMv(self.cursor, "\t".into(), self.eid()),
-                    Indent::Tab => Event::Indent(self.cursor, "\t".into(), self.eid()),
-                    Indent::Spaces(n) => {
-                        let x = self.rows[self.cursor.y].beginning_of_code_x();
-                        Event::Indent(self.cursor, " ".repeat(n - x % n), self.eid())
+                match self.syntax.indent_type() {
+                    IndentType::None => {
+                        let event = Event::InsertMv(self.cursor, "\t".into(), self.eid());
+                        let revent = self.process_event(event);
+                        if let Some(Key::Ctrl(b'I')) = self.last_key {
+                            self.merge_event(revent);
+                        } else {
+                            self.push_event(revent);
+                        }
+                        self.scroll();
                     }
-                };
-                let revent = self.process_event(event);
-                if let Some(Key::Ctrl(b'I')) = self.last_key {
-                    self.merge_event(revent);
-                } else {
-                    self.push_event(revent);
+                    IndentType::Tab => {
+                        let string = "\t".repeat(self.rows[self.cursor.y].indent_level);
+                        if self.rows[self.cursor.y].indent_part() != string {
+                            let event = Event::Indent(self.cursor, string, self.eid());
+                            let revent = self.process_event(event);
+                            self.push_event(revent);
+                            self.scroll();
+                        }
+                    }
+                    IndentType::Spaces(n) => {
+                        let string = " ".repeat(self.rows[self.cursor.y].indent_level * n);
+                        if self.rows[self.cursor.y].indent_part() != string {
+                            let event = Event::Indent(self.cursor, string, self.eid());
+                            let revent = self.process_event(event);
+                            self.push_event(revent);
+                            self.scroll();
+                        }
+                    }
                 }
-                self.scroll();
                 ""
             }
             Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
@@ -595,16 +607,10 @@ impl Buffer {
                 Event::InsertMv(pos1, string, id)
             }
             Event::Indent(pos, string, id) => {
-                let width = self.rows[pos.y].insert_str(0, &string);
-                self.cursor = Pos::new(pos.x + width, pos.y);
-                self.saved_x = pos.x + width;
-                self.highlight(pos.y);
-                Event::Unindent(self.cursor, width, id)
-            }
-            Event::Unindent(pos, width, id) => {
-                let string = self.rows[pos.y].remove_str(0, width);
-                self.cursor = Pos::new(pos.x - width, pos.y);
-                self.saved_x = pos.x - width;
+                let (string, diff) = self.rows[pos.y].indent(&string);
+                let x = cmp::max(pos.x as isize + diff, 0) as usize;
+                self.cursor = Pos::new(x, pos.y);
+                self.saved_x = x;
                 self.highlight(pos.y);
                 Event::Indent(self.cursor, string, id)
             }

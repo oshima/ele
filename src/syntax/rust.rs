@@ -1,13 +1,13 @@
 #![allow(clippy::single_match)]
 
-use std::iter::{Chain, Iterator, Peekable};
-use std::str::CharIndices;
+use std::iter::{self, Chain, Iterator, Peekable, Repeat, Zip};
+use std::str::{CharIndices, Chars};
 
 use self::TokenKind::*;
 use crate::canvas::Term;
 use crate::face::{Bg, Fg};
 use crate::row::Row;
-use crate::syntax::{Indent, Syntax};
+use crate::syntax::{IndentType, Syntax};
 
 pub struct Rust;
 
@@ -32,8 +32,8 @@ impl Syntax for Rust {
         }
     }
 
-    fn indent(&self) -> Indent {
-        Indent::Spaces(4)
+    fn indent_type(&self) -> IndentType {
+        IndentType::Spaces(4)
     }
 
     fn highlight(&self, rows: &mut [Row]) -> usize {
@@ -46,7 +46,7 @@ impl Syntax for Rust {
                     row.hl_context = Some(new_context);
                 }
             } else {
-                if row.hl_context.as_deref() == Some(&new_context) {
+                if row.hl_context.as_ref() == Some(&new_context) {
                     break;
                 }
                 row.hl_context = Some(new_context);
@@ -65,12 +65,11 @@ impl Rust {
         row.faces
             .resize(row.string.len(), (Fg::Default, Bg::Default));
         row.trailing_bg = Bg::Default;
+        row.indent_level = 0;
 
-        let mut tokens = Tokens::from(
-            &row.string,
-            row.hl_context.as_deref().unwrap(),
-        ).peekable();
+        let mut tokens = Tokens::from(&row.string, row.hl_context.as_deref().unwrap()).peekable();
         let mut prev_token: Option<Token> = None;
+        let mut next_context = Vec::new();
 
         while let Some(token) = tokens.next() {
             let fg = match token.kind {
@@ -97,7 +96,7 @@ impl Rust {
                         Some(Bang) => Fg::Macro,
                         Some(Colon) => Fg::Variable,
                         Some(ColonColon) => Fg::Module,
-                        Some(Paren) => Fg::Function,
+                        Some(OpenParen { .. }) => Fg::Function,
                         _ => Fg::Default,
                     },
                 },
@@ -108,23 +107,96 @@ impl Rust {
                 row.faces[i].0 = fg;
             }
 
+            match token.kind {
+                OpenBrace { newline } => {
+                    next_context.push(token.kind);
+                    if newline {
+                        row.indent_level += 1;
+                    }
+                }
+                OpenBracket { newline } => {
+                    next_context.push(token.kind);
+                    if newline {
+                        row.indent_level += 1;
+                    }
+                }
+                OpenParen { newline } => {
+                    next_context.push(token.kind);
+                    if newline {
+                        row.indent_level += 1;
+                    }
+                }
+                CloseBrace => {
+                    if let Some(OpenBrace { .. }) = next_context.last() {
+                        next_context.pop();
+                    }
+                    if let Some(OpenBrace { newline: true }) = prev_token.map(|t| t.kind) {
+                        row.indent_level -= 1;
+                    }
+                }
+                CloseBracket => {
+                    if let Some(OpenBracket { .. }) = next_context.last() {
+                        next_context.pop();
+                    }
+                    if let Some(OpenBracket { newline: true }) = prev_token.map(|t| t.kind) {
+                        row.indent_level -= 1;
+                    }
+                }
+                CloseParen => {
+                    if let Some(OpenParen { .. }) = next_context.last() {
+                        next_context.pop();
+                    }
+                    if let Some(OpenParen { newline: true }) = prev_token.map(|t| t.kind) {
+                        row.indent_level -= 1;
+                    }
+                }
+                Attribute { open: true } => {
+                    next_context.push(token.kind);
+                }
+                StrLit { open: true } => {
+                    next_context.push(token.kind);
+                }
+                RawStrLit { open: true, .. } => {
+                    next_context.push(token.kind);
+                }
+                BlockComment { open: true, .. } => {
+                    next_context.push(token.kind);
+                }
+                _ => (),
+            }
+
             prev_token = Some(token);
         }
 
-        match prev_token.map(|t| t.kind) {
-            Some(Attribute { open: true }) => String::from("#["),
-            Some(StrLit { open: true }) => String::from("\""),
-            Some(RawStrLit { open: true, n_hashes }) => {
-                format!("r{}\"", "#".repeat(n_hashes as usize))
-            },
-            Some(BlockComment { open: true, depth }) => {
-                "/*".repeat(depth as usize)
-            }
-            _ => String::new(),
+        let mut next_context = next_context
+            .iter()
+            .map(|kind| match kind {
+                OpenBrace { newline } => String::from(if *newline { "{/" } else { "{" }),
+                OpenBracket { newline } => String::from(if *newline { "[/" } else { "[" }),
+                OpenParen { newline } => String::from(if *newline { "(/" } else { "(" }),
+                Attribute { open: true } => String::from("#["),
+                StrLit { open: true } => String::from("\""),
+                RawStrLit {
+                    open: true,
+                    n_hashes,
+                } => {
+                    format!("r{}\"", "#".repeat(*n_hashes))
+                }
+                BlockComment { open: true, depth } => "/*".repeat(*depth),
+                _ => String::new(),
+            })
+            .collect::<Vec<String>>()
+            .join("");
+
+        if !next_context.is_empty() && !next_context.ends_with("/") {
+            next_context.push_str("/");
         }
+
+        next_context
     }
 }
 
+#[derive(Clone, Copy)]
 struct Token {
     kind: TokenKind,
     start: usize,
@@ -135,10 +207,14 @@ struct Token {
 enum TokenKind {
     Attribute { open: bool },
     Bang,
-    BlockComment { open: bool, depth: u8 },
+    BlockComment { open: bool, depth: usize },
     CharLit,
+    CloseBrace,
+    CloseBracket,
+    CloseParen,
     Colon,
     ColonColon,
+    Comma,
     Const,
     Fn,
     For,
@@ -149,12 +225,15 @@ enum TokenKind {
     LineComment,
     Mod,
     Mut,
-    Paren,
+    OpenBrace { newline: bool },
+    OpenBracket { newline: bool },
+    OpenParen { newline: bool },
     PrimitiveType,
     Punct,
     Question,
     RawIdent,
-    RawStrLit { open: bool, n_hashes: u8 },
+    RawStrLit { open: bool, n_hashes: usize },
+    Semi,
     Static,
     StrLit { open: bool },
     UpperIdent,
@@ -162,14 +241,17 @@ enum TokenKind {
 
 struct Tokens<'a> {
     text: &'a str,
-    chars: Peekable<Chain<CharIndices<'a>, CharIndices<'a>>>,
+    chars: Peekable<Chain<Zip<Repeat<usize>, Chars<'a>>, CharIndices<'a>>>,
 }
 
 impl<'a> Tokens<'a> {
     fn from(text: &'a str, context: &'a str) -> Self {
         Self {
             text,
-            chars: context.char_indices().chain(text.char_indices()).peekable(),
+            chars: iter::repeat(0)
+                .zip(context.chars())
+                .chain(text.char_indices())
+                .peekable(),
         }
     }
 }
@@ -243,8 +325,21 @@ impl<'a> Iterator for Tokens<'a> {
             },
 
             // punctuation
-            '(' => Paren,
+            '}' => CloseBrace,
+            ']' => CloseBracket,
+            ')' => CloseParen,
+            ',' => Comma,
+            '{' => OpenBrace {
+                newline: self.chars.next_if(|&(_, ch)| ch == '/').is_some(),
+            },
+            '[' => OpenBracket {
+                newline: self.chars.next_if(|&(_, ch)| ch == '/').is_some(),
+            },
+            '(' => OpenParen {
+                newline: self.chars.next_if(|&(_, ch)| ch == '/').is_some(),
+            },
             '?' => Question,
+            ';' => Semi,
             '!' => match self.chars.peek() {
                 Some(&(_, '=')) => Punct,
                 _ => Bang,
