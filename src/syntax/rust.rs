@@ -171,9 +171,9 @@ impl Rust {
         let mut next_context = next_context
             .iter()
             .map(|kind| match kind {
-                OpenBrace { newline } => String::from(if *newline { "{/" } else { "{" }),
-                OpenBracket { newline } => String::from(if *newline { "[/" } else { "[" }),
-                OpenParen { newline } => String::from(if *newline { "(/" } else { "(" }),
+                OpenBrace { newline } => String::from(if *newline { "{_" } else { "{" }),
+                OpenBracket { newline } => String::from(if *newline { "[_" } else { "[" }),
+                OpenParen { newline } => String::from(if *newline { "(_" } else { "(" }),
                 Attribute { open: true } => String::from("#["),
                 StrLit { open: true } => String::from("\""),
                 RawStrLit {
@@ -188,8 +188,8 @@ impl Rust {
             .collect::<Vec<String>>()
             .join("");
 
-        if !next_context.is_empty() && !next_context.ends_with("/") {
-            next_context.push_str("/");
+        if !next_context.is_empty() && !next_context.ends_with("_") {
+            next_context.push_str("_");
         }
 
         next_context
@@ -330,13 +330,13 @@ impl<'a> Iterator for Tokens<'a> {
             ')' => CloseParen,
             ',' => Comma,
             '{' => OpenBrace {
-                newline: self.chars.next_if(|&(_, ch)| ch == '/').is_some(),
+                newline: self.chars.next_if(|&(_, ch)| ch == '_').is_some(),
             },
             '[' => OpenBracket {
-                newline: self.chars.next_if(|&(_, ch)| ch == '/').is_some(),
+                newline: self.chars.next_if(|&(_, ch)| ch == '_').is_some(),
             },
             '(' => OpenParen {
-                newline: self.chars.next_if(|&(_, ch)| ch == '/').is_some(),
+                newline: self.chars.next_if(|&(_, ch)| ch == '_').is_some(),
             },
             '?' => Question,
             ';' => Semi,

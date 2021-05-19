@@ -382,10 +382,30 @@ impl Buffer {
                 }
                 let event = Event::InsertMv(self.cursor, "\n".into(), self.eid());
                 let revent = self.process_event(event);
-                if let Some(Key::Ctrl(b'J')) | Some(Key::Ctrl(b'M')) = self.last_key {
-                    self.merge_event(revent);
-                } else {
-                    self.push_event(revent);
+                // if let Some(Key::Ctrl(b'J')) | Some(Key::Ctrl(b'M')) = self.last_key {
+                //     self.merge_event(revent);
+                // } else {
+                //     self.push_event(revent);
+                // }
+                self.push_event(revent);
+                match self.syntax.indent_type() {
+                    IndentType::Tab => {
+                        let string = "\t".repeat(self.rows[self.cursor.y].indent_level);
+                        if self.rows[self.cursor.y].indent_part() != string {
+                            let event = Event::Indent(self.cursor, string, self.eid());
+                            let revent = self.process_event(event);
+                            self.push_event(revent);
+                        }
+                    }
+                    IndentType::Spaces(n) => {
+                        let string = " ".repeat(self.rows[self.cursor.y].indent_level * n);
+                        if self.rows[self.cursor.y].indent_part() != string {
+                            let event = Event::Indent(self.cursor, string, self.eid());
+                            let revent = self.process_event(event);
+                            self.push_event(revent);
+                        }
+                    }
+                    _ => (),
                 }
                 self.scroll();
                 ""
