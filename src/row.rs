@@ -29,7 +29,7 @@ fn str_width(x: usize, string: &str) -> usize {
 pub struct Row {
     pub string: String,
     x_to_idx: Option<Box<UintVec>>,
-    pub hl_context: Option<String>,
+    pub context: Option<String>,
     pub faces: Vec<(Fg, Bg)>,
     pub trailing_bg: Bg,
     pub indent_level: usize,
@@ -40,7 +40,7 @@ impl Row {
         let mut row = Self {
             string,
             x_to_idx: None,
-            hl_context: None,
+            context: None,
             faces: Vec::new(),
             trailing_bg: Bg::Default,
             indent_level: 0,

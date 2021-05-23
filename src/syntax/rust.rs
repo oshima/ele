@@ -36,22 +36,22 @@ impl Syntax for Rust {
         IndentType::Spaces(4)
     }
 
-    fn highlight(&self, rows: &mut [Row]) -> usize {
-        let mut new_context = String::new();
+    fn update_rows(&self, rows: &mut [Row]) -> usize {
+        let mut next_context = String::new();
         let mut len = 0;
 
         for (i, row) in rows.iter_mut().enumerate() {
             if i == 0 {
-                if row.hl_context.is_none() {
-                    row.hl_context = Some(new_context);
+                if row.context.is_none() {
+                    row.context = Some(next_context);
                 }
             } else {
-                if row.hl_context.as_ref() == Some(&new_context) {
+                if row.context.as_ref() == Some(&next_context) {
                     break;
                 }
-                row.hl_context = Some(new_context);
+                row.context = Some(next_context);
             }
-            new_context = self.highlight_row(row);
+            next_context = self.update_row(row);
             len += 1;
         }
 
@@ -60,20 +60,19 @@ impl Syntax for Rust {
 }
 
 impl Rust {
-    fn highlight_row(&self, row: &mut Row) -> String {
+    fn update_row(&self, row: &mut Row) -> String {
+        let mut tokens = Tokens::from(&row.string, row.context.as_deref().unwrap()).peekable();
+        let mut prev_token: Option<Token> = None;
+        let mut context_tokens = Vec::new();
+
         row.faces.clear();
         row.faces
             .resize(row.string.len(), (Fg::Default, Bg::Default));
         row.trailing_bg = Bg::Default;
         row.indent_level = 0;
 
-        let mut tokens = Tokens::from(&row.string, row.hl_context.as_deref().unwrap()).peekable();
-        let mut prev_token: Option<Token> = None;
-        let mut next_context = Vec::new();
-
         while let Some(token) = tokens.next() {
             let fg = match token.kind {
-                Attribute { .. } => Fg::Macro,
                 BlockComment { .. } | LineComment => Fg::Comment,
                 CharLit | RawStrLit { .. } | StrLit { .. } => Fg::String,
                 Const | Fn | For | Keyword | Let | Mod | Mut | Static => Fg::Keyword,
@@ -108,91 +107,93 @@ impl Rust {
             }
 
             match token.kind {
-                OpenBrace { newline } => {
-                    next_context.push(token.kind);
-                    if newline {
-                        row.indent_level += 1;
-                    }
-                }
-                OpenBracket { newline } => {
-                    next_context.push(token.kind);
-                    if newline {
-                        row.indent_level += 1;
-                    }
-                }
-                OpenParen { newline } => {
-                    next_context.push(token.kind);
-                    if newline {
-                        row.indent_level += 1;
-                    }
-                }
-                CloseBrace => {
-                    if let Some(OpenBrace { .. }) = next_context.last() {
-                        next_context.pop();
-                    }
-                    if let Some(OpenBrace { newline: true }) = prev_token.map(|t| t.kind) {
-                        row.indent_level -= 1;
-                    }
-                }
-                CloseBracket => {
-                    if let Some(OpenBracket { .. }) = next_context.last() {
-                        next_context.pop();
-                    }
-                    if let Some(OpenBracket { newline: true }) = prev_token.map(|t| t.kind) {
-                        row.indent_level -= 1;
-                    }
-                }
-                CloseParen => {
-                    if let Some(OpenParen { .. }) = next_context.last() {
-                        next_context.pop();
-                    }
-                    if let Some(OpenParen { newline: true }) = prev_token.map(|t| t.kind) {
-                        row.indent_level -= 1;
-                    }
-                }
-                Attribute { open: true } => {
-                    next_context.push(token.kind);
-                }
-                StrLit { open: true } => {
-                    next_context.push(token.kind);
-                }
-                RawStrLit { open: true, .. } => {
-                    next_context.push(token.kind);
-                }
-                BlockComment { open: true, .. } => {
-                    next_context.push(token.kind);
-                }
+                OpenBrace { newline: true }
+                | OpenBracket { newline: true }
+                | OpenParen { newline: true } => row.indent_level += 1,
+                CloseBrace => match prev_token.map(|t| t.kind) {
+                    Some(OpenBrace { newline: true }) => row.indent_level -= 1,
+                    _ => (),
+                },
+                CloseBracket => match prev_token.map(|t| t.kind) {
+                    Some(OpenBracket { newline: true }) => row.indent_level -= 1,
+                    _ => (),
+                },
+                CloseParen => match prev_token.map(|t| t.kind) {
+                    Some(OpenParen { newline: true }) => row.indent_level -= 1,
+                    _ => (),
+                },
+                _ => (),
+            }
+
+            match token.kind {
+                OpenBrace { .. }
+                | OpenBracket { .. }
+                | OpenParen { .. }
+                | StrLit { open: true }
+                | RawStrLit { open: true, .. }
+                | BlockComment { open: true, .. } => context_tokens.push(token),
+                CloseBrace => match context_tokens.last().map(|t| t.kind) {
+                    Some(OpenBrace { .. }) => drop(context_tokens.pop()),
+                    _ => (),
+                },
+                CloseBracket => match context_tokens.last().map(|t| t.kind) {
+                    Some(OpenBracket { .. }) => drop(context_tokens.pop()),
+                    _ => (),
+                },
+                CloseParen => match context_tokens.last().map(|t| t.kind) {
+                    Some(OpenParen { .. }) => drop(context_tokens.pop()),
+                    _ => (),
+                },
                 _ => (),
             }
 
             prev_token = Some(token);
         }
 
-        let mut next_context = next_context
-            .iter()
-            .map(|kind| match kind {
-                OpenBrace { newline } => String::from(if *newline { "{_" } else { "{" }),
-                OpenBracket { newline } => String::from(if *newline { "[_" } else { "[" }),
-                OpenParen { newline } => String::from(if *newline { "(_" } else { "(" }),
-                Attribute { open: true } => String::from("#["),
-                StrLit { open: true } => String::from("\""),
+        self.encode_context(context_tokens)
+    }
+
+    fn encode_context(&self, tokens: Vec<Token>) -> String {
+        let mut context = String::new();
+
+        for token in tokens {
+            match token.kind {
+                OpenBrace { newline } => {
+                    context.push_str(if newline { "{\x00" } else { "{" });
+                }
+                OpenBracket { newline } => {
+                    context.push_str(if newline { "[\x00" } else { "[" });
+                }
+                OpenParen { newline } => {
+                    context.push_str(if newline { "(\x00" } else { "(" });
+                }
+                StrLit { open: true } => {
+                    context.push_str("\"");
+                }
                 RawStrLit {
                     open: true,
                     n_hashes,
                 } => {
-                    format!("r{}\"", "#".repeat(*n_hashes))
+                    context.push_str("r");
+                    for _ in 0..n_hashes {
+                        context.push_str("#");
+                    }
+                    context.push_str("\"");
                 }
-                BlockComment { open: true, depth } => "/*".repeat(*depth),
-                _ => String::new(),
-            })
-            .collect::<Vec<String>>()
-            .join("");
-
-        if !next_context.is_empty() && !next_context.ends_with("_") {
-            next_context.push_str("_");
+                BlockComment { open: true, depth } => {
+                    for _ in 0..depth {
+                        context.push_str("/*");
+                    }
+                }
+                _ => (),
+            }
         }
 
-        next_context
+        if !context.is_empty() && !context.ends_with("\x00") {
+            context.push_str("\x00");
+        }
+
+        context
     }
 }
 
@@ -205,7 +206,6 @@ struct Token {
 
 #[derive(Clone, Copy)]
 enum TokenKind {
-    Attribute { open: bool },
     Bang,
     BlockComment { open: bool, depth: usize },
     CharLit,
@@ -267,16 +267,6 @@ impl<'a> Iterator for Tokens<'a> {
         let (start, ch) = self.chars.find(|t| !t.1.is_ascii_whitespace())?;
 
         let kind = match ch {
-            // attribute
-            '#' => match self.chars.peek() {
-                Some(&(_, '[')) => self.attribute(),
-                Some(&(_, '!')) => match self.chars.clone().nth(1) {
-                    Some((_, '[')) => self.attribute(),
-                    _ => Punct,
-                },
-                _ => Punct,
-            },
-
             // comment
             '/' => match self.chars.peek() {
                 Some(&(_, '/')) => self.line_comment(),
@@ -330,13 +320,13 @@ impl<'a> Iterator for Tokens<'a> {
             ')' => CloseParen,
             ',' => Comma,
             '{' => OpenBrace {
-                newline: self.chars.next_if(|&(_, ch)| ch == '_').is_some(),
+                newline: self.chars.next_if(|&(_, ch)| ch == '\x00').is_some(),
             },
             '[' => OpenBracket {
-                newline: self.chars.next_if(|&(_, ch)| ch == '_').is_some(),
+                newline: self.chars.next_if(|&(_, ch)| ch == '\x00').is_some(),
             },
             '(' => OpenParen {
-                newline: self.chars.next_if(|&(_, ch)| ch == '_').is_some(),
+                newline: self.chars.next_if(|&(_, ch)| ch == '\x00').is_some(),
             },
             '?' => Question,
             ';' => Semi,
@@ -365,11 +355,6 @@ impl<'a> Iterator for Tokens<'a> {
 }
 
 impl<'a> Tokens<'a> {
-    fn attribute(&mut self) -> TokenKind {
-        let open = self.chars.find(|t| t.1 == ']').is_none();
-        Attribute { open }
-    }
-
     fn line_comment(&mut self) -> TokenKind {
         while let Some(_) = self.chars.next() {}
         LineComment

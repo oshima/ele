@@ -107,7 +107,7 @@ impl Buffer {
                 if i < len - 1 {
                     writer.write(b"\n")?;
                 }
-                row.hl_context = None;
+                row.context = None;
             }
 
             self.syntax = <dyn Syntax>::detect(Some(filename));
@@ -228,7 +228,7 @@ impl Buffer {
                     self.cursor = pos;
                     self.scroll();
                 }
-                self.rows[self.cursor.y].hl_context.as_deref().unwrap_or("")
+                ""
             }
             Key::ArrowDown | Key::Ctrl(b'N') => {
                 if self.cursor.y < self.rows.len() - 1 {
@@ -242,7 +242,7 @@ impl Buffer {
                     self.cursor = pos;
                     self.scroll();
                 }
-                self.rows[self.cursor.y].hl_context.as_deref().unwrap_or("")
+                ""
             }
             Key::Home | Key::Ctrl(b'A') => {
                 let x = self.rows[self.cursor.y].beginning_of_code_x();
@@ -656,7 +656,7 @@ impl Buffer {
     }
 
     fn highlight(&mut self, y: usize) {
-        let len = self.syntax.highlight(&mut self.rows[y..]);
+        let len = self.syntax.update_rows(&mut self.rows[y..]);
         self.draw_range.expand(y, y + len);
     }
 

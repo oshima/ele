@@ -11,7 +11,7 @@ pub trait Syntax {
     fn fg_color(&self, term: Term) -> &'static [u8];
     fn bg_color(&self, term: Term) -> &'static [u8];
     fn indent_type(&self) -> IndentType;
-    fn highlight(&self, rows: &mut [Row]) -> usize;
+    fn update_rows(&self, rows: &mut [Row]) -> usize;
 }
 
 impl dyn Syntax {

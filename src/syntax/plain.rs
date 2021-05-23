@@ -30,14 +30,14 @@ impl Syntax for Plain {
         IndentType::None
     }
 
-    fn highlight(&self, rows: &mut [Row]) -> usize {
+    fn update_rows(&self, rows: &mut [Row]) -> usize {
         let mut len = 0;
 
         for (i, row) in rows.iter_mut().enumerate() {
-            if i > 0 && row.hl_context.is_some() {
+            if i > 0 && row.context.is_some() {
                 break;
             }
-            row.hl_context = Some(String::new());
+            row.context = Some(String::new());
             row.faces.clear();
             row.faces
                 .resize(row.string.len(), (Fg::Default, Bg::Default));
