@@ -39,8 +39,8 @@ pub struct Buffer {
     undo: bool,
     undo_list: Vec<Event>,
     redo_list: Vec<Event>,
-    next_eid: u64,
-    saved_eid: Option<u64>,
+    next_eid: usize,
+    saved_eid: Option<usize>,
     last_key: Option<Key>,
     search: Search,
 }
@@ -345,6 +345,10 @@ impl Buffer {
             Key::Ctrl(b'I') => {
                 match self.syntax.indent_type() {
                     IndentType::None => {
+                        if let Some(anchor) = self.anchor {
+                            self.remove_region(anchor);
+                            self.anchor = None;
+                        }
                         let event = Event::InsertMv(self.cursor, "\t".into(), self.eid());
                         let revent = self.process_event(event);
                         if let Some(Key::Ctrl(b'I')) = self.last_key {
@@ -355,22 +359,56 @@ impl Buffer {
                         self.scroll();
                     }
                     IndentType::Tab => {
-                        let string = "\t".repeat(self.rows[self.cursor.y].indent_level);
-                        if self.rows[self.cursor.y].indent_part() != string {
-                            let event = Event::Indent(self.cursor, string, self.eid());
-                            let revent = self.process_event(event);
-                            self.push_event(revent);
-                            self.scroll();
+                        if let Some(anchor) = self.anchor {
+                            let pos1 = self.cursor.min(anchor);
+                            let pos2 = self.cursor.max(anchor);
+                            let eid = self.eid();
+                            for y in pos1.y..=pos2.y {
+                                let string = "\t".repeat(self.rows[y].indent_level);
+                                if self.rows[y].indent_part() != string {
+                                    let pos = if y == self.cursor.y { self.cursor } else { Pos::new(0, y) };
+                                    let event = Event::Indent(pos, string, eid);
+                                    let revent = self.process_event(event);
+                                    self.push_event(revent);
+                                }
+                            }
+                            self.unhighlight_region(anchor);
+                            self.anchor = None;
+                        } else {
+                            let string = "\t".repeat(self.rows[self.cursor.y].indent_level);
+                            if self.rows[self.cursor.y].indent_part() != string {
+                                let event = Event::Indent(self.cursor, string, self.eid());
+                                let revent = self.process_event(event);
+                                self.push_event(revent);
+                            }
                         }
+                        self.scroll();
                     }
                     IndentType::Spaces(n) => {
-                        let string = " ".repeat(self.rows[self.cursor.y].indent_level * n);
-                        if self.rows[self.cursor.y].indent_part() != string {
-                            let event = Event::Indent(self.cursor, string, self.eid());
-                            let revent = self.process_event(event);
-                            self.push_event(revent);
-                            self.scroll();
+                        if let Some(anchor) = self.anchor {
+                            let pos1 = self.cursor.min(anchor);
+                            let pos2 = self.cursor.max(anchor);
+                            let eid = self.eid();
+                            for y in pos1.y..=pos2.y {
+                                let string = " ".repeat(self.rows[y].indent_level * n);
+                                if self.rows[y].indent_part() != string {
+                                    let pos = if y == self.cursor.y { self.cursor } else { Pos::new(0, y) };
+                                    let event = Event::Indent(pos, string, eid);
+                                    let revent = self.process_event(event);
+                                    self.push_event(revent);
+                                }
+                            }
+                            self.unhighlight_region(anchor);
+                            self.anchor = None;
+                        } else {
+                            let string = " ".repeat(self.rows[self.cursor.y].indent_level * n);
+                            if self.rows[self.cursor.y].indent_part() != string {
+                                let event = Event::Indent(self.cursor, string, self.eid());
+                                let revent = self.process_event(event);
+                                self.push_event(revent);
+                            }
                         }
+                        self.scroll();
                     }
                 }
                 ""
@@ -380,19 +418,20 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
-                let event = Event::InsertMv(self.cursor, "\n".into(), self.eid());
+                let eid = if let Some(Key::Ctrl(b'J')) | Some(Key::Ctrl(b'M')) = self.last_key {
+                    self.undo_list.last().unwrap().id()
+                } else {
+                    self.eid()
+                };
+                let event = Event::InsertMv(self.cursor, "\n".into(), eid);
                 let revent = self.process_event(event);
-                // if let Some(Key::Ctrl(b'J')) | Some(Key::Ctrl(b'M')) = self.last_key {
-                //     self.merge_event(revent);
-                // } else {
-                //     self.push_event(revent);
-                // }
                 self.push_event(revent);
+
                 match self.syntax.indent_type() {
                     IndentType::Tab => {
                         let string = "\t".repeat(self.rows[self.cursor.y].indent_level);
                         if self.rows[self.cursor.y].indent_part() != string {
-                            let event = Event::Indent(self.cursor, string, self.eid());
+                            let event = Event::Indent(self.cursor, string, eid);
                             let revent = self.process_event(event);
                             self.push_event(revent);
                         }
@@ -400,7 +439,7 @@ impl Buffer {
                     IndentType::Spaces(n) => {
                         let string = " ".repeat(self.rows[self.cursor.y].indent_level * n);
                         if self.rows[self.cursor.y].indent_part() != string {
-                            let event = Event::Indent(self.cursor, string, self.eid());
+                            let event = Event::Indent(self.cursor, string, eid);
                             let revent = self.process_event(event);
                             self.push_event(revent);
                         }
@@ -466,18 +505,24 @@ impl Buffer {
                     self.undo = !self.undo;
                 }
                 if self.undo {
-                    if let Some(event) = self.undo_list.pop() {
-                        let revent = self.process_event(event);
-                        self.redo_list.push(revent);
+                    if let Some(eid) = self.undo_list.last().map(|e| e.id()) {
+                        while self.undo_list.last().map_or(false, |e| e.id() == eid) {
+                            let event = self.undo_list.pop().unwrap();
+                            let revent = self.process_event(event);
+                            self.redo_list.push(revent);
+                        }
                         self.scroll_center();
                         "Undo"
                     } else {
                         "No further undo information"
                     }
                 } else {
-                    if let Some(event) = self.redo_list.pop() {
-                        let revent = self.process_event(event);
-                        self.undo_list.push(revent);
+                    if let Some(eid) = self.redo_list.last().map(|e| e.id()) {
+                        while self.redo_list.last().map_or(false, |e| e.id() == eid) {
+                            let event = self.redo_list.pop().unwrap();
+                            let revent = self.process_event(event);
+                            self.undo_list.push(revent);
+                        }
                         self.scroll_center();
                         "Redo"
                     } else {
@@ -649,7 +694,7 @@ impl Buffer {
         self.undo_list.push(event);
     }
 
-    fn eid(&mut self) -> u64 {
+    fn eid(&mut self) -> usize {
         let eid = self.next_eid;
         self.next_eid += 1;
         eid

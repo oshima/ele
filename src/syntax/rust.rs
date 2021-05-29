@@ -334,11 +334,8 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(&(_, '=')) => Punct,
                 _ => Bang,
             },
-            ':' => match self.chars.peek() {
-                Some(&(_, ':')) => {
-                    self.chars.next();
-                    ColonColon
-                }
+            ':' => match self.chars.next_if(|&(_, ch)| ch == ':') {
+                Some(_) => ColonColon,
                 _ => Colon,
             },
             ch if is_delim(ch) => Punct,
