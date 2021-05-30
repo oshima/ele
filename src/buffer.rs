@@ -91,7 +91,7 @@ impl Buffer {
         } else {
             self.rows.push(Row::new(String::new()));
         }
-        self.highlight(0);
+        self.syntax_update(0);
         self.draw_range.full_expand();
         Ok(())
     }
@@ -113,7 +113,7 @@ impl Buffer {
             self.syntax = <dyn Syntax>::detect(Some(filename));
             self.anchor = None;
             self.last_key = None;
-            self.highlight(0);
+            self.syntax_update(0);
 
             self.saved_eid = self.undo_list.last().map(|e| e.id());
         }
@@ -360,20 +360,32 @@ impl Buffer {
                     }
                     IndentType::Tab => {
                         if let Some(anchor) = self.anchor {
+                            self.unhighlight_region(anchor);
+                            self.anchor = None;
                             let pos1 = self.cursor.min(anchor);
                             let pos2 = self.cursor.max(anchor);
                             let eid = self.eid();
                             for y in pos1.y..=pos2.y {
+                                let indent_part = self.rows[y].indent_part();
                                 let string = "\t".repeat(self.rows[y].indent_level);
-                                if self.rows[y].indent_part() != string {
-                                    let pos = if y == self.cursor.y { self.cursor } else { Pos::new(0, y) };
+                                if indent_part == self.rows[y].string {
+                                    if !indent_part.is_empty() {
+                                        let event = Event::Indent(Pos::new(0, y), "".into(), eid);
+                                        let revent = self.process_event(event);
+                                        self.push_event(revent);
+                                    }
+                                } else if indent_part != string {
+                                    let pos = if y == self.cursor.y {
+                                        self.cursor
+                                    } else {
+                                        Pos::new(0, y)
+                                    };
                                     let event = Event::Indent(pos, string, eid);
                                     let revent = self.process_event(event);
                                     self.push_event(revent);
                                 }
                             }
-                            self.unhighlight_region(anchor);
-                            self.anchor = None;
+                            // TODO: cursor position
                         } else {
                             let string = "\t".repeat(self.rows[self.cursor.y].indent_level);
                             if self.rows[self.cursor.y].indent_part() != string {
@@ -386,20 +398,32 @@ impl Buffer {
                     }
                     IndentType::Spaces(n) => {
                         if let Some(anchor) = self.anchor {
+                            self.unhighlight_region(anchor);
+                            self.anchor = None;
                             let pos1 = self.cursor.min(anchor);
                             let pos2 = self.cursor.max(anchor);
                             let eid = self.eid();
                             for y in pos1.y..=pos2.y {
+                                let indent_part = self.rows[y].indent_part();
                                 let string = " ".repeat(self.rows[y].indent_level * n);
-                                if self.rows[y].indent_part() != string {
-                                    let pos = if y == self.cursor.y { self.cursor } else { Pos::new(0, y) };
+                                if indent_part == self.rows[y].string {
+                                    if !indent_part.is_empty() {
+                                        let event = Event::Indent(Pos::new(0, y), "".into(), eid);
+                                        let revent = self.process_event(event);
+                                        self.push_event(revent);
+                                    }
+                                } else if indent_part != string {
+                                    let pos = if y == self.cursor.y {
+                                        self.cursor
+                                    } else {
+                                        Pos::new(0, y)
+                                    };
                                     let event = Event::Indent(pos, string, eid);
                                     let revent = self.process_event(event);
                                     self.push_event(revent);
                                 }
                             }
-                            self.unhighlight_region(anchor);
-                            self.anchor = None;
+                            // TODO: cursor position
                         } else {
                             let string = " ".repeat(self.rows[self.cursor.y].indent_level * n);
                             if self.rows[self.cursor.y].indent_part() != string {
@@ -418,34 +442,61 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
+
                 let eid = if let Some(Key::Ctrl(b'J')) | Some(Key::Ctrl(b'M')) = self.last_key {
                     self.undo_list.last().unwrap().id()
                 } else {
                     self.eid()
                 };
+
+                let row = &self.rows[self.cursor.y];
+                let indent_part = row.indent_part();
+
+                if indent_part == row.string {
+                    if !indent_part.is_empty() {
+                        let event = Event::Indent(self.cursor, "".into(), eid);
+                        let revent = self.process_event(event);
+                        self.push_event(revent);
+                    }
+                } else if let IndentType::Tab = self.syntax.indent_type() {
+                    let string = "\t".repeat(row.indent_level);
+                    if indent_part != string {
+                        let event = Event::Indent(self.cursor, string, eid);
+                        let revent = self.process_event(event);
+                        self.push_event(revent);
+                    }
+                } else if let IndentType::Spaces(n) = self.syntax.indent_type() {
+                    let string = " ".repeat(row.indent_level * n);
+                    if indent_part != string {
+                        let event = Event::Indent(self.cursor, string, eid);
+                        let revent = self.process_event(event);
+                        self.push_event(revent);
+                    }
+                }
+
                 let event = Event::InsertMv(self.cursor, "\n".into(), eid);
                 let revent = self.process_event(event);
                 self.push_event(revent);
 
-                match self.syntax.indent_type() {
-                    IndentType::Tab => {
-                        let string = "\t".repeat(self.rows[self.cursor.y].indent_level);
-                        if self.rows[self.cursor.y].indent_part() != string {
-                            let event = Event::Indent(self.cursor, string, eid);
-                            let revent = self.process_event(event);
-                            self.push_event(revent);
-                        }
+                let row = &self.rows[self.cursor.y];
+                let indent_part = row.indent_part();
+
+                if let IndentType::Tab = self.syntax.indent_type() {
+                    let string = "\t".repeat(row.indent_level);
+                    if indent_part != string {
+                        let event = Event::Indent(self.cursor, string, eid);
+                        let revent = self.process_event(event);
+                        self.push_event(revent);
                     }
-                    IndentType::Spaces(n) => {
-                        let string = " ".repeat(self.rows[self.cursor.y].indent_level * n);
-                        if self.rows[self.cursor.y].indent_part() != string {
-                            let event = Event::Indent(self.cursor, string, eid);
-                            let revent = self.process_event(event);
-                            self.push_event(revent);
-                        }
+                } else if let IndentType::Spaces(n) = self.syntax.indent_type() {
+                    let string = " ".repeat(row.indent_level * n);
+                    if indent_part != string {
+                        let event = Event::Indent(self.cursor, string, eid);
+                        let revent = self.process_event(event);
+                        self.push_event(revent);
                     }
-                    _ => (),
                 }
+
                 self.scroll();
                 ""
             }
@@ -635,7 +686,7 @@ impl Buffer {
                 let pos2 = self.rows.insert_text(pos1, &string);
                 self.cursor = pos1;
                 self.saved_x = pos1.x;
-                self.highlight(pos1.y);
+                self.syntax_update(pos1.y);
                 if pos1.y < pos2.y {
                     self.draw_range.full_expand_end();
                 }
@@ -645,7 +696,7 @@ impl Buffer {
                 let pos2 = self.rows.insert_text(pos1, &string);
                 self.cursor = pos2;
                 self.saved_x = pos2.x;
-                self.highlight(pos1.y);
+                self.syntax_update(pos1.y);
                 if pos1.y < pos2.y {
                     self.draw_range.full_expand_end();
                 }
@@ -655,7 +706,7 @@ impl Buffer {
                 let string = self.rows.remove_text(pos1, pos2);
                 self.cursor = pos1;
                 self.saved_x = pos1.x;
-                self.highlight(pos1.y);
+                self.syntax_update(pos1.y);
                 if pos1.y < pos2.y {
                     self.draw_range.full_expand_end();
                 }
@@ -665,7 +716,7 @@ impl Buffer {
                 let string = self.rows.remove_text(pos1, pos2);
                 self.cursor = pos1;
                 self.saved_x = pos1.x;
-                self.highlight(pos1.y);
+                self.syntax_update(pos1.y);
                 if pos1.y < pos2.y {
                     self.draw_range.full_expand_end();
                 }
@@ -676,7 +727,7 @@ impl Buffer {
                 let x = cmp::max(pos.x as isize + diff, 0) as usize;
                 self.cursor = Pos::new(x, pos.y);
                 self.saved_x = x;
-                self.highlight(pos.y);
+                self.syntax_update(pos.y);
                 Event::Indent(self.cursor, string, id)
             }
         }
@@ -700,7 +751,7 @@ impl Buffer {
         eid
     }
 
-    fn highlight(&mut self, y: usize) {
+    fn syntax_update(&mut self, y: usize) {
         let len = self.syntax.update_rows(&mut self.rows[y..]);
         self.draw_range.expand(y, y + len);
     }
