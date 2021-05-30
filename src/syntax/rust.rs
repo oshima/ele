@@ -37,21 +37,25 @@ impl Syntax for Rust {
     }
 
     fn update_rows(&self, rows: &mut [Row]) -> usize {
-        let mut next_context = String::new();
+        let mut ctx_tokens = Vec::new();
+        let mut ctx_string = String::new();
         let mut len = 0;
 
         for (i, row) in rows.iter_mut().enumerate() {
             if i == 0 {
                 if row.context.is_none() {
-                    row.context = Some(next_context);
+                    row.context = Some(String::new());
                 }
             } else {
-                if row.context.as_ref() == Some(&next_context) {
+                if row.context.as_ref() == Some(&ctx_string) {
                     break;
                 }
-                row.context = Some(next_context);
+                let context = row.context.get_or_insert(String::new());
+                context.clear();
+                context.push_str(&ctx_string);
             }
-            next_context = self.update_row(row);
+
+            self.update_row(row, &mut ctx_tokens, &mut ctx_string);
             len += 1;
         }
 
@@ -60,16 +64,18 @@ impl Syntax for Rust {
 }
 
 impl Rust {
-    fn update_row(&self, row: &mut Row) -> String {
+    fn update_row(&self, row: &mut Row, ctx_tokens: &mut Vec<Token>, ctx_string: &mut String) {
         let mut tokens = Tokens::from(&row.string, row.context.as_deref().unwrap()).peekable();
         let mut prev_token: Option<Token> = None;
-        let mut context_tokens = Vec::new();
 
         row.faces.clear();
         row.faces
             .resize(row.string.len(), (Fg::Default, Bg::Default));
         row.trailing_bg = Bg::Default;
         row.indent_level = 0;
+
+        ctx_tokens.clear();
+        ctx_string.clear();
 
         while let Some(token) = tokens.next() {
             let fg = match token.kind {
@@ -131,17 +137,17 @@ impl Rust {
                 | OpenParen { .. }
                 | StrLit { open: true }
                 | RawStrLit { open: true, .. }
-                | BlockComment { open: true, .. } => context_tokens.push(token),
-                CloseBrace => match context_tokens.last().map(|t| t.kind) {
-                    Some(OpenBrace { .. }) => drop(context_tokens.pop()),
+                | BlockComment { open: true, .. } => ctx_tokens.push(token),
+                CloseBrace => match ctx_tokens.last().map(|t| t.kind) {
+                    Some(OpenBrace { .. }) => drop(ctx_tokens.pop()),
                     _ => (),
                 },
-                CloseBracket => match context_tokens.last().map(|t| t.kind) {
-                    Some(OpenBracket { .. }) => drop(context_tokens.pop()),
+                CloseBracket => match ctx_tokens.last().map(|t| t.kind) {
+                    Some(OpenBracket { .. }) => drop(ctx_tokens.pop()),
                     _ => (),
                 },
-                CloseParen => match context_tokens.last().map(|t| t.kind) {
-                    Some(OpenParen { .. }) => drop(context_tokens.pop()),
+                CloseParen => match ctx_tokens.last().map(|t| t.kind) {
+                    Some(OpenParen { .. }) => drop(ctx_tokens.pop()),
                     _ => (),
                 },
                 _ => (),
@@ -150,50 +156,47 @@ impl Rust {
             prev_token = Some(token);
         }
 
-        self.encode_context(context_tokens)
+        self.encode_context(ctx_tokens, ctx_string);
     }
 
-    fn encode_context(&self, tokens: Vec<Token>) -> String {
-        let mut context = String::new();
-
+    #[inline]
+    fn encode_context(&self, tokens: &mut Vec<Token>, string: &mut String) {
         for token in tokens {
             match token.kind {
                 OpenBrace { newline } => {
-                    context.push_str(if newline { "{\x00" } else { "{" });
+                    string.push_str(if newline { "{\x00" } else { "{" });
                 }
                 OpenBracket { newline } => {
-                    context.push_str(if newline { "[\x00" } else { "[" });
+                    string.push_str(if newline { "[\x00" } else { "[" });
                 }
                 OpenParen { newline } => {
-                    context.push_str(if newline { "(\x00" } else { "(" });
+                    string.push_str(if newline { "(\x00" } else { "(" });
                 }
                 StrLit { open: true } => {
-                    context.push_str("\"");
+                    string.push_str("\"");
                 }
                 RawStrLit {
                     open: true,
                     n_hashes,
                 } => {
-                    context.push_str("r");
+                    string.push_str("r");
                     for _ in 0..n_hashes {
-                        context.push_str("#");
+                        string.push_str("#");
                     }
-                    context.push_str("\"");
+                    string.push_str("\"");
                 }
                 BlockComment { open: true, depth } => {
                     for _ in 0..depth {
-                        context.push_str("/*");
+                        string.push_str("/*");
                     }
                 }
                 _ => (),
             }
         }
 
-        if !context.is_empty() && !context.ends_with("\x00") {
-            context.push_str("\x00");
+        if !string.is_empty() && !string.ends_with("\x00") {
+            string.push_str("\x00");
         }
-
-        context
     }
 }
 
