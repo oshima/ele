@@ -164,13 +164,13 @@ impl Rust {
         for token in tokens {
             match token.kind {
                 OpenBrace { newline } => {
-                    string.push_str(if newline { "{\x00" } else { "{" });
+                    string.push_str(if newline { "{\n" } else { "{" });
                 }
                 OpenBracket { newline } => {
-                    string.push_str(if newline { "[\x00" } else { "[" });
+                    string.push_str(if newline { "[\n" } else { "[" });
                 }
                 OpenParen { newline } => {
-                    string.push_str(if newline { "(\x00" } else { "(" });
+                    string.push_str(if newline { "(\n" } else { "(" });
                 }
                 StrLit { open: true } => {
                     string.push_str("\"");
@@ -194,8 +194,8 @@ impl Rust {
             }
         }
 
-        if !string.is_empty() && !string.ends_with("\x00") {
-            string.push_str("\x00");
+        if !string.is_empty() && !string.ends_with("\n") {
+            string.push_str("\n");
         }
     }
 }
@@ -323,13 +323,13 @@ impl<'a> Iterator for Tokens<'a> {
             ')' => CloseParen,
             ',' => Comma,
             '{' => OpenBrace {
-                newline: self.chars.next_if(|&(_, ch)| ch == '\x00').is_some(),
+                newline: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
             },
             '[' => OpenBracket {
-                newline: self.chars.next_if(|&(_, ch)| ch == '\x00').is_some(),
+                newline: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
             },
             '(' => OpenParen {
-                newline: self.chars.next_if(|&(_, ch)| ch == '\x00').is_some(),
+                newline: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
             },
             '?' => Question,
             ';' => Semi,
