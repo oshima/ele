@@ -159,8 +159,7 @@ impl Rust {
         self.encode_context(ctx_tokens, ctx_string);
     }
 
-    #[inline]
-    fn encode_context(&self, tokens: &mut Vec<Token>, string: &mut String) {
+    fn encode_context(&self, tokens: &[Token], string: &mut String) {
         for token in tokens {
             match token.kind {
                 OpenBrace { newline } => {
