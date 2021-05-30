@@ -393,6 +393,11 @@ impl Buffer {
                                 let revent = self.process_event(event);
                                 self.push_event(revent);
                             }
+                            let x = self.rows[self.cursor.y].beginning_of_code_x();
+                            if self.cursor.x < x {
+                                self.cursor.x = x;
+                                self.saved_x = x;
+                            }
                         }
                         self.scroll();
                     }
@@ -431,6 +436,11 @@ impl Buffer {
                                 let revent = self.process_event(event);
                                 self.push_event(revent);
                             }
+                            let x = self.rows[self.cursor.y].beginning_of_code_x();
+                            if self.cursor.x < x {
+                                self.cursor.x = x;
+                                self.saved_x = x;
+                            }
                         }
                         self.scroll();
                     }
@@ -452,7 +462,7 @@ impl Buffer {
                 let row = &self.rows[self.cursor.y];
                 let indent_part = row.indent_part();
 
-                if indent_part == row.string {
+                if row.x_to_idx(self.cursor.x) <= indent_part.len() {
                     if !indent_part.is_empty() {
                         let event = Event::Indent(self.cursor, "".into(), eid);
                         let revent = self.process_event(event);
