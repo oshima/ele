@@ -132,12 +132,12 @@ impl Rust {
             }
 
             match token.kind {
-                OpenBrace { .. }
-                | OpenBracket { .. }
-                | OpenParen { .. }
+                BlockComment { open: true, .. }
                 | StrLit { open: true }
                 | RawStrLit { open: true, .. }
-                | BlockComment { open: true, .. } => ctx_tokens.push(token),
+                | OpenBrace { .. }
+                | OpenBracket { .. }
+                | OpenParen { .. } => ctx_tokens.push(token),
                 CloseBrace => match ctx_tokens.last().map(|t| t.kind) {
                     Some(OpenBrace { .. }) => drop(ctx_tokens.pop()),
                     _ => (),
@@ -156,20 +156,16 @@ impl Rust {
             prev_token = Some(token);
         }
 
-        self.encode_context(ctx_tokens, ctx_string);
+        self.convert_context(ctx_tokens, ctx_string);
     }
 
-    fn encode_context(&self, tokens: &[Token], string: &mut String) {
+    fn convert_context(&self, tokens: &[Token], string: &mut String) {
         for token in tokens {
             match token.kind {
-                OpenBrace { newline } => {
-                    string.push_str(if newline { "{\n" } else { "{" });
-                }
-                OpenBracket { newline } => {
-                    string.push_str(if newline { "[\n" } else { "[" });
-                }
-                OpenParen { newline } => {
-                    string.push_str(if newline { "(\n" } else { "(" });
+                BlockComment { open: true, depth } => {
+                    for _ in 0..depth {
+                        string.push_str("/*");
+                    }
                 }
                 StrLit { open: true } => {
                     string.push_str("\"");
@@ -184,10 +180,14 @@ impl Rust {
                     }
                     string.push_str("\"");
                 }
-                BlockComment { open: true, depth } => {
-                    for _ in 0..depth {
-                        string.push_str("/*");
-                    }
+                OpenBrace { newline } => {
+                    string.push_str(if newline { "{\n" } else { "{" });
+                }
+                OpenBracket { newline } => {
+                    string.push_str(if newline { "[\n" } else { "[" });
+                }
+                OpenParen { newline } => {
+                    string.push_str(if newline { "(\n" } else { "(" });
                 }
                 _ => (),
             }
@@ -235,7 +235,6 @@ enum TokenKind {
     Question,
     RawIdent,
     RawStrLit { open: bool, n_hashes: usize },
-    Semi,
     Static,
     StrLit { open: bool },
     UpperIdent,
@@ -266,7 +265,7 @@ impl<'a> Iterator for Tokens<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (start, ch) = self.chars.find(|t| !t.1.is_ascii_whitespace())?;
+        let (start, ch) = self.chars.find(|&(_, ch)| !ch.is_ascii_whitespace())?;
 
         let kind = match ch {
             // comment
@@ -317,10 +316,16 @@ impl<'a> Iterator for Tokens<'a> {
             },
 
             // punctuation
-            '}' => CloseBrace,
-            ']' => CloseBracket,
-            ')' => CloseParen,
             ',' => Comma,
+            '?' => Question,
+            '!' => match self.chars.peek() {
+                Some(&(_, '=')) => Punct,
+                _ => Bang,
+            },
+            ':' => match self.chars.next_if(|&(_, ch)| ch == ':') {
+                Some(_) => ColonColon,
+                _ => Colon,
+            },
             '{' => OpenBrace {
                 newline: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
             },
@@ -330,16 +335,9 @@ impl<'a> Iterator for Tokens<'a> {
             '(' => OpenParen {
                 newline: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
             },
-            '?' => Question,
-            ';' => Semi,
-            '!' => match self.chars.peek() {
-                Some(&(_, '=')) => Punct,
-                _ => Bang,
-            },
-            ':' => match self.chars.next_if(|&(_, ch)| ch == ':') {
-                Some(_) => ColonColon,
-                _ => Colon,
-            },
+            '}' => CloseBrace,
+            ']' => CloseBracket,
+            ')' => CloseParen,
             ch if is_delim(ch) => Punct,
 
             // identifier
@@ -347,7 +345,7 @@ impl<'a> Iterator for Tokens<'a> {
             _ => self.ident(start),
         };
 
-        let end = self.chars.peek().map_or(self.text.len(), |t| t.0);
+        let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
 
         Some(Token { kind, start, end })
     }
