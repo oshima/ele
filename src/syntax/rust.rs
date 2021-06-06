@@ -1,20 +1,13 @@
 #![allow(clippy::single_match)]
 
-use std::iter::{Chain, Iterator, Peekable};
-use std::str::CharIndices;
+use std::iter::{self, Chain, Iterator, Peekable, Repeat, Zip};
+use std::str::{CharIndices, Chars};
 
 use self::TokenKind::*;
 use crate::canvas::Term;
 use crate::face::{Bg, Fg};
-use crate::row::{HlContext, Row};
-use crate::syntax::{Indent, Syntax};
-
-const UNCHECKED: HlContext = 0x00000000;
-const DEFAULT: HlContext = 0x00000001;
-const IN_ATTRIBUTE: HlContext = 0x00000002;
-const IN_STRING: HlContext = 0x00000004;
-const IN_RAW_STRING: HlContext = 0x0000ff00;
-const IN_COMMENT: HlContext = 0x00ff0000;
+use crate::row::Row;
+use crate::syntax::Syntax;
 
 pub struct Rust;
 
@@ -39,26 +32,30 @@ impl Syntax for Rust {
         }
     }
 
-    fn indent(&self) -> Indent {
-        Indent::Spaces(4)
+    fn indent_unit(&self) -> Option<&'static str> {
+        Some("    ")
     }
 
-    fn highlight(&self, rows: &mut [Row]) -> usize {
-        let mut new_context = UNCHECKED;
+    fn update_rows(&self, rows: &mut [Row]) -> usize {
+        let mut ctx_tokens = Vec::new();
+        let mut ctx_string = String::new();
         let mut len = 0;
 
         for (i, row) in rows.iter_mut().enumerate() {
             if i == 0 {
-                if row.hl_context == UNCHECKED {
-                    row.hl_context = DEFAULT;
+                if row.context.is_none() {
+                    row.context = Some(String::new());
                 }
             } else {
-                if row.hl_context == new_context {
+                if row.context.as_ref() == Some(&ctx_string) {
                     break;
                 }
-                row.hl_context = new_context;
+                let context = row.context.get_or_insert(String::new());
+                context.clear();
+                context.push_str(&ctx_string);
             }
-            new_context = self.highlight_row(row);
+
+            self.update_row(row, &mut ctx_tokens, &mut ctx_string);
             len += 1;
         }
 
@@ -67,19 +64,21 @@ impl Syntax for Rust {
 }
 
 impl Rust {
-    fn highlight_row(&self, row: &mut Row) -> HlContext {
+    fn update_row(&self, row: &mut Row, ctx_tokens: &mut Vec<Token>, ctx_string: &mut String) {
+        let mut tokens = Tokens::from(&row.string, row.context.as_deref().unwrap()).peekable();
+        let mut prev_token: Option<Token> = None;
+
         row.faces.clear();
         row.faces
             .resize(row.string.len(), (Fg::Default, Bg::Default));
         row.trailing_bg = Bg::Default;
+        row.indent_level = 0;
 
-        let context = self.decode_context(row.hl_context);
-        let mut tokens = Tokens::from(&row.string, &context).peekable();
-        let mut prev_token: Option<Token> = None;
+        ctx_tokens.clear();
+        ctx_string.clear();
 
         while let Some(token) = tokens.next() {
             let fg = match token.kind {
-                Attribute { .. } => Fg::Macro,
                 BlockComment { .. } | LineComment => Fg::Comment,
                 CharLit | RawStrLit { .. } | StrLit { .. } => Fg::String,
                 Const | Fn | For | Keyword | Let | Mod | Mut | Static => Fg::Keyword,
@@ -102,7 +101,7 @@ impl Rust {
                         Some(Bang) => Fg::Macro,
                         Some(Colon) => Fg::Variable,
                         Some(ColonColon) => Fg::Module,
-                        Some(Paren) => Fg::Function,
+                        Some(OpenParen { .. }) => Fg::Function,
                         _ => Fg::Default,
                     },
                 },
@@ -113,44 +112,94 @@ impl Rust {
                 row.faces[i].0 = fg;
             }
 
+            match token.kind {
+                OpenBrace { newline: true }
+                | OpenBracket { newline: true }
+                | OpenParen { newline: true } => row.indent_level += 1,
+                CloseBrace => match prev_token.map(|t| t.kind) {
+                    Some(OpenBrace { newline: true }) => row.indent_level -= 1,
+                    _ => (),
+                },
+                CloseBracket => match prev_token.map(|t| t.kind) {
+                    Some(OpenBracket { newline: true }) => row.indent_level -= 1,
+                    _ => (),
+                },
+                CloseParen => match prev_token.map(|t| t.kind) {
+                    Some(OpenParen { newline: true }) => row.indent_level -= 1,
+                    _ => (),
+                },
+                _ => (),
+            }
+
+            match token.kind {
+                BlockComment { open: true, .. }
+                | StrLit { open: true }
+                | RawStrLit { open: true, .. }
+                | OpenBrace { .. }
+                | OpenBracket { .. }
+                | OpenParen { .. } => ctx_tokens.push(token),
+                CloseBrace => match ctx_tokens.last().map(|t| t.kind) {
+                    Some(OpenBrace { .. }) => drop(ctx_tokens.pop()),
+                    _ => (),
+                },
+                CloseBracket => match ctx_tokens.last().map(|t| t.kind) {
+                    Some(OpenBracket { .. }) => drop(ctx_tokens.pop()),
+                    _ => (),
+                },
+                CloseParen => match ctx_tokens.last().map(|t| t.kind) {
+                    Some(OpenParen { .. }) => drop(ctx_tokens.pop()),
+                    _ => (),
+                },
+                _ => (),
+            }
+
             prev_token = Some(token);
         }
 
-        self.encode_context(prev_token.map(|t| t.kind))
+        self.convert_context(ctx_tokens, ctx_string);
     }
 
-    fn decode_context(&self, hl_context: HlContext) -> String {
-        if hl_context & IN_ATTRIBUTE != 0 {
-            String::from("#[")
-        } else if hl_context & IN_STRING != 0 {
-            String::from("\"")
-        } else if hl_context & IN_RAW_STRING != 0 {
-            let n_hashes = (hl_context >> IN_RAW_STRING.trailing_zeros()) - 1;
-            format!("r{}\"", "#".repeat(n_hashes as usize))
-        } else if hl_context & IN_COMMENT != 0 {
-            let depth = hl_context >> IN_COMMENT.trailing_zeros();
-            "/*".repeat(depth as usize)
-        } else {
-            String::new()
-        }
-    }
-
-    fn encode_context(&self, token_kind: Option<TokenKind>) -> HlContext {
-        match token_kind {
-            Some(Attribute { open: true }) => IN_ATTRIBUTE,
-            Some(StrLit { open: true }) => IN_STRING,
-            Some(RawStrLit {
-                open: true,
-                n_hashes,
-            }) => (n_hashes as HlContext + 1) << IN_RAW_STRING.trailing_zeros(),
-            Some(BlockComment { open: true, depth }) => {
-                (depth as HlContext) << IN_COMMENT.trailing_zeros()
+    fn convert_context(&self, tokens: &[Token], string: &mut String) {
+        for token in tokens {
+            match token.kind {
+                BlockComment { open: true, depth } => {
+                    for _ in 0..depth {
+                        string.push_str("/*");
+                    }
+                }
+                StrLit { open: true } => {
+                    string.push_str("\"");
+                }
+                RawStrLit {
+                    open: true,
+                    n_hashes,
+                } => {
+                    string.push_str("r");
+                    for _ in 0..n_hashes {
+                        string.push_str("#");
+                    }
+                    string.push_str("\"");
+                }
+                OpenBrace { newline } => {
+                    string.push_str(if newline { "{\n" } else { "{" });
+                }
+                OpenBracket { newline } => {
+                    string.push_str(if newline { "[\n" } else { "[" });
+                }
+                OpenParen { newline } => {
+                    string.push_str(if newline { "(\n" } else { "(" });
+                }
+                _ => (),
             }
-            _ => DEFAULT,
+        }
+
+        if !string.is_empty() && !string.ends_with("\n") {
+            string.push_str("\n");
         }
     }
 }
 
+#[derive(Clone, Copy)]
 struct Token {
     kind: TokenKind,
     start: usize,
@@ -159,12 +208,15 @@ struct Token {
 
 #[derive(Clone, Copy)]
 enum TokenKind {
-    Attribute { open: bool },
     Bang,
-    BlockComment { open: bool, depth: u8 },
+    BlockComment { open: bool, depth: usize },
     CharLit,
+    CloseBrace,
+    CloseBracket,
+    CloseParen,
     Colon,
     ColonColon,
+    Comma,
     Const,
     Fn,
     For,
@@ -175,12 +227,14 @@ enum TokenKind {
     LineComment,
     Mod,
     Mut,
-    Paren,
+    OpenBrace { newline: bool },
+    OpenBracket { newline: bool },
+    OpenParen { newline: bool },
     PrimitiveType,
     Punct,
     Question,
     RawIdent,
-    RawStrLit { open: bool, n_hashes: u8 },
+    RawStrLit { open: bool, n_hashes: usize },
     Static,
     StrLit { open: bool },
     UpperIdent,
@@ -188,14 +242,17 @@ enum TokenKind {
 
 struct Tokens<'a> {
     text: &'a str,
-    chars: Peekable<Chain<CharIndices<'a>, CharIndices<'a>>>,
+    chars: Peekable<Chain<Zip<Repeat<usize>, Chars<'a>>, CharIndices<'a>>>,
 }
 
 impl<'a> Tokens<'a> {
     fn from(text: &'a str, context: &'a str) -> Self {
         Self {
             text,
-            chars: context.char_indices().chain(text.char_indices()).peekable(),
+            chars: iter::repeat(0)
+                .zip(context.chars())
+                .chain(text.char_indices())
+                .peekable(),
         }
     }
 }
@@ -208,19 +265,9 @@ impl<'a> Iterator for Tokens<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (start, ch) = self.chars.find(|t| !t.1.is_ascii_whitespace())?;
+        let (start, ch) = self.chars.find(|&(_, ch)| !ch.is_ascii_whitespace())?;
 
         let kind = match ch {
-            // attribute
-            '#' => match self.chars.peek() {
-                Some(&(_, '[')) => self.attribute(),
-                Some(&(_, '!')) => match self.chars.clone().nth(1) {
-                    Some((_, '[')) => self.attribute(),
-                    _ => Punct,
-                },
-                _ => Punct,
-            },
-
             // comment
             '/' => match self.chars.peek() {
                 Some(&(_, '/')) => self.line_comment(),
@@ -269,19 +316,28 @@ impl<'a> Iterator for Tokens<'a> {
             },
 
             // punctuation
-            '(' => Paren,
+            ',' => Comma,
             '?' => Question,
             '!' => match self.chars.peek() {
                 Some(&(_, '=')) => Punct,
                 _ => Bang,
             },
-            ':' => match self.chars.peek() {
-                Some(&(_, ':')) => {
-                    self.chars.next();
-                    ColonColon
-                }
+            ':' => match self.chars.next_if(|&(_, ch)| ch == ':') {
+                Some(_) => ColonColon,
                 _ => Colon,
             },
+            '{' => OpenBrace {
+                newline: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
+            },
+            '[' => OpenBracket {
+                newline: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
+            },
+            '(' => OpenParen {
+                newline: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
+            },
+            '}' => CloseBrace,
+            ']' => CloseBracket,
+            ')' => CloseParen,
             ch if is_delim(ch) => Punct,
 
             // identifier
@@ -289,18 +345,13 @@ impl<'a> Iterator for Tokens<'a> {
             _ => self.ident(start),
         };
 
-        let end = self.chars.peek().map_or(self.text.len(), |t| t.0);
+        let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
 
         Some(Token { kind, start, end })
     }
 }
 
 impl<'a> Tokens<'a> {
-    fn attribute(&mut self) -> TokenKind {
-        let open = self.chars.find(|t| t.1 == ']').is_none();
-        Attribute { open }
-    }
-
     fn line_comment(&mut self) -> TokenKind {
         while let Some(_) = self.chars.next() {}
         LineComment

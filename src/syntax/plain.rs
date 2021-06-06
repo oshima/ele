@@ -1,10 +1,7 @@
 use crate::canvas::Term;
 use crate::face::{Bg, Fg};
-use crate::row::{HlContext, Row};
-use crate::syntax::{Indent, Syntax};
-
-const UNCHECKED: HlContext = 0;
-const DEFAULT: HlContext = 1;
+use crate::row::Row;
+use crate::syntax::Syntax;
 
 pub struct Plain;
 
@@ -29,18 +26,18 @@ impl Syntax for Plain {
         }
     }
 
-    fn indent(&self) -> Indent {
-        Indent::None
+    fn indent_unit(&self) -> Option<&'static str> {
+        None
     }
 
-    fn highlight(&self, rows: &mut [Row]) -> usize {
+    fn update_rows(&self, rows: &mut [Row]) -> usize {
         let mut len = 0;
 
         for (i, row) in rows.iter_mut().enumerate() {
-            if i > 0 && row.hl_context != UNCHECKED {
+            if i > 0 && row.context.is_some() {
                 break;
             }
-            row.hl_context = DEFAULT;
+            row.context = Some(String::new());
             row.faces.clear();
             row.faces
                 .resize(row.string.len(), (Fg::Default, Bg::Default));

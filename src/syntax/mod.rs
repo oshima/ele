@@ -10,8 +10,8 @@ pub trait Syntax {
     fn name(&self) -> &'static str;
     fn fg_color(&self, term: Term) -> &'static [u8];
     fn bg_color(&self, term: Term) -> &'static [u8];
-    fn indent(&self) -> Indent;
-    fn highlight(&self, rows: &mut [Row]) -> usize;
+    fn indent_unit(&self) -> Option<&'static str>;
+    fn update_rows(&self, rows: &mut [Row]) -> usize;
 }
 
 impl dyn Syntax {
@@ -26,11 +26,4 @@ impl dyn Syntax {
             Box::new(Plain)
         }
     }
-}
-
-#[allow(dead_code)]
-pub enum Indent {
-    None,
-    Tab,
-    Spaces(usize),
 }

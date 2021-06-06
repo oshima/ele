@@ -26,14 +26,13 @@ fn str_width(x: usize, string: &str) -> usize {
     string.chars().fold(0, |w, ch| w + char_width(x + w, ch))
 }
 
-pub type HlContext = u32;
-
 pub struct Row {
     pub string: String,
     x_to_idx: Option<Box<UintVec>>,
-    pub hl_context: HlContext,
+    pub context: Option<String>,
     pub faces: Vec<(Fg, Bg)>,
     pub trailing_bg: Bg,
+    pub indent_level: usize,
 }
 
 impl Row {
@@ -41,9 +40,10 @@ impl Row {
         let mut row = Self {
             string,
             x_to_idx: None,
-            hl_context: 0,
+            context: None,
             faces: Vec::new(),
             trailing_bg: Bg::Default,
+            indent_level: 0,
         };
         row.update_mappings();
         row
@@ -148,17 +148,6 @@ impl Row {
         Some(x)
     }
 
-    pub fn beginning_of_code_x(&self) -> usize {
-        let mut x = 0;
-        while let Some(next_x) = self.next_x(x) {
-            if !self.char_at(x).is_ascii_whitespace() {
-                return x;
-            }
-            x = next_x;
-        }
-        x
-    }
-
     #[inline]
     fn is_char_boundary(&self, x: usize) -> bool {
         match self.x_to_idx.as_ref() {
@@ -194,6 +183,31 @@ impl Row {
 
     pub fn read(&self, x1: usize, x2: usize) -> String {
         self.string[self.x_to_idx(x1)..self.x_to_idx(x2)].to_string()
+    }
+
+    pub fn indent_part(&self) -> &str {
+        let len = self
+            .string
+            .char_indices()
+            .find(|&(_, ch)| !ch.is_ascii_whitespace())
+            .map_or(self.string.len(), |(idx, _)| idx);
+
+        &self.string[..len]
+    }
+
+    pub fn indent_width(&self) -> usize {
+        self.string
+            .chars()
+            .take_while(|&ch| ch.is_ascii_whitespace())
+            .fold(0, |w, ch| w + char_width(w, ch))
+    }
+
+    pub fn indent(&mut self, string: &str) -> String {
+        let code_part = self.string.split_off(self.indent_part().len());
+        let indent_part = self.string.split_off(0);
+        self.string.push_str(string);
+        self.string.push_str(&code_part);
+        indent_part
     }
 
     pub fn push_str(&mut self, string: &str) {
