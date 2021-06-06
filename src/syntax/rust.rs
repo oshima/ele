@@ -7,7 +7,7 @@ use self::TokenKind::*;
 use crate::canvas::Term;
 use crate::face::{Bg, Fg};
 use crate::row::Row;
-use crate::syntax::{IndentType, Syntax};
+use crate::syntax::Syntax;
 
 pub struct Rust;
 
@@ -32,8 +32,8 @@ impl Syntax for Rust {
         }
     }
 
-    fn indent_type(&self) -> IndentType {
-        IndentType::Spaces(4)
+    fn indent_unit(&self) -> Option<&'static str> {
+        Some("    ")
     }
 
     fn update_rows(&self, rows: &mut [Row]) -> usize {

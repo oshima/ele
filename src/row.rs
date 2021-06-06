@@ -148,17 +148,6 @@ impl Row {
         Some(x)
     }
 
-    pub fn beginning_of_code_x(&self) -> usize {
-        let mut x = 0;
-        while let Some(next_x) = self.next_x(x) {
-            if !self.char_at(x).is_ascii_whitespace() {
-                return x;
-            }
-            x = next_x;
-        }
-        x
-    }
-
     #[inline]
     fn is_char_boundary(&self, x: usize) -> bool {
         match self.x_to_idx.as_ref() {
@@ -206,14 +195,19 @@ impl Row {
         &self.string[..len]
     }
 
-    pub fn indent(&mut self, string: &str) -> (String, isize) {
-        let len = self.indent_part().len();
-        let code_part = self.string.split_off(len);
+    pub fn indent_width(&self) -> usize {
+        self.string
+            .chars()
+            .take_while(|&ch| ch.is_ascii_whitespace())
+            .fold(0, |w, ch| w + char_width(w, ch))
+    }
+
+    pub fn indent(&mut self, string: &str) -> String {
+        let code_part = self.string.split_off(self.indent_part().len());
         let indent_part = self.string.split_off(0);
-        let diff = str_width(0, string) as isize - str_width(0, &indent_part) as isize;
         self.string.push_str(string);
         self.string.push_str(&code_part);
-        (indent_part, diff)
+        indent_part
     }
 
     pub fn push_str(&mut self, string: &str) {
