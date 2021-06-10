@@ -14,8 +14,14 @@ impl Event {
             (Self::Insert(pos, str1, id), Self::Insert(_, str2, _)) => {
                 Some(Self::Insert(pos, str1 + &str2, id))
             }
+            (Self::Insert(_, str1, id), Self::InsertMv(pos, str2, _)) => {
+                Some(Self::InsertMv(pos, str2 + &str1, id))
+            }
             (Self::InsertMv(_, str1, id), Self::InsertMv(pos, str2, _)) => {
                 Some(Self::InsertMv(pos, str2 + &str1, id))
+            }
+            (Self::InsertMv(pos, str1, id), Self::Insert(_, str2, _)) => {
+                Some(Self::Insert(pos, str1 + &str2, id))
             }
             (Self::Remove(pos1, _, id), Self::Remove(_, pos2, _)) => {
                 Some(Self::Remove(pos1, pos2, id))
