@@ -207,6 +207,7 @@ impl Row {
         let indent_part = self.string.split_off(0);
         self.string.push_str(string);
         self.string.push_str(&code_part);
+        self.update_mappings();
         indent_part
     }
 
