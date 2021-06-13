@@ -650,9 +650,10 @@ impl Buffer {
                 let x = if width < prev_width {
                     pos.x.saturating_sub(prev_width - width)
                 } else {
-                    pos.x + width - prev_width
-                };
-                self.cursor = Pos::new(x.max(width), pos.y);
+                    pos.x + (width - prev_width)
+                }
+                .max(width);
+                self.cursor = Pos::new(x, pos.y);
                 self.saved_x = x;
                 self.syntax_update(pos.y);
                 Event::Indent(id, self.cursor, string)
