@@ -428,7 +428,7 @@ impl Buffer {
                 }
                 let pos = Pos::new(self.rows[self.cursor.y].last_x(), self.cursor.y);
                 clipboard.clear();
-                clipboard.push_str(&self.rows.read_text(self.cursor, pos));
+                clipboard.push_str(&self.rows.read_str(self.cursor, pos));
                 let event = Event::Remove(self.cursor, pos, self.eid());
                 let revent = self.process_event(event);
                 self.push_event(revent);
@@ -441,7 +441,7 @@ impl Buffer {
                 }
                 let pos = Pos::new(0, self.cursor.y);
                 clipboard.clear();
-                clipboard.push_str(&self.rows.read_text(pos, self.cursor));
+                clipboard.push_str(&self.rows.read_str(pos, self.cursor));
                 let event = Event::RemoveMv(pos, self.cursor, self.eid());
                 let revent = self.process_event(event);
                 self.push_event(revent);
@@ -604,7 +604,7 @@ impl Buffer {
     fn process_event(&mut self, event: Event) -> Event {
         match event {
             Event::Insert(pos1, string, id) => {
-                let pos2 = self.rows.insert_text(pos1, &string);
+                let pos2 = self.rows.insert_str(pos1, &string);
                 self.cursor = pos1;
                 self.saved_x = pos1.x;
                 self.syntax_update(pos1.y);
@@ -614,7 +614,7 @@ impl Buffer {
                 Event::Remove(pos1, pos2, id)
             }
             Event::InsertMv(pos1, string, id) => {
-                let pos2 = self.rows.insert_text(pos1, &string);
+                let pos2 = self.rows.insert_str(pos1, &string);
                 self.cursor = pos2;
                 self.saved_x = pos2.x;
                 self.syntax_update(pos1.y);
@@ -624,7 +624,7 @@ impl Buffer {
                 Event::RemoveMv(pos1, pos2, id)
             }
             Event::Remove(pos1, pos2, id) => {
-                let string = self.rows.remove_text(pos1, pos2);
+                let string = self.rows.remove_str(pos1, pos2);
                 self.cursor = pos1;
                 self.saved_x = pos1.x;
                 self.syntax_update(pos1.y);
@@ -634,7 +634,7 @@ impl Buffer {
                 Event::Insert(pos1, string, id)
             }
             Event::RemoveMv(pos1, pos2, id) => {
-                let string = self.rows.remove_text(pos1, pos2);
+                let string = self.rows.remove_str(pos1, pos2);
                 self.cursor = pos1;
                 self.saved_x = pos1.x;
                 self.syntax_update(pos1.y);
@@ -718,7 +718,7 @@ impl Buffer {
     fn read_region(&self, anchor: Pos) -> String {
         let pos1 = self.cursor.min(anchor);
         let pos2 = self.cursor.max(anchor);
-        self.rows.read_text(pos1, pos2)
+        self.rows.read_str(pos1, pos2)
     }
 
     fn highlight_region(&mut self, pos: Pos) {
