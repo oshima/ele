@@ -10,7 +10,7 @@ use crate::key::Key;
 use crate::row::Row;
 use crate::rows::{Rows, RowsMethods};
 use crate::syntax::Syntax;
-use crate::util::ExpandableRange;
+use crate::util::DrawRange;
 
 #[derive(Default)]
 struct Search {
@@ -35,7 +35,7 @@ pub struct Buffer {
     anchor: Option<Pos>,
     saved_x: usize,
     rows: Rows,
-    draw_range: ExpandableRange,
+    draw_range: DrawRange,
     undo: bool,
     undo_list: Vec<Event>,
     redo_list: Vec<Event>,

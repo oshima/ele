@@ -1,10 +1,10 @@
 #[derive(Default)]
-pub struct ExpandableRange {
+pub struct DrawRange {
     start: Option<usize>,
     end: Option<usize>,
 }
 
-impl ExpandableRange {
+impl DrawRange {
     pub fn expand_start(&mut self, start: usize) {
         if let Some(n) = self.start {
             self.start = Some(start.min(n));

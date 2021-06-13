@@ -1,5 +1,5 @@
-mod expandable_range;
+mod draw_range;
 mod uint_vec;
 
-pub use crate::util::expandable_range::ExpandableRange;
+pub use crate::util::draw_range::DrawRange;
 pub use crate::util::uint_vec::UintVec;
