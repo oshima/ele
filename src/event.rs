@@ -1,33 +1,33 @@
 use crate::coord::Pos;
 
 pub enum Event {
-    Insert(Pos, String, usize),
-    InsertMv(Pos, String, usize),
-    Remove(Pos, Pos, usize),
-    RemoveMv(Pos, Pos, usize),
-    Indent(Pos, String, usize),
+    Insert(usize, Pos, String),
+    InsertMv(usize, Pos, String),
+    Remove(usize, Pos, Pos),
+    RemoveMv(usize, Pos, Pos),
+    Indent(usize, Pos, String),
 }
 
 impl Event {
     pub fn merge(self, other: Self) -> Option<Self> {
         match (self, other) {
-            (Self::Insert(pos, str1, id), Self::Insert(_, str2, _)) => {
-                Some(Self::Insert(pos, str1 + &str2, id))
+            (Self::Insert(id, pos, str1), Self::Insert(_, _, str2)) => {
+                Some(Self::Insert(id, pos, str1 + &str2))
             }
-            (Self::Insert(_, str1, id), Self::InsertMv(pos, str2, _)) => {
-                Some(Self::InsertMv(pos, str2 + &str1, id))
+            (Self::Insert(id, _, str1), Self::InsertMv(_, pos, str2)) => {
+                Some(Self::InsertMv(id, pos, str2 + &str1))
             }
-            (Self::InsertMv(_, str1, id), Self::InsertMv(pos, str2, _)) => {
-                Some(Self::InsertMv(pos, str2 + &str1, id))
+            (Self::InsertMv(id, _, str1), Self::InsertMv(_, pos, str2)) => {
+                Some(Self::InsertMv(id, pos, str2 + &str1))
             }
-            (Self::InsertMv(pos, str1, id), Self::Insert(_, str2, _)) => {
-                Some(Self::Insert(pos, str1 + &str2, id))
+            (Self::InsertMv(id, pos, str1), Self::Insert(_, _, str2)) => {
+                Some(Self::Insert(id, pos, str1 + &str2))
             }
-            (Self::Remove(pos1, _, id), Self::Remove(_, pos2, _)) => {
-                Some(Self::Remove(pos1, pos2, id))
+            (Self::Remove(id, pos1, _), Self::Remove(_, _, pos2)) => {
+                Some(Self::Remove(id, pos1, pos2))
             }
-            (Self::RemoveMv(pos1, _, id), Self::RemoveMv(_, pos2, _)) => {
-                Some(Self::RemoveMv(pos1, pos2, id))
+            (Self::RemoveMv(id, pos1, _), Self::RemoveMv(_, _, pos2)) => {
+                Some(Self::RemoveMv(id, pos1, pos2))
             }
             _ => None,
         }
@@ -35,11 +35,11 @@ impl Event {
 
     pub fn id(&self) -> usize {
         match self {
-            Self::Insert(_, _, id) => *id,
-            Self::InsertMv(_, _, id) => *id,
-            Self::Remove(_, _, id) => *id,
-            Self::RemoveMv(_, _, id) => *id,
-            Self::Indent(_, _, id) => *id,
+            Self::Insert(id, ..) => *id,
+            Self::InsertMv(id, ..) => *id,
+            Self::Remove(id, ..) => *id,
+            Self::RemoveMv(id, ..) => *id,
+            Self::Indent(id, ..) => *id,
         }
     }
 }
