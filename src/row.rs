@@ -52,7 +52,7 @@ impl Row {
     #[inline]
     pub fn x_to_idx(&self, x: usize) -> usize {
         match self.x_to_idx.as_ref() {
-            Some(v) => v.get(x),
+            Some(v) => v.at(x),
             None => x,
         }
     }
@@ -62,7 +62,7 @@ impl Row {
             Some(v) => {
                 let mut x = 0;
                 loop {
-                    if v.get(x) == idx {
+                    if v.at(x) == idx {
                         break x;
                     }
                     x += 1;
@@ -151,7 +151,7 @@ impl Row {
     #[inline]
     fn is_char_boundary(&self, x: usize) -> bool {
         match self.x_to_idx.as_ref() {
-            Some(v) => x == 0 || v.get(x) != TOMBSTONE,
+            Some(v) => x == 0 || v.at(x) != TOMBSTONE,
             None => true,
         }
     }
