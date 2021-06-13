@@ -28,22 +28,22 @@ fn str_width(x: usize, string: &str) -> usize {
 
 pub struct Row {
     pub string: String,
-    x_to_idx: Option<Box<UintVec>>,
     pub context: Option<String>,
     pub faces: Vec<(Fg, Bg)>,
     pub trailing_bg: Bg,
     pub indent_level: usize,
+    x_to_idx: Option<Box<UintVec>>,
 }
 
 impl Row {
     pub fn new(string: String) -> Self {
         let mut row = Self {
             string,
-            x_to_idx: None,
             context: None,
             faces: Vec::new(),
             trailing_bg: Bg::Default,
             indent_level: 0,
+            x_to_idx: None,
         };
         row.update_mappings();
         row
@@ -268,12 +268,11 @@ impl Row {
             }
         }
 
+        x_to_idx.push(self.string.len());
+
         if !need_mappings {
             self.x_to_idx = None;
-            return;
         }
-
-        x_to_idx.push(self.string.len());
     }
 
     pub fn draw(&self, canvas: &mut Canvas, x_range: Range<usize>) -> io::Result<()> {

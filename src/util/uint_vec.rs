@@ -26,61 +26,65 @@ impl UintVec {
 
     pub fn clear(&mut self) {
         self.u8_vec.clear();
-        self.u16_vec.as_mut().map_or((), |v| v.clear());
-        self.u32_vec.as_mut().map_or((), |v| v.clear());
-        self.u64_vec.as_mut().map_or((), |v| v.clear());
+        self.u16_vec = None;
+        self.u32_vec = None;
+        self.u64_vec = None;
     }
 
     pub fn get(&self, i: usize) -> usize {
-        let u8_vec_len = self.u8_vec.len();
-        if i < u8_vec_len {
+        let mut i = i;
+
+        if i < self.u8_vec.len() {
             return self.u8_vec[i] as usize;
         }
-        let i = i - u8_vec_len;
+        i -= self.u8_vec.len();
 
-        let u16_vec_len = self.u16_vec.as_ref().map_or(0, |v| v.len());
-        if i < u16_vec_len {
-            return self.u16_vec.as_ref().unwrap()[i] as usize;
+        if let Some(u16_vec) = self.u16_vec.as_ref() {
+            if i < u16_vec.len() {
+                return u16_vec[i] as usize;
+            }
+            i -= u16_vec.len();
         }
-        let i = i - u16_vec_len;
 
-        let u32_vec_len = self.u32_vec.as_ref().map_or(0, |v| v.len());
-        if i < u32_vec_len {
-            return self.u32_vec.as_ref().unwrap()[i] as usize;
+        if let Some(u32_vec) = self.u32_vec.as_ref() {
+            if i < u32_vec.len() {
+                return u32_vec[i] as usize;
+            }
+            i -= u32_vec.len();
         }
-        let i = i - u32_vec_len;
 
-        let u64_vec_len = self.u64_vec.as_ref().map_or(0, |v| v.len());
-        if i < u64_vec_len {
-            return self.u64_vec.as_ref().unwrap()[i] as usize;
+        if let Some(u64_vec) = self.u64_vec.as_ref() {
+            if i < u64_vec.len() {
+                return u64_vec[i] as usize;
+            }
         }
         panic!()
     }
 
     pub fn push(&mut self, n: usize) {
         if n <= u8::MAX as usize {
-            if self.u64_vec.as_ref().map_or(0, |v| v.len()) > 0 {
-                self.u64_vec.as_mut().unwrap().push(n as u64);
-            } else if self.u32_vec.as_ref().map_or(0, |v| v.len()) > 0 {
-                self.u32_vec.as_mut().unwrap().push(n as u32);
-            } else if self.u16_vec.as_ref().map_or(0, |v| v.len()) > 0 {
-                self.u16_vec.as_mut().unwrap().push(n as u16);
+            if let Some(u64_vec) = self.u64_vec.as_mut() {
+                u64_vec.push(n as u64);
+            } else if let Some(u32_vec) = self.u32_vec.as_mut() {
+                u32_vec.push(n as u32);
+            } else if let Some(u16_vec) = self.u16_vec.as_mut() {
+                u16_vec.push(n as u16);
             } else {
                 self.u8_vec.push(n as u8);
             }
         } else if n <= u16::MAX as usize {
-            if self.u64_vec.as_ref().map_or(0, |v| v.len()) > 0 {
-                self.u64_vec.as_mut().unwrap().push(n as u64);
-            } else if self.u32_vec.as_ref().map_or(0, |v| v.len()) > 0 {
-                self.u32_vec.as_mut().unwrap().push(n as u32);
+            if let Some(u64_vec) = self.u64_vec.as_mut() {
+                u64_vec.push(n as u64);
+            } else if let Some(u32_vec) = self.u32_vec.as_mut() {
+                u32_vec.push(n as u32);
             } else {
                 self.u16_vec
                     .get_or_insert(Box::new(Vec::new()))
                     .push(n as u16);
             }
         } else if n <= u32::MAX as usize {
-            if self.u64_vec.as_ref().map_or(0, |v| v.len()) > 0 {
-                self.u64_vec.as_mut().unwrap().push(n as u64);
+            if let Some(u64_vec) = self.u64_vec.as_mut() {
+                u64_vec.push(n as u64);
             } else {
                 self.u32_vec
                     .get_or_insert(Box::new(Vec::new()))
