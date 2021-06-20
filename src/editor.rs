@@ -210,7 +210,7 @@ impl Editor {
                     self.minibuffer.set_message("");
                     self.state = State::Default;
                 }
-                Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
+                Key::Ctrl(b'J' | b'M') => {
                     self.buffer.clear_matches(false);
                     self.minibuffer.set_message("");
                     self.state = State::Default;
@@ -261,7 +261,7 @@ impl Editor {
                     self.minibuffer.set_message("");
                     self.state = State::Default;
                 }
-                Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
+                Key::Ctrl(b'J' | b'M') => {
                     let input = self.minibuffer.get_input();
                     self.buffer.filename = Some(input);
                     self.buffer.save()?;
@@ -275,7 +275,7 @@ impl Editor {
                     self.minibuffer.set_message("");
                     self.state = State::Default;
                 }
-                Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
+                Key::Ctrl(b'J' | b'M') => {
                     let input = self.minibuffer.get_input();
                     if input.is_empty() || input.to_lowercase() == "y" {
                         self.state = State::Quitted;

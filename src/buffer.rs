@@ -304,7 +304,7 @@ impl Buffer {
                 } else if let Some(pos) = self.rows.prev_pos(self.cursor) {
                     let event = Event::RemoveMv(self.eid(), pos, self.cursor);
                     let revent = self.process_event(event);
-                    if let Some(Key::Backspace) | Some(Key::Ctrl(b'H')) = self.last_key {
+                    if let Some(Key::Backspace | Key::Ctrl(b'H')) = self.last_key {
                         self.merge_event(revent);
                     } else {
                         self.push_event(revent);
@@ -320,7 +320,7 @@ impl Buffer {
                 } else if let Some(pos) = self.rows.next_pos(self.cursor) {
                     let event = Event::Remove(self.eid(), self.cursor, pos);
                     let revent = self.process_event(event);
-                    if let Some(Key::Delete) | Some(Key::Ctrl(b'D')) = self.last_key {
+                    if let Some(Key::Delete | Key::Ctrl(b'D')) = self.last_key {
                         self.merge_event(revent);
                     } else {
                         self.push_event(revent);
@@ -379,13 +379,13 @@ impl Buffer {
                 }
                 ""
             }
-            Key::Ctrl(b'J') | Key::Ctrl(b'M') => {
+            Key::Ctrl(b'J' | b'M') => {
                 if let Some(anchor) = self.anchor {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
 
-                let eid = if let Some(Key::Ctrl(b'J')) | Some(Key::Ctrl(b'M')) = self.last_key {
+                let eid = if let Some(Key::Ctrl(b'J' | b'M')) = self.last_key {
                     self.undo_list.last().unwrap().id()
                 } else {
                     self.eid()

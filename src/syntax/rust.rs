@@ -90,12 +90,12 @@ impl Rust {
                     _ => Fg::Default,
                 },
                 UpperIdent => match prev_token.map(|t| t.kind) {
-                    Some(Const) | Some(Static) => Fg::Variable,
+                    Some(Const | Static) => Fg::Variable,
                     _ => Fg::Type,
                 },
                 Ident | RawIdent => match prev_token.map(|t| t.kind) {
                     Some(Fn) => Fg::Function,
-                    Some(For) | Some(Let) | Some(Mut) => Fg::Variable,
+                    Some(For | Let | Mut) => Fg::Variable,
                     Some(Mod) => Fg::Module,
                     _ => match tokens.peek().map(|t| t.kind) {
                         Some(Bang) => Fg::Macro,
@@ -306,7 +306,7 @@ impl<'a> Iterator for Tokens<'a> {
                     self.str_lit()
                 }
                 Some(&(_, 'r')) => match self.chars.clone().nth(1) {
-                    Some((_, '"')) | Some((_, '#')) => {
+                    Some((_, '"' | '#')) => {
                         self.chars.next();
                         self.raw_str_lit()
                     }
