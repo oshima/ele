@@ -31,20 +31,17 @@ impl Syntax for Plain {
     }
 
     fn update_rows(&self, rows: &mut [Row]) -> usize {
-        let mut len = 0;
-
         for (i, row) in rows.iter_mut().enumerate() {
             if i > 0 && row.context.is_some() {
-                break;
+                return i;
             }
             row.context = Some(String::new());
             row.faces.clear();
             row.faces
                 .resize(row.string.len(), (Fg::Default, Bg::Default));
             row.trailing_bg = Bg::Default;
-            len += 1;
         }
 
-        len
+        rows.len()
     }
 }

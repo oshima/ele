@@ -37,9 +37,8 @@ impl Syntax for Rust {
     }
 
     fn update_rows(&self, rows: &mut [Row]) -> usize {
-        let mut ctx_tokens = Vec::new();
-        let mut ctx_string = String::new();
-        let mut len = 0;
+        let mut context_v = Vec::new();
+        let mut context_s = String::new();
 
         for (i, row) in rows.iter_mut().enumerate() {
             if i == 0 {
@@ -47,24 +46,25 @@ impl Syntax for Rust {
                     row.context = Some(String::new());
                 }
             } else {
-                if row.context.as_ref() == Some(&ctx_string) {
-                    break;
+                if row.context.as_ref() == Some(&context_s) {
+                    return i;
                 }
                 let context = row.context.get_or_insert(String::new());
                 context.clear();
-                context.push_str(&ctx_string);
+                context.push_str(&context_s);
             }
 
-            self.update_row(row, &mut ctx_tokens, &mut ctx_string);
-            len += 1;
+            context_v.clear();
+            context_s.clear();
+            self.update_row(row, &mut context_v, &mut context_s);
         }
 
-        len
+        rows.len()
     }
 }
 
 impl Rust {
-    fn update_row(&self, row: &mut Row, ctx_tokens: &mut Vec<Token>, ctx_string: &mut String) {
+    fn update_row(&self, row: &mut Row, context_v: &mut Vec<TokenKind>, context_s: &mut String) {
         let mut tokens = Tokens::from(&row.string, row.context.as_deref().unwrap()).peekable();
         let mut prev_token: Option<Token> = None;
 
@@ -74,10 +74,8 @@ impl Rust {
         row.trailing_bg = Bg::Default;
         row.indent_level = 0;
 
-        ctx_tokens.clear();
-        ctx_string.clear();
-
         while let Some(token) = tokens.next() {
+            // Highlight
             let fg = match token.kind {
                 BlockComment { .. } | LineComment => Fg::Comment,
                 CharLit | RawStrLit { .. } | StrLit { .. } => Fg::String,
@@ -112,56 +110,143 @@ impl Rust {
                 row.faces[i].0 = fg;
             }
 
+            // Indent
             match token.kind {
-                OpenBrace { newline: true }
-                | OpenBracket { newline: true }
-                | OpenParen { newline: true } => row.indent_level += 1,
-                CloseBrace => match prev_token.map(|t| t.kind) {
-                    Some(OpenBrace { newline: true }) => row.indent_level -= 1,
+                Dot { lf: true }
+                | OpenBrace { lf: true }
+                | OpenBracket { lf: true }
+                | OpenParen { lf: true } => {
+                    row.indent_level += 1;
+                }
+                OpenBrace { lf: false } => match context_v.last() {
+                    Some(Dot { lf: true }) => row.indent_level -= 1,
                     _ => (),
                 },
-                CloseBracket => match prev_token.map(|t| t.kind) {
-                    Some(OpenBracket { newline: true }) => row.indent_level -= 1,
-                    _ => (),
-                },
-                CloseParen => match prev_token.map(|t| t.kind) {
-                    Some(OpenParen { newline: true }) => row.indent_level -= 1,
-                    _ => (),
-                },
+                CloseBrace => {
+                    if prev_token.map_or(false, |t| t.end == 0) {
+                        match &context_v[..] {
+                            [.., OpenBrace { lf: true }] => {
+                                row.indent_level -= 1;
+                            }
+                            [.., OpenBrace { lf }, Dot { lf: true }] => {
+                                row.indent_level -= if *lf { 2 } else { 1 };
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+                CloseBracket => {
+                    if prev_token.map_or(false, |t| t.end == 0) {
+                        match &context_v[..] {
+                            [.., OpenBracket { lf: true }] => {
+                                row.indent_level -= 1;
+                            }
+                            [.., OpenBracket { lf }, Dot { lf: true }] => {
+                                row.indent_level -= if *lf { 2 } else { 1 };
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+                CloseParen => {
+                    if prev_token.map_or(false, |t| t.end == 0) {
+                        match &context_v[..] {
+                            [.., OpenParen { lf: true }] => {
+                                row.indent_level -= 1;
+                            }
+                            [.., OpenParen { lf }, Dot { lf: true }] => {
+                                row.indent_level -= if *lf { 2 } else { 1 };
+                            }
+                            _ => (),
+                        }
+                    }
+                }
                 _ => (),
             }
 
+            // Derive the context of the next row
             match token.kind {
-                BlockComment { open: true, .. }
+                Dot { lf: true } => {
+                    context_v.push(token.kind);
+                }
+                OpenBrace { .. } => {
+                    if let Some(Dot { .. }) = context_v.last() {
+                        context_v.pop();
+                    }
+                    context_v.push(token.kind);
+                }
+                OpenBracket { .. }
+                | OpenParen { .. }
+                | BlockComment { open: true, .. }
                 | StrLit { open: true }
-                | RawStrLit { open: true, .. }
-                | OpenBrace { .. }
-                | OpenBracket { .. }
-                | OpenParen { .. } => ctx_tokens.push(token),
-                CloseBrace => match ctx_tokens.last().map(|t| t.kind) {
-                    Some(OpenBrace { .. }) => drop(ctx_tokens.pop()),
+                | RawStrLit { open: true, .. } => {
+                    if let Some(Dot { lf: false }) = context_v.last() {
+                        context_v.pop();
+                    }
+                    context_v.push(token.kind);
+                }
+                CloseBrace => match &context_v[..] {
+                    [.., OpenBrace { .. }] => {
+                        context_v.pop();
+                    }
+                    [.., OpenBrace { .. }, Dot { .. }] => {
+                        context_v.pop();
+                        context_v.pop();
+                    }
                     _ => (),
                 },
-                CloseBracket => match ctx_tokens.last().map(|t| t.kind) {
-                    Some(OpenBracket { .. }) => drop(ctx_tokens.pop()),
-                    _ => (),
-                },
-                CloseParen => match ctx_tokens.last().map(|t| t.kind) {
-                    Some(OpenParen { .. }) => drop(ctx_tokens.pop()),
-                    _ => (),
-                },
-                _ => (),
+                CloseBracket => {
+                    match &context_v[..] {
+                        [.., OpenBracket { .. }] => {
+                            context_v.pop();
+                        }
+                        [.., OpenBracket { .. }, Dot { .. }] => {
+                            context_v.pop();
+                            context_v.pop();
+                        }
+                        _ => (),
+                    };
+                    if !matches!(context_v.last(), Some(Dot { .. })) {
+                        context_v.push(Dot { lf: false });
+                    }
+                }
+                CloseParen => {
+                    match &context_v[..] {
+                        [.., OpenParen { .. }] => {
+                            context_v.pop();
+                        }
+                        [.., OpenParen { .. }, Dot { .. }] => {
+                            context_v.pop();
+                            context_v.pop();
+                        }
+                        _ => (),
+                    };
+                    if !matches!(context_v.last(), Some(Dot { .. })) {
+                        context_v.push(Dot { lf: false });
+                    }
+                }
+                Comma | Semi => {
+                    if let Some(Dot { .. }) = context_v.last() {
+                        context_v.pop();
+                    }
+                }
+                LineComment | BlockComment { .. } => (),
+                _ => {
+                    if !matches!(context_v.last(), Some(Dot { .. })) {
+                        context_v.push(Dot { lf: false });
+                    }
+                }
             }
 
             prev_token = Some(token);
         }
 
-        self.convert_context(ctx_tokens, ctx_string);
+        self.convert_context(context_v, context_s);
     }
 
-    fn convert_context(&self, tokens: &[Token], string: &mut String) {
-        for token in tokens {
-            match token.kind {
+    fn convert_context(&self, slice: &[TokenKind], string: &mut String) {
+        for token_kind in slice {
+            match *token_kind {
                 BlockComment { open: true, depth } => {
                     for _ in 0..depth {
                         string.push_str("/*");
@@ -180,14 +265,17 @@ impl Rust {
                     }
                     string.push_str("\"");
                 }
-                OpenBrace { newline } => {
-                    string.push_str(if newline { "{\n" } else { "{" });
+                Dot { lf } => {
+                    string.push_str(if lf { ".\n" } else { "." });
                 }
-                OpenBracket { newline } => {
-                    string.push_str(if newline { "[\n" } else { "[" });
+                OpenBrace { lf } => {
+                    string.push_str(if lf { "{\n" } else { "{" });
                 }
-                OpenParen { newline } => {
-                    string.push_str(if newline { "(\n" } else { "(" });
+                OpenBracket { lf } => {
+                    string.push_str(if lf { "[\n" } else { "[" });
+                }
+                OpenParen { lf } => {
+                    string.push_str(if lf { "(\n" } else { "(" });
                 }
                 _ => (),
             }
@@ -218,6 +306,7 @@ enum TokenKind {
     ColonColon,
     Comma,
     Const,
+    Dot { lf: bool },
     Fn,
     For,
     Ident,
@@ -227,14 +316,15 @@ enum TokenKind {
     LineComment,
     Mod,
     Mut,
-    OpenBrace { newline: bool },
-    OpenBracket { newline: bool },
-    OpenParen { newline: bool },
+    OpenBrace { lf: bool },
+    OpenBracket { lf: bool },
+    OpenParen { lf: bool },
     PrimitiveType,
     Punct,
     Question,
     RawIdent,
     RawStrLit { open: bool, n_hashes: usize },
+    Semi,
     Static,
     StrLit { open: bool },
     UpperIdent,
@@ -318,6 +408,7 @@ impl<'a> Iterator for Tokens<'a> {
             // punctuation
             ',' => Comma,
             '?' => Question,
+            ';' => Semi,
             '!' => match self.chars.peek() {
                 Some(&(_, '=')) => Punct,
                 _ => Bang,
@@ -326,14 +417,17 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(_) => ColonColon,
                 _ => Colon,
             },
+            '.' => Dot {
+                lf: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
+            },
             '{' => OpenBrace {
-                newline: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
+                lf: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
             },
             '[' => OpenBracket {
-                newline: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
+                lf: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
             },
             '(' => OpenParen {
-                newline: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
+                lf: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
             },
             '}' => CloseBrace,
             ']' => CloseBracket,
