@@ -482,7 +482,7 @@ impl<'a> Tokens<'a> {
     fn char_lit(&mut self) -> TokenKind {
         loop {
             match self.chars.next() {
-                Some((_, '\'')) | None => break CharLit,
+                Some((_, '\'')) | None => return CharLit,
                 Some((_, '\\')) => {
                     self.chars.next();
                 }

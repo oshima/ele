@@ -362,7 +362,6 @@ impl Buffer {
                             }
                         }
                     }
-                    self.scroll();
                 } else {
                     if let Some(anchor) = self.anchor {
                         self.remove_region(anchor);
@@ -375,8 +374,8 @@ impl Buffer {
                     } else {
                         self.push_event(revent);
                     }
-                    self.scroll();
                 }
+                self.scroll();
                 ""
             }
             Key::Ctrl(b'J' | b'M') => {
