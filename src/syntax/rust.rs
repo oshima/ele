@@ -661,8 +661,8 @@ impl<'a> Tokens<'a> {
                 "as" | "async" | "await" | "box" | "break" | "continue" | "crate" | "do"
                 | "dyn" | "else" | "enum" | "extern" | "false" | "if" | "impl" | "in" | "loop"
                 | "match" | "move" | "priv" | "pub" | "ref" | "return" | "self" | "struct"
-                | "super" | "trait" | "true" | "try" | "type" | "use" | "virtual" | "while"
-                | "yield" => Keyword,
+                | "super" | "trait" | "true" | "try" | "type" | "unsafe" | "use" | "virtual"
+                | "while" | "yield" => Keyword,
                 "bool" | "char" | "f32" | "f64" | "i8" | "i16" | "i32" | "i64" | "i128"
                 | "isize" | "str" | "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => {
                     PrimitiveType
