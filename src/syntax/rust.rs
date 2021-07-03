@@ -79,7 +79,7 @@ impl Rust {
             let fg = match token.kind {
                 BlockComment { .. } | LineComment => Fg::Comment,
                 CharLit | RawStrLit { .. } | StrLit { .. } => Fg::String,
-                Const | Fn | For | Keyword | Let | Mod | Mut | Static => Fg::Keyword,
+                Const | Fn | For | Keyword | Let | Mod | Mut | Static | Where { .. } => Fg::Keyword,
                 Lifetime => Fg::Variable,
                 PrimitiveType => Fg::Type,
                 Question => Fg::Macro,
@@ -113,23 +113,36 @@ impl Rust {
             // Indent
             match token.kind {
                 Dot { lf: true }
+                | Where { lf: true }
                 | OpenBrace { lf: true }
                 | OpenBracket { lf: true }
                 | OpenParen { lf: true } => {
                     row.indent_level += 1;
                 }
-                OpenBrace { lf: false } => match context_v.last() {
-                    Some(Dot { lf: true }) => row.indent_level -= 1,
-                    _ => (),
-                },
+                Where { lf: false } => {
+                    if let Some(Dot { lf: true }) = context_v.last() {
+                        row.indent_level -= 1;
+                    }
+                }
+                OpenBrace { lf: false } => {
+                    match &context_v[..] {
+                        [.., Where { lf }, Dot { lf: true }] => {
+                            row.indent_level -= if *lf { 2 } else { 1 };
+                        }
+                        [.., Dot { lf: true } | Where { lf: true }] => {
+                            row.indent_level -= 1;
+                        }
+                        _ => (),
+                    };
+                }
                 CloseBrace => {
                     if prev_token.map_or(false, |t| t.end == 0) {
                         match &context_v[..] {
-                            [.., OpenBrace { lf: true }] => {
-                                row.indent_level -= 1;
-                            }
                             [.., OpenBrace { lf }, Dot { lf: true }] => {
                                 row.indent_level -= if *lf { 2 } else { 1 };
+                            }
+                            [.., OpenBrace { lf: true }] => {
+                                row.indent_level -= 1;
                             }
                             _ => (),
                         }
@@ -138,11 +151,11 @@ impl Rust {
                 CloseBracket => {
                     if prev_token.map_or(false, |t| t.end == 0) {
                         match &context_v[..] {
-                            [.., OpenBracket { lf: true }] => {
-                                row.indent_level -= 1;
-                            }
                             [.., OpenBracket { lf }, Dot { lf: true }] => {
                                 row.indent_level -= if *lf { 2 } else { 1 };
+                            }
+                            [.., OpenBracket { lf: true }] => {
+                                row.indent_level -= 1;
                             }
                             _ => (),
                         }
@@ -151,11 +164,11 @@ impl Rust {
                 CloseParen => {
                     if prev_token.map_or(false, |t| t.end == 0) {
                         match &context_v[..] {
-                            [.., OpenParen { lf: true }] => {
-                                row.indent_level -= 1;
-                            }
                             [.., OpenParen { lf }, Dot { lf: true }] => {
                                 row.indent_level -= if *lf { 2 } else { 1 };
+                            }
+                            [.., OpenParen { lf: true }] => {
+                                row.indent_level -= 1;
                             }
                             _ => (),
                         }
@@ -169,7 +182,7 @@ impl Rust {
                 Dot { lf: true } => {
                     context_v.push(token.kind);
                 }
-                OpenBrace { .. } => {
+                Where { .. } => {
                     if let Some(Dot { .. }) = context_v.last() {
                         context_v.pop();
                     }
@@ -177,12 +190,27 @@ impl Rust {
                 }
                 OpenBracket { .. }
                 | OpenParen { .. }
-                | BlockComment { open: true, .. }
                 | StrLit { open: true }
                 | RawStrLit { open: true, .. } => {
                     if let Some(Dot { lf: false }) = context_v.last() {
                         context_v.pop();
                     }
+                    context_v.push(token.kind);
+                }
+                BlockComment { open: true, .. } => {
+                    context_v.push(token.kind);
+                }
+                OpenBrace { .. } => {
+                    match &context_v[..] {
+                        [.., Where { .. }, Dot { .. }] => {
+                            context_v.pop();
+                            context_v.pop();
+                        }
+                        [.., Dot { .. } | Where { .. }] => {
+                            context_v.pop();
+                        }
+                        _ => (),
+                    };
                     context_v.push(token.kind);
                 }
                 CloseBrace => match &context_v[..] {
@@ -225,12 +253,24 @@ impl Rust {
                         context_v.push(Dot { lf: false });
                     }
                 }
-                Comma | Semi => {
+                Comma => {
                     if let Some(Dot { .. }) = context_v.last() {
                         context_v.pop();
                     }
                 }
-                LineComment | BlockComment { .. } => (),
+                Semi => {
+                    match &context_v[..] {
+                        [.., Where { .. }, Dot { .. }] => {
+                            context_v.pop();
+                            context_v.pop();
+                        }
+                        [.., Dot { .. } | Where { .. }] => {
+                            context_v.pop();
+                        }
+                        _ => (),
+                    };
+                }
+                LineComment | BlockComment { open: false, .. } => (),
                 _ => {
                     if !matches!(context_v.last(), Some(Dot { .. })) {
                         context_v.push(Dot { lf: false });
@@ -240,6 +280,17 @@ impl Rust {
 
             prev_token = Some(token);
         }
+
+        match context_v.last_mut() {
+            Some(
+                Dot { lf }
+                | Where { lf }
+                | OpenBrace { lf }
+                | OpenBracket { lf }
+                | OpenParen { lf },
+            ) => *lf = true,
+            _ => (),
+        };
 
         self.convert_context(context_v, context_s);
     }
@@ -268,6 +319,9 @@ impl Rust {
                 Dot { lf } => {
                     string.push_str(if lf { ".\n" } else { "." });
                 }
+                Where { lf } => {
+                    string.push_str(if lf { "\0w\n" } else { "\0w" });
+                }
                 OpenBrace { lf } => {
                     string.push_str(if lf { "{\n" } else { "{" });
                 }
@@ -279,10 +333,6 @@ impl Rust {
                 }
                 _ => (),
             }
-        }
-
-        if !string.is_empty() && !string.ends_with("\n") {
-            string.push_str("\n");
         }
     }
 }
@@ -328,6 +378,7 @@ enum TokenKind {
     Static,
     StrLit { open: bool },
     UpperIdent,
+    Where { lf: bool },
 }
 
 struct Tokens<'a> {
@@ -432,6 +483,12 @@ impl<'a> Iterator for Tokens<'a> {
             '}' => CloseBrace,
             ']' => CloseBracket,
             ')' => CloseParen,
+            '\0' => match self.chars.next() {
+                Some((_, 'w')) => Where {
+                    lf: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
+                },
+                _ => Punct,
+            },
             ch if is_delim(ch) => Punct,
 
             // identifier
@@ -600,11 +657,12 @@ impl<'a> Tokens<'a> {
                 "mod" => Mod,
                 "mut" => Mut,
                 "static" => Static,
+                "where" => Where { lf: false },
                 "as" | "async" | "await" | "box" | "break" | "continue" | "crate" | "do"
                 | "dyn" | "else" | "enum" | "extern" | "false" | "if" | "impl" | "in" | "loop"
                 | "match" | "move" | "priv" | "pub" | "ref" | "return" | "self" | "struct"
-                | "super" | "trait" | "true" | "try" | "type" | "use" | "virtual" | "where"
-                | "while" | "yield" => Keyword,
+                | "super" | "trait" | "true" | "try" | "type" | "use" | "virtual" | "while"
+                | "yield" => Keyword,
                 "bool" | "char" | "f32" | "f64" | "i8" | "i16" | "i32" | "i64" | "i128"
                 | "isize" | "str" | "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => {
                     PrimitiveType
