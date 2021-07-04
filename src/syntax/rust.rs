@@ -95,6 +95,7 @@ impl Rust {
                     Some(Fn) => Fg::Function,
                     Some(For | Let | Mut) => Fg::Variable,
                     Some(Mod) => Fg::Module,
+                    Some(OpenAttribute { .. }) => Fg::Macro,
                     _ => match tokens.peek().map(|t| t.kind) {
                         Some(Bang) => Fg::Macro,
                         Some(Colon) => Fg::Variable,
@@ -114,6 +115,7 @@ impl Rust {
             match token.kind {
                 Expr { lf: true }
                 | Where { lf: true }
+                | OpenAttribute { lf: true }
                 | OpenBrace { lf: true }
                 | OpenBracket { lf: true }
                 | OpenParen { lf: true } => {
@@ -155,6 +157,12 @@ impl Rust {
                             [.., OpenBracket { lf: true }] => {
                                 row.indent_level -= 1;
                             }
+                            [.., OpenAttribute { lf }, Expr { lf: true }] => {
+                                row.indent_level -= if lf { 2 } else { 1 };
+                            }
+                            [.., OpenAttribute { lf: true }] => {
+                                row.indent_level -= 1;
+                            }
                             _ => (),
                         }
                     }
@@ -178,6 +186,7 @@ impl Rust {
             // Derive the context of the next row
             match token.kind {
                 Expr { .. }
+                | OpenAttribute { .. }
                 | OpenBracket { .. }
                 | OpenParen { .. }
                 | BlockComment { open: true, .. }
@@ -205,62 +214,69 @@ impl Rust {
                     context_v.push(token.kind);
                 }
                 CloseBrace => match context_v[..] {
-                    [.., OpenBrace { .. }] => {
-                        context_v.pop();
-                    }
                     [.., OpenBrace { .. }, Expr { .. }] => {
                         context_v.pop();
                         context_v.pop();
                     }
+                    [.., OpenBrace { .. }] => {
+                        context_v.pop();
+                    }
                     _ => (),
                 },
-                CloseBracket => {
-                    match context_v[..] {
-                        [.., OpenBracket { .. }] => {
-                            context_v.pop();
+                CloseBracket => match context_v[..] {
+                    [.., OpenBracket { .. }, Expr { .. }] => {
+                        context_v.pop();
+                        context_v.pop();
+                        if !matches!(context_v[..], [.., Expr { .. }]) {
+                            context_v.push(Expr { lf: false });
                         }
-                        [.., OpenBracket { .. }, Expr { .. }] => {
-                            context_v.pop();
-                            context_v.pop();
-                        }
-                        _ => (),
-                    };
-                    if !matches!(context_v[..], [.., Expr { .. }]) {
-                        context_v.push(Expr { lf: false });
                     }
-                }
-                CloseParen => {
-                    match context_v[..] {
-                        [.., OpenParen { .. }] => {
-                            context_v.pop();
+                    [.., OpenBracket { .. }] => {
+                        context_v.pop();
+                        if !matches!(context_v[..], [.., Expr { .. }]) {
+                            context_v.push(Expr { lf: false });
                         }
-                        [.., OpenParen { .. }, Expr { .. }] => {
-                            context_v.pop();
-                            context_v.pop();
-                        }
-                        _ => (),
-                    };
-                    if !matches!(context_v[..], [.., Expr { .. }]) {
-                        context_v.push(Expr { lf: false });
                     }
-                }
+                    [.., OpenAttribute { .. }, Expr { .. }] => {
+                        context_v.pop();
+                        context_v.pop();
+                    }
+                    [.., OpenAttribute { .. }] => {
+                        context_v.pop();
+                    }
+                    _ => (),
+                },
+                CloseParen => match context_v[..] {
+                    [.., OpenParen { .. }, Expr { .. }] => {
+                        context_v.pop();
+                        context_v.pop();
+                        if !matches!(context_v[..], [.., Expr { .. }]) {
+                            context_v.push(Expr { lf: false });
+                        }
+                    }
+                    [.., OpenParen { .. }] => {
+                        context_v.pop();
+                        if !matches!(context_v[..], [.., Expr { .. }]) {
+                            context_v.push(Expr { lf: false });
+                        }
+                    }
+                    _ => (),
+                },
                 Comma => {
                     if matches!(context_v[..], [.., Expr { .. }]) {
                         context_v.pop();
                     }
                 }
-                Semi => {
-                    match context_v[..] {
-                        [.., Where { .. }, Expr { .. }] => {
-                            context_v.pop();
-                            context_v.pop();
-                        }
-                        [.., Expr { .. } | Where { .. }] => {
-                            context_v.pop();
-                        }
-                        _ => (),
-                    };
-                }
+                Semi => match context_v[..] {
+                    [.., Where { .. }, Expr { .. }] => {
+                        context_v.pop();
+                        context_v.pop();
+                    }
+                    [.., Expr { .. } | Where { .. }] => {
+                        context_v.pop();
+                    }
+                    _ => (),
+                },
                 LineComment | BlockComment { open: false, .. } => (),
                 _ => {
                     if !matches!(context_v[..], [.., Expr { .. }]) {
@@ -276,6 +292,7 @@ impl Rust {
             Some(
                 Expr { lf }
                 | Where { lf }
+                | OpenAttribute { lf }
                 | OpenBrace { lf }
                 | OpenBracket { lf }
                 | OpenParen { lf },
@@ -294,6 +311,9 @@ impl Rust {
                 }
                 Where { lf } => {
                     string.push_str(if lf { "\0w\n" } else { "\0w" });
+                }
+                OpenAttribute { lf } => {
+                    string.push_str(if lf { "#[\n" } else { "#[" });
                 }
                 OpenBrace { lf } => {
                     string.push_str(if lf { "{\n" } else { "{" });
@@ -357,6 +377,7 @@ enum TokenKind {
     LineComment,
     Mod,
     Mut,
+    OpenAttribute { lf: bool },
     OpenBrace { lf: bool },
     OpenBracket { lf: bool },
     OpenParen { lf: bool },
@@ -451,13 +472,22 @@ impl<'a> Iterator for Tokens<'a> {
             ',' => Comma,
             '?' => Question,
             ';' => Semi,
-            '!' => match self.chars.peek() {
-                Some(&(_, '=')) => Punct,
+            '!' => match self.chars.next_if(|&(_, ch)| ch == '=') {
+                Some(_) => Punct,
                 _ => Bang,
             },
             ':' => match self.chars.next_if(|&(_, ch)| ch == ':') {
                 Some(_) => ColonColon,
                 _ => Colon,
+            },
+            '#' => {
+                self.chars.next_if(|&(_, ch)| ch == '!');
+                match self.chars.next_if(|&(_, ch)| ch == '[') {
+                    Some(_) => OpenAttribute {
+                        lf: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
+                    },
+                    _ => Punct,
+                }
             },
             '{' => OpenBrace {
                 lf: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
