@@ -121,11 +121,12 @@ impl Rust {
                 | OpenParen { lf: true } => {
                     row.indent_level += 1;
                 }
-                Where { lf: false } => {
-                    if matches!(context_v[..], [.., Expr { lf: true }]) {
+                Where { lf: false } => match context_v[..] {
+                    [.., Expr { lf: true }] => {
                         row.indent_level -= 1;
                     }
-                }
+                    _ => (),
+                },
                 OpenBrace { lf: false } => match context_v[..] {
                     [.., Where { lf }, Expr { lf: true }] => {
                         row.indent_level -= if lf { 2 } else { 1 };
@@ -135,51 +136,48 @@ impl Rust {
                     }
                     _ => (),
                 },
-                CloseBrace => {
-                    if prev_token.filter(|t| t.end == 0).is_some() {
-                        match context_v[..] {
-                            [.., OpenBrace { lf }, Expr { lf: true }] => {
-                                row.indent_level -= if lf { 2 } else { 1 };
-                            }
-                            [.., OpenBrace { lf: true }] => {
-                                row.indent_level -= 1;
-                            }
-                            _ => (),
+                CloseBrace => match prev_token.filter(|t| t.end == 0) {
+                    Some(_) => match context_v[..] {
+                        [.., OpenBrace { lf }, Expr { lf: true }] => {
+                            row.indent_level -= if lf { 2 } else { 1 };
                         }
-                    }
-                }
-                CloseBracket => {
-                    if prev_token.filter(|t| t.end == 0).is_some() {
-                        match context_v[..] {
-                            [.., OpenBracket { lf }, Expr { lf: true }] => {
-                                row.indent_level -= if lf { 2 } else { 1 };
-                            }
-                            [.., OpenBracket { lf: true }] => {
-                                row.indent_level -= 1;
-                            }
-                            [.., OpenAttribute { lf }, Expr { lf: true }] => {
-                                row.indent_level -= if lf { 2 } else { 1 };
-                            }
-                            [.., OpenAttribute { lf: true }] => {
-                                row.indent_level -= 1;
-                            }
-                            _ => (),
+                        [.., OpenBrace { lf: true }] => {
+                            row.indent_level -= 1;
                         }
-                    }
-                }
-                CloseParen => {
-                    if prev_token.filter(|t| t.end == 0).is_some() {
-                        match context_v[..] {
-                            [.., OpenParen { lf }, Expr { lf: true }] => {
-                                row.indent_level -= if lf { 2 } else { 1 };
-                            }
-                            [.., OpenParen { lf: true }] => {
-                                row.indent_level -= 1;
-                            }
-                            _ => (),
+                        _ => (),
+                    },
+                    _ => (),
+                },
+                CloseBracket => match prev_token.filter(|t| t.end == 0) {
+                    Some(_) => match context_v[..] {
+                        [.., OpenBracket { lf }, Expr { lf: true }] => {
+                            row.indent_level -= if lf { 2 } else { 1 };
                         }
-                    }
-                }
+                        [.., OpenBracket { lf: true }] => {
+                            row.indent_level -= 1;
+                        }
+                        [.., OpenAttribute { lf }, Expr { lf: true }] => {
+                            row.indent_level -= if lf { 2 } else { 1 };
+                        }
+                        [.., OpenAttribute { lf: true }] => {
+                            row.indent_level -= 1;
+                        }
+                        _ => (),
+                    },
+                    _ => (),
+                },
+                CloseParen => match prev_token.filter(|t| t.end == 0) {
+                    Some(_) => match context_v[..] {
+                        [.., OpenParen { lf }, Expr { lf: true }] => {
+                            row.indent_level -= if lf { 2 } else { 1 };
+                        }
+                        [.., OpenParen { lf: true }] => {
+                            row.indent_level -= 1;
+                        }
+                        _ => (),
+                    },
+                    _ => (),
+                },
                 _ => (),
             }
 
@@ -194,25 +192,25 @@ impl Rust {
                 | RawStrLit { open: true, .. } => {
                     context_v.push(token.kind);
                 }
-                Where { .. } => {
-                    if matches!(context_v[..], [.., Expr { .. }]) {
+                Where { .. } => match context_v[..] {
+                    [.., Expr { .. }] => {
                         context_v.pop();
+                        context_v.push(token.kind);
                     }
-                    context_v.push(token.kind);
-                }
-                OpenBrace { .. } => {
-                    match context_v[..] {
-                        [.., Where { .. }, Expr { .. }] => {
-                            context_v.pop();
-                            context_v.pop();
-                        }
-                        [.., Expr { .. } | Where { .. }] => {
-                            context_v.pop();
-                        }
-                        _ => (),
-                    };
-                    context_v.push(token.kind);
-                }
+                    _ => context_v.push(token.kind),
+                },
+                OpenBrace { .. } => match context_v[..] {
+                    [.., Where { .. }, Expr { .. }] => {
+                        context_v.pop();
+                        context_v.pop();
+                        context_v.push(token.kind);
+                    }
+                    [.., Expr { .. } | Where { .. }] => {
+                        context_v.pop();
+                        context_v.push(token.kind);
+                    }
+                    _ => context_v.push(token.kind),
+                },
                 CloseBrace => match context_v[..] {
                     [.., OpenBrace { .. }, Expr { .. }] => {
                         context_v.pop();
@@ -262,11 +260,12 @@ impl Rust {
                     }
                     _ => (),
                 },
-                Comma => {
-                    if matches!(context_v[..], [.., Expr { .. }]) {
+                Comma => match context_v[..] {
+                    [.., Expr { .. }] => {
                         context_v.pop();
                     }
-                }
+                    _ => (),
+                },
                 Semi => match context_v[..] {
                     [.., Where { .. }, Expr { .. }] => {
                         context_v.pop();
@@ -278,11 +277,12 @@ impl Rust {
                     _ => (),
                 },
                 LineComment | BlockComment { open: false, .. } => (),
-                _ => {
-                    if !matches!(context_v[..], [.., Expr { .. }]) {
+                _ => match context_v[..] {
+                    [.., Expr { .. }] => (),
+                    _ => {
                         context_v.push(Expr { lf: false });
                     }
-                }
+                },
             }
 
             prev_token = Some(token);
@@ -488,7 +488,7 @@ impl<'a> Iterator for Tokens<'a> {
                     },
                     _ => Punct,
                 }
-            },
+            }
             '{' => OpenBrace {
                 lf: self.chars.next_if(|&(_, ch)| ch == '\n').is_some(),
             },
