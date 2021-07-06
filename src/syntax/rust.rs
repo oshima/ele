@@ -121,19 +121,25 @@ impl Rust {
                 | OpenParen { lf: true } => {
                     row.indent_level += 1;
                 }
-                Where { lf: false } => match context_v[..] {
-                    [.., Expr { lf: true }] => {
-                        row.indent_level -= 1;
-                    }
+                Where { lf: false } => match prev_token.filter(|t| t.end == 0) {
+                    Some(_) => match context_v[..] {
+                        [.., Expr { lf: true }] => {
+                            row.indent_level -= 1;
+                        }
+                        _ => (),
+                    },
                     _ => (),
                 },
-                OpenBrace { lf: false } => match context_v[..] {
-                    [.., Where { lf }, Expr { lf: true }] => {
-                        row.indent_level -= if lf { 2 } else { 1 };
-                    }
-                    [.., Expr { lf: true } | Where { lf: true }] => {
-                        row.indent_level -= 1;
-                    }
+                OpenBrace { lf: false } => match prev_token.filter(|t| t.end == 0) {
+                    Some(_) => match context_v[..] {
+                        [.., Where { lf }, Expr { lf: true }] => {
+                            row.indent_level -= if lf { 2 } else { 1 };
+                        }
+                        [.., Expr { lf: true } | Where { lf: true }] => {
+                            row.indent_level -= 1;
+                        }
+                        _ => (),
+                    },
                     _ => (),
                 },
                 CloseBrace => match prev_token.filter(|t| t.end == 0) {
@@ -172,6 +178,15 @@ impl Rust {
                             row.indent_level -= if lf { 2 } else { 1 };
                         }
                         [.., OpenParen { lf: true }] => {
+                            row.indent_level -= 1;
+                        }
+                        _ => (),
+                    },
+                    _ => (),
+                },
+                Or => match prev_token.filter(|t| t.end == 0) {
+                    Some(_) => match context_v[..] {
+                        [.., OpenBrace { lf: true }, Expr { lf: true }] => {
                             row.indent_level -= 1;
                         }
                         _ => (),
@@ -381,6 +396,7 @@ enum TokenKind {
     OpenBrace { lf: bool },
     OpenBracket { lf: bool },
     OpenParen { lf: bool },
+    Or,
     PrimitiveType,
     Punct,
     Question,
@@ -479,6 +495,10 @@ impl<'a> Iterator for Tokens<'a> {
             ':' => match self.chars.next_if(|&(_, ch)| ch == ':') {
                 Some(_) => ColonColon,
                 _ => Colon,
+            },
+            '|' => match self.chars.next_if(|&(_, ch)| ch == '|') {
+                Some(_) => Punct,
+                _ => Or,
             },
             '#' => {
                 self.chars.next_if(|&(_, ch)| ch == '!');
