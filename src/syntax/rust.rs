@@ -121,17 +121,18 @@ impl Rust {
                 | OpenParen { lf: true } => {
                     row.indent_level += 1;
                 }
-                Where { lf: false } => match prev_token.filter(|t| t.end == 0) {
-                    Some(_) => match context_v[..] {
+                _ => (),
+            }
+
+            if prev_token.filter(|t| t.end == 0).is_some() {
+                match token.kind {
+                    Where { lf: false } => match context_v[..] {
                         [.., Expr { lf: true }] => {
                             row.indent_level -= 1;
                         }
                         _ => (),
                     },
-                    _ => (),
-                },
-                OpenBrace { lf: false } => match prev_token.filter(|t| t.end == 0) {
-                    Some(_) => match context_v[..] {
+                    OpenBrace { lf: false } => match context_v[..] {
                         [.., Where { lf }, Expr { lf: true }] => {
                             row.indent_level -= if lf { 2 } else { 1 };
                         }
@@ -140,10 +141,7 @@ impl Rust {
                         }
                         _ => (),
                     },
-                    _ => (),
-                },
-                CloseBrace => match prev_token.filter(|t| t.end == 0) {
-                    Some(_) => match context_v[..] {
+                    CloseBrace => match context_v[..] {
                         [.., OpenBrace { lf }, Expr { lf: true }] => {
                             row.indent_level -= if lf { 2 } else { 1 };
                         }
@@ -152,10 +150,7 @@ impl Rust {
                         }
                         _ => (),
                     },
-                    _ => (),
-                },
-                CloseBracket => match prev_token.filter(|t| t.end == 0) {
-                    Some(_) => match context_v[..] {
+                    CloseBracket => match context_v[..] {
                         [.., OpenBracket { lf }, Expr { lf: true }] => {
                             row.indent_level -= if lf { 2 } else { 1 };
                         }
@@ -170,10 +165,7 @@ impl Rust {
                         }
                         _ => (),
                     },
-                    _ => (),
-                },
-                CloseParen => match prev_token.filter(|t| t.end == 0) {
-                    Some(_) => match context_v[..] {
+                    CloseParen => match context_v[..] {
                         [.., OpenParen { lf }, Expr { lf: true }] => {
                             row.indent_level -= if lf { 2 } else { 1 };
                         }
@@ -182,18 +174,14 @@ impl Rust {
                         }
                         _ => (),
                     },
-                    _ => (),
-                },
-                Or => match prev_token.filter(|t| t.end == 0) {
-                    Some(_) => match context_v[..] {
+                    Or => match context_v[..] {
                         [.., Expr { lf: true }] => {
                             row.indent_level -= 1;
                         }
                         _ => (),
                     },
                     _ => (),
-                },
-                _ => (),
+                }
             }
 
             // Derive the context of the next row
