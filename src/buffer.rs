@@ -390,8 +390,15 @@ impl Buffer {
                     self.eid()
                 };
 
-                if self.cursor.x <= self.rows[self.cursor.y].indent_width() {
-                    if !self.rows[self.cursor.y].indent_part().is_empty() {
+                let event = Event::InsertMv(eid, self.cursor, "\n".into());
+                let cursor1 = self.cursor;
+                let revent = self.process_event(event);
+                let cursor2 = self.cursor;
+                self.push_event(revent);
+
+                self.cursor = cursor1;
+                if self.rows[self.cursor.y].indent_width() == self.rows[self.cursor.y].last_x() {
+                    if self.rows[self.cursor.y].last_x() > 0 {
                         let event = Event::Indent(eid, self.cursor, "".into());
                         let revent = self.process_event(event);
                         self.push_event(revent);
@@ -405,10 +412,7 @@ impl Buffer {
                     }
                 }
 
-                let event = Event::InsertMv(eid, self.cursor, "\n".into());
-                let revent = self.process_event(event);
-                self.push_event(revent);
-
+                self.cursor = cursor2;
                 if let Some(unit) = self.syntax.indent_unit() {
                     let string = unit.repeat(self.rows[self.cursor.y].indent_level);
                     if self.rows[self.cursor.y].indent_part() != string {
