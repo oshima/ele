@@ -186,7 +186,7 @@ impl Rust {
                 },
                 Or => match prev_token.filter(|t| t.end == 0) {
                     Some(_) => match context_v[..] {
-                        [.., OpenBrace { lf: true }, Expr { lf: true }] => {
+                        [.., Expr { lf: true }] => {
                             row.indent_level -= 1;
                         }
                         _ => (),
