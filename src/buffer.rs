@@ -397,8 +397,8 @@ impl Buffer {
                 self.push_event(revent);
 
                 self.cursor = cursor1;
-                if self.rows[self.cursor.y].indent_width() == self.rows[self.cursor.y].last_x() {
-                    if self.rows[self.cursor.y].last_x() > 0 {
+                if self.rows[self.cursor.y].is_whitespace() {
+                    if !self.rows[self.cursor.y].is_empty() {
                         let event = Event::Indent(eid, self.cursor, "".into());
                         let revent = self.process_event(event);
                         self.push_event(revent);
@@ -775,15 +775,14 @@ impl Buffer {
         let eid = self.eid();
 
         for y in pos1.y..=pos2.y {
-            let indent_part = self.rows[y].indent_part();
             let string = unit.repeat(self.rows[y].indent_level);
-            if indent_part == self.rows[y].string {
-                if !indent_part.is_empty() {
+            if self.rows[y].is_whitespace() {
+                if !self.rows[y].is_empty() {
                     let event = Event::Indent(eid, Pos::new(0, y), "".into());
                     let revent = self.process_event(event);
                     self.push_event(revent);
                 }
-            } else if indent_part != string {
+            } else if self.rows[y].indent_part() != string {
                 let event = Event::Indent(eid, Pos::new(0, y), string);
                 let revent = self.process_event(event);
                 self.push_event(revent);

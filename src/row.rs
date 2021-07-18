@@ -174,25 +174,12 @@ impl Row {
         self.string[idx..].chars().next().unwrap_or('\n')
     }
 
-    pub fn clear(&mut self) {
-        self.string.clear();
-        if self.x_to_idx.is_some() {
-            self.update_mappings();
-        }
+    pub fn is_empty(&self) -> bool {
+        self.string.is_empty()
     }
 
-    pub fn read(&self, x1: usize, x2: usize) -> String {
-        self.string[self.x_to_idx(x1)..self.x_to_idx(x2)].to_string()
-    }
-
-    pub fn indent_part(&self) -> &str {
-        let len = self
-            .string
-            .char_indices()
-            .find(|&(_, ch)| !ch.is_ascii_whitespace())
-            .map_or(self.string.len(), |(idx, _)| idx);
-
-        &self.string[..len]
+    pub fn is_whitespace(&self) -> bool {
+        self.string.chars().all(|ch| ch.is_ascii_whitespace())
     }
 
     pub fn indent_width(&self) -> usize {
@@ -200,6 +187,27 @@ impl Row {
             .chars()
             .take_while(|&ch| ch.is_ascii_whitespace())
             .fold(0, |w, ch| w + char_width(w, ch))
+    }
+
+    pub fn indent_part(&self) -> &str {
+        let len = self
+            .string
+            .chars()
+            .take_while(|&ch| ch.is_ascii_whitespace())
+            .fold(0, |len, ch| len + ch.len_utf8());
+
+        &self.string[..len]
+    }
+
+    pub fn read(&self, x1: usize, x2: usize) -> String {
+        self.string[self.x_to_idx(x1)..self.x_to_idx(x2)].to_string()
+    }
+
+    pub fn clear(&mut self) {
+        self.string.clear();
+        if self.x_to_idx.is_some() {
+            self.update_mappings();
+        }
     }
 
     pub fn indent(&mut self, string: &str) -> String {
