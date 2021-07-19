@@ -306,6 +306,7 @@ impl Rust {
         self.convert_context(context_v, context_s);
     }
 
+    #[rustfmt::skip]
     fn convert_context(&self, slice: &[TokenKind], string: &mut String) {
         for token_kind in slice {
             match *token_kind {
@@ -335,10 +336,7 @@ impl Rust {
                 StrLit { open: true } => {
                     string.push_str("\"");
                 }
-                RawStrLit {
-                    open: true,
-                    n_hashes,
-                } => {
+                RawStrLit { open: true, n_hashes } => {
                     string.push_str("r");
                     for _ in 0..n_hashes {
                         string.push_str("#");
@@ -462,13 +460,13 @@ impl<'a> Iterator for Tokens<'a> {
                     self.chars.next();
                     self.str_lit()
                 }
-                Some(&(_, 'r')) => match self.chars.clone().nth(1) {
-                    Some((_, '"' | '#')) => {
-                        self.chars.next();
-                        self.raw_str_lit()
+                Some(&(_, 'r')) => {
+                    self.chars.next();
+                    match self.chars.peek() {
+                        Some((_, '"' | '#')) => self.raw_str_lit(),
+                        _ => self.ident(start),
                     }
-                    _ => self.ident(start),
-                },
+                }
                 _ => self.ident(start),
             },
 
@@ -535,171 +533,136 @@ impl<'a> Iterator for Tokens<'a> {
 
 impl<'a> Tokens<'a> {
     fn line_comment(&mut self) -> TokenKind {
-        while let Some(_) = self.chars.next() {}
+        while self.chars.next().is_some() {}
         LineComment
     }
 
     fn block_comment(&mut self) -> TokenKind {
         self.chars.next();
         let mut depth = 1;
-        loop {
-            match self.chars.next() {
-                Some((_, '/')) => match self.chars.peek() {
-                    Some(&(_, '*')) => {
-                        self.chars.next();
-                        depth += 1;
+        while let Some((_, ch)) = self.chars.next() {
+            match (ch, self.chars.peek()) {
+                ('/', Some(&(_, '*'))) => {
+                    self.chars.next();
+                    depth += 1;
+                }
+                ('*', Some(&(_, '/'))) => {
+                    self.chars.next();
+                    depth -= 1;
+                    if depth == 0 {
+                        return BlockComment { open: false, depth };
                     }
-                    _ => (),
-                },
-                Some((_, '*')) => match self.chars.peek() {
-                    Some(&(_, '/')) => {
-                        self.chars.next();
-                        depth -= 1;
-                        if depth == 0 {
-                            return BlockComment { open: false, depth };
-                        }
-                    }
-                    _ => (),
-                },
-                Some(_) => (),
-                None => return BlockComment { open: true, depth },
+                }
+                _ => (),
             }
         }
+        BlockComment { open: true, depth }
     }
 
     fn char_lit(&mut self) -> TokenKind {
-        loop {
-            match self.chars.next() {
-                Some((_, '\'')) | None => return CharLit,
-                Some((_, '\\')) => {
+        while let Some((_, ch)) = self.chars.next() {
+            match ch {
+                '\'' => return CharLit,
+                '\\' => {
                     self.chars.next();
                 }
                 _ => (),
             }
         }
+        CharLit
     }
 
     fn char_lit_or_lifetime(&mut self) -> TokenKind {
         self.chars.next();
-        loop {
-            match self.chars.peek() {
-                Some(&(_, '\'')) => {
+        while let Some(&(_, ch)) = self.chars.peek() {
+            match ch {
+                '\'' => {
                     self.chars.next();
                     return CharLit;
                 }
-                Some(&(_, ch)) if !is_delim(ch) => {
+                ch if !is_delim(ch) => {
                     self.chars.next();
                 }
                 _ => return Lifetime,
             }
         }
+        Lifetime
     }
 
     fn str_lit(&mut self) -> TokenKind {
-        loop {
-            match self.chars.next() {
-                Some((_, '"')) => return StrLit { open: false },
-                Some((_, '\\')) => {
+        while let Some((_, ch)) = self.chars.next() {
+            match ch {
+                '"' => return StrLit { open: false },
+                '\\' => {
                     self.chars.next();
                 }
-                Some(_) => (),
-                None => return StrLit { open: true },
+                _ => (),
             }
         }
+        StrLit { open: true }
     }
 
+    #[rustfmt::skip]
     fn raw_str_lit(&mut self) -> TokenKind {
         let mut n_hashes = 0;
         while let Some(&(_, '#')) = self.chars.peek() {
             self.chars.next();
             n_hashes += 1;
         }
-        match self.chars.peek() {
-            Some(&(_, '"')) => self.chars.next(),
-            _ => return Punct,
-        };
-        loop {
-            match self.chars.next() {
-                Some((_, '"')) => {
-                    let mut close_hashes = 0;
-                    while let Some(&(_, '#')) = self.chars.peek() {
-                        if close_hashes == n_hashes {
-                            break;
-                        }
-                        self.chars.next();
-                        close_hashes += 1;
-                    }
-                    if close_hashes == n_hashes {
-                        return RawStrLit {
-                            open: false,
-                            n_hashes,
-                        };
-                    }
+        if let Some(&(_, '"')) = self.chars.peek() {
+            self.chars.next();
+        } else {
+            return Punct;
+        }
+        while let Some((_, ch)) = self.chars.next() {
+            if ch == '"' {
+                let mut close_hashes = 0;
+                if close_hashes == n_hashes {
+                    return RawStrLit { open: false, n_hashes };
                 }
-                Some(_) => (),
-                None => {
-                    return RawStrLit {
-                        open: true,
-                        n_hashes,
+                while let Some(&(_, '#')) = self.chars.peek() {
+                    self.chars.next();
+                    close_hashes += 1;
+                    if close_hashes == n_hashes {
+                        return RawStrLit { open: false, n_hashes };
                     }
                 }
             }
         }
+        RawStrLit { open: true, n_hashes }
     }
 
     fn raw_ident(&mut self) -> TokenKind {
         self.chars.next();
-        loop {
-            match self.chars.peek() {
-                Some(&(_, ch)) if !is_delim(ch) => {
-                    self.chars.next();
-                }
-                _ => return RawIdent,
-            }
-        }
+        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+        RawIdent
     }
 
     fn upper_ident(&mut self) -> TokenKind {
-        loop {
-            match self.chars.peek() {
-                Some(&(_, ch)) if !is_delim(ch) => {
-                    self.chars.next();
-                }
-                _ => return UpperIdent,
-            }
-        }
+        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+        UpperIdent
     }
 
     fn ident(&mut self, start: usize) -> TokenKind {
-        loop {
-            let (end, is_last_char) = match self.chars.peek() {
-                Some(&(idx, ch)) => (idx, is_delim(ch)),
-                None => (self.text.len(), true),
-            };
-            if !is_last_char {
-                self.chars.next();
-                continue;
-            }
-            return match &self.text[start..end] {
-                "const" => Const,
-                "fn" => Fn,
-                "for" => For,
-                "let" => Let,
-                "mod" => Mod,
-                "mut" => Mut,
-                "static" => Static,
-                "where" => Where { lf: false },
-                "as" | "async" | "await" | "box" | "break" | "continue" | "crate" | "do"
-                | "dyn" | "else" | "enum" | "extern" | "false" | "if" | "impl" | "in" | "loop"
-                | "match" | "move" | "priv" | "pub" | "ref" | "return" | "self" | "struct"
-                | "super" | "trait" | "true" | "try" | "type" | "unsafe" | "use" | "virtual"
-                | "while" | "yield" => Keyword,
-                "bool" | "char" | "f32" | "f64" | "i8" | "i16" | "i32" | "i64" | "i128"
-                | "isize" | "str" | "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => {
-                    PrimitiveType
-                }
-                _ => Ident,
-            };
+        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+        let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
+        match &self.text[start..end] {
+            "const" => Const,
+            "fn" => Fn,
+            "for" => For,
+            "let" => Let,
+            "mod" => Mod,
+            "mut" => Mut,
+            "static" => Static,
+            "where" => Where { lf: false },
+            "as" | "async" | "await" | "box" | "break" | "continue" | "crate" | "do" | "dyn"
+            | "else" | "enum" | "extern" | "false" | "if" | "impl" | "in" | "loop" | "match"
+            | "move" | "priv" | "pub" | "ref" | "return" | "self" | "struct" | "super"
+            | "trait" | "true" | "try" | "type" | "unsafe" | "use" | "virtual" | "while"
+            | "yield" => Keyword,
+            "bool" | "char" | "f32" | "f64" | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
+            | "str" | "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => PrimitiveType,
+            _ => Ident,
         }
     }
 }
