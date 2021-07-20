@@ -113,12 +113,12 @@ impl Rust {
 
             // Indent
             match token.kind {
-                Expr { lf: true }
-                | Where { lf: true }
-                | OpenAttribute { lf: true }
+                OpenAttribute { lf: true }
                 | OpenBrace { lf: true }
                 | OpenBracket { lf: true }
-                | OpenParen { lf: true } => {
+                | OpenParen { lf: true }
+                | Expr { lf: true }
+                | Where { lf: true } => {
                     row.indent_level += 1;
                 }
                 _ => (),
@@ -126,17 +126,17 @@ impl Rust {
 
             if prev_token.filter(|t| t.end == 0).is_some() {
                 match token.kind {
-                    Where { lf: false } => match context_v[..] {
-                        [.., Expr { lf: true }] => {
-                            row.indent_level -= 1;
-                        }
-                        _ => (),
-                    },
                     OpenBrace { lf: false } => match context_v[..] {
                         [.., Where { lf }, Expr { lf: true }] => {
                             row.indent_level -= if lf { 2 } else { 1 };
                         }
                         [.., Expr { lf: true } | Where { lf: true }] => {
+                            row.indent_level -= 1;
+                        }
+                        _ => (),
+                    },
+                    Where { lf: false } => match context_v[..] {
+                        [.., Expr { lf: true }] => {
                             row.indent_level -= 1;
                         }
                         _ => (),
@@ -186,22 +186,15 @@ impl Rust {
 
             // Derive the context of the next row
             match token.kind {
-                Expr { .. }
-                | OpenAttribute { .. }
+                OpenAttribute { .. }
                 | OpenBracket { .. }
                 | OpenParen { .. }
+                | Expr { .. }
                 | BlockComment { open: true, .. }
                 | StrLit { open: true }
                 | RawStrLit { open: true, .. } => {
                     context_v.push(token.kind);
                 }
-                Where { .. } => match context_v[..] {
-                    [.., Expr { .. }] => {
-                        context_v.pop();
-                        context_v.push(token.kind);
-                    }
-                    _ => context_v.push(token.kind),
-                },
                 OpenBrace { .. } => match context_v[..] {
                     [.., Where { .. }, Expr { .. }] => {
                         context_v.pop();
@@ -209,6 +202,13 @@ impl Rust {
                         context_v.push(token.kind);
                     }
                     [.., Expr { .. } | Where { .. }] => {
+                        context_v.pop();
+                        context_v.push(token.kind);
+                    }
+                    _ => context_v.push(token.kind),
+                },
+                Where { .. } => match context_v[..] {
+                    [.., Expr { .. }] => {
                         context_v.pop();
                         context_v.push(token.kind);
                     }
@@ -293,12 +293,12 @@ impl Rust {
 
         match context_v.last_mut() {
             Some(
-                Expr { lf }
-                | Where { lf }
-                | OpenAttribute { lf }
+                OpenAttribute { lf }
                 | OpenBrace { lf }
                 | OpenBracket { lf }
-                | OpenParen { lf },
+                | OpenParen { lf }
+                | Expr { lf }
+                | Where { lf },
             ) => *lf = true,
             _ => (),
         };
@@ -310,12 +310,6 @@ impl Rust {
     fn convert_context(&self, slice: &[TokenKind], string: &mut String) {
         for token_kind in slice {
             match *token_kind {
-                Expr { lf } => {
-                    string.push_str(if lf { "\0e\n" } else { "\0e" });
-                }
-                Where { lf } => {
-                    string.push_str(if lf { "\0w\n" } else { "\0w" });
-                }
                 OpenAttribute { lf } => {
                     string.push_str(if lf { "#[\n" } else { "#[" });
                 }
@@ -327,6 +321,12 @@ impl Rust {
                 }
                 OpenParen { lf } => {
                     string.push_str(if lf { "(\n" } else { "(" });
+                }
+                Expr { lf } => {
+                    string.push_str(if lf { "\0e\n" } else { "\0e" });
+                }
+                Where { lf } => {
+                    string.push_str(if lf { "\0w\n" } else { "\0w" });
                 }
                 BlockComment { open: true, depth } => {
                     for _ in 0..depth {
