@@ -655,11 +655,10 @@ impl<'a> Tokens<'a> {
             "mut" => Mut,
             "static" => Static,
             "where" => Where { lf: false },
-            "as" | "async" | "await" | "box" | "break" | "continue" | "crate" | "do" | "dyn"
-            | "else" | "enum" | "extern" | "false" | "if" | "impl" | "in" | "loop" | "match"
-            | "move" | "priv" | "pub" | "ref" | "return" | "self" | "struct" | "super"
-            | "trait" | "true" | "try" | "type" | "unsafe" | "use" | "virtual" | "while"
-            | "yield" => Keyword,
+            "as" | "async" | "await" | "break" | "continue" | "crate" | "else" | "enum"
+            | "extern" | "false" | "if" | "impl" | "in" | "loop" | "match" | "move" | "pub"
+            | "ref" | "return" | "self" | "struct" | "super" | "trait" | "true" | "type"
+            | "unsafe" | "use" | "while" => Keyword,
             "bool" | "char" | "f32" | "f64" | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
             | "str" | "u8" | "u16" | "u32" | "u64" | "u128" | "usize" => PrimitiveType,
             _ => Ident,
