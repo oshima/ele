@@ -1,5 +1,3 @@
-#![allow(clippy::single_match)]
-
 use std::iter::{self, Chain, Iterator, Peekable, Repeat, Zip};
 use std::str::{CharIndices, Chars};
 
@@ -64,6 +62,7 @@ impl Syntax for Rust {
 }
 
 impl Rust {
+    #![allow(clippy::single_match)]
     fn update_row(&self, row: &mut Row, context_v: &mut Vec<TokenKind>, context_s: &mut String) {
         let mut tokens = Tokens::from(&row.string, row.context.as_deref().unwrap()).peekable();
         let mut prev_token: Option<Token> = None;
@@ -334,14 +333,14 @@ impl Rust {
                     }
                 }
                 StrLit { open: true } => {
-                    string.push_str("\"");
+                    string.push('"');
                 }
                 RawStrLit { open: true, n_hashes } => {
-                    string.push_str("r");
+                    string.push('r');
                     for _ in 0..n_hashes {
-                        string.push_str("#");
+                        string.push('#');
                     }
-                    string.push_str("\"");
+                    string.push('"');
                 }
                 _ => (),
             }

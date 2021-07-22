@@ -61,6 +61,7 @@ impl RowsMethods for Rows {
         None
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn next_word_pos(&self, pos: Pos) -> Option<Pos> {
         if let Some(x) = self[pos.y].next_word_x(pos.x) {
             return Some(Pos::new(x, pos.y));
@@ -73,6 +74,7 @@ impl RowsMethods for Rows {
         None
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn read_str(&self, pos1: Pos, pos2: Pos) -> String {
         let mut strings = Vec::new();
 

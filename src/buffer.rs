@@ -192,6 +192,7 @@ impl Buffer {
         )
     }
 
+    #[allow(clippy::collapsible_else_if)]
     pub fn process_key(&mut self, key: Key, clipboard: &mut String) -> &str {
         let message = match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
@@ -813,7 +814,7 @@ impl Buffer {
         self.draw_range.full_expand();
     }
 
-    #[allow(clippy::collapsible_if)]
+    #[allow(clippy::collapsible_else_if)]
     pub fn next_match(&mut self, backward: bool) {
         if self.search.matches.len() <= 1 {
             return;
