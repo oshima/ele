@@ -614,18 +614,16 @@ impl<'a> Tokens<'a> {
         } else {
             return Punct;
         }
-        while let Some((_, ch)) = self.chars.next() {
-            if ch == '"' {
-                let mut close_hashes = 0;
+        while self.chars.any(|(_, ch)| ch == '"') {
+            let mut close_hashes = 0;
+            if close_hashes == n_hashes {
+                return RawStrLit { open: false, n_hashes };
+            }
+            while let Some(&(_, '#')) = self.chars.peek() {
+                self.chars.next();
+                close_hashes += 1;
                 if close_hashes == n_hashes {
                     return RawStrLit { open: false, n_hashes };
-                }
-                while let Some(&(_, '#')) = self.chars.peek() {
-                    self.chars.next();
-                    close_hashes += 1;
-                    if close_hashes == n_hashes {
-                        return RawStrLit { open: false, n_hashes };
-                    }
                 }
             }
         }
