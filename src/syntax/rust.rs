@@ -90,7 +90,7 @@ impl Rust {
                     Some(Const | Static) => Fg::Variable,
                     _ => Fg::Type,
                 },
-                Ident | RawIdent => match prev_token.map(|t| t.kind) {
+                Ident => match prev_token.map(|t| t.kind) {
                     Some(Fn) => Fg::Function,
                     Some(For | Let | Mut) => Fg::Variable,
                     Some(Mod) => Fg::Module,
@@ -385,7 +385,6 @@ enum TokenKind {
     PrimitiveType,
     Punct,
     Question,
-    RawIdent,
     RawStrLit { open: bool, n_hashes: usize },
     Semi,
     Static,
@@ -632,7 +631,7 @@ impl<'a> Tokens<'a> {
     fn raw_ident(&mut self) -> TokenKind {
         self.chars.next();
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-        RawIdent
+        Ident
     }
 
     fn upper_ident(&mut self) -> TokenKind {
