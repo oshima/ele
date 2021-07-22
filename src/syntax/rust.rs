@@ -446,7 +446,7 @@ impl<'a> Iterator for Tokens<'a> {
                     Some((_, ch)) if !is_delim(ch) => self.raw_ident(),
                     _ => self.raw_str_lit(),
                 },
-                _ => self.ident(start),
+                _ => self.ident_or_keyword(start),
             },
 
             // byte, byte string or raw byte string
@@ -463,10 +463,10 @@ impl<'a> Iterator for Tokens<'a> {
                     self.chars.next();
                     match self.chars.peek() {
                         Some((_, '"' | '#')) => self.raw_str_lit(),
-                        _ => self.ident(start),
+                        _ => self.ident_or_keyword(start),
                     }
                 }
-                _ => self.ident(start),
+                _ => self.ident_or_keyword(start),
             },
 
             // punctuation
@@ -519,9 +519,9 @@ impl<'a> Iterator for Tokens<'a> {
                 _ => Punct,
             },
 
-            // identifier
+            // identifier or keyword
             ch if ch.is_ascii_uppercase() => self.upper_ident(),
-            _ => self.ident(start),
+            _ => self.ident_or_keyword(start),
         };
 
         let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
@@ -640,7 +640,7 @@ impl<'a> Tokens<'a> {
         UpperIdent
     }
 
-    fn ident(&mut self, start: usize) -> TokenKind {
+    fn ident_or_keyword(&mut self, start: usize) -> TokenKind {
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
         let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
         match &self.text[start..end] {
