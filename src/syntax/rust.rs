@@ -290,17 +290,17 @@ impl Rust {
             prev_token = Some(token);
         }
 
-        match context_v.last_mut() {
-            Some(
-                OpenAttribute { lf }
-                | OpenBrace { lf }
-                | OpenBracket { lf }
-                | OpenParen { lf }
-                | Expr { lf }
-                | Where { lf },
-            ) => *lf = true,
-            _ => (),
-        };
+        if let Some(
+            OpenAttribute { lf }
+            | OpenBrace { lf }
+            | OpenBracket { lf }
+            | OpenParen { lf }
+            | Expr { lf }
+            | Where { lf },
+        ) = context_v.last_mut()
+        {
+            *lf = true;
+        }
 
         self.convert_context(context_v, context_s);
     }
