@@ -65,7 +65,6 @@ impl Ruby {
     #![allow(clippy::single_match)]
     fn update_row(&self, row: &mut Row, context_v: &mut Vec<TokenKind>, context_s: &mut String) {
         let mut tokens = Tokens::from(&row.string, row.context.as_deref().unwrap()).peekable();
-        let mut prev_token: Option<Token> = None;
 
         row.faces.clear();
         row.faces
@@ -76,16 +75,20 @@ impl Ruby {
         while let Some(token) = tokens.next() {
             // Highlight
             let fg = match token.kind {
+                BuiltinMethod { takes_arg: true } => match tokens.peek().map(|t| t.kind) {
+                    Some(Comma | Dot | Op | Semi) | None => Fg::Default,
+                    _ => Fg::Macro,
+                },
+                BuiltinMethod { takes_arg: false } => Fg::Macro,
                 Comment => Fg::Comment,
-                Def | Keyword | KeywordWithExpr => Fg::Keyword,
+                Def | Keyword { .. } => Fg::Keyword,
                 Key => Fg::Macro,
+                MethodDecl => Fg::Function,
+                MethodOwner => Fg::Variable,
                 RegexpLit { .. } | StrLit { .. } => Fg::String,
                 SymbolLit { .. } => Fg::Macro,
                 UpperIdent => Fg::Type,
-                Ident => match prev_token.map(|t| t.kind) {
-                    Some(Def) => Fg::Function,
-                    _ => Fg::Default,
-                },
+                Variable => Fg::Variable,
                 _ => Fg::Default,
             };
 
@@ -102,8 +105,6 @@ impl Ruby {
                 }
                 _ => (),
             }
-
-            prev_token = Some(token);
         }
 
         self.convert_context(context_v, context_s);
@@ -165,14 +166,18 @@ struct Token {
 
 #[derive(Clone, Copy)]
 enum TokenKind {
-    Bar,
+    BuiltinMethod { takes_arg: bool },
     Comma,
     Comment,
     Def,
+    DefDot,
+    Dot,
     Ident,
     Key,
-    Keyword,
-    KeywordWithExpr,
+    Keyword { takes_expr: bool },
+    MethodCall,
+    MethodDecl,
+    MethodOwner,
     OpenBrace,
     OpenBracket,
     OpenParen,
@@ -183,6 +188,7 @@ enum TokenKind {
     StrLit { open: bool, delim: Option<char> },
     SymbolLit { open: bool, delim: Option<char> },
     UpperIdent,
+    Variable,
 }
 
 struct Tokens<'a> {
@@ -205,12 +211,7 @@ impl<'a> Tokens<'a> {
 }
 
 fn is_delim(ch: char) -> bool {
-    match ch {
-        '_' | '!' | '?' => false,
-        ch if ch.is_ascii_whitespace() => true,
-        ch if ch.is_ascii_punctuation() => true,
-        _ => false,
-    }
+    ch.is_ascii_whitespace() || ch != '_' && ch.is_ascii_punctuation()
 }
 
 impl<'a> Iterator for Tokens<'a> {
@@ -224,50 +225,62 @@ impl<'a> Iterator for Tokens<'a> {
             '#' => self.comment(),
 
             // string
-            '\'' | '"' | '`' => self.str_lit(Some(ch)),
+            '\'' | '"' | '`' => self.str_lit(ch),
 
             // symbol
             ':' => match self.chars.next_if(|&(_, ch)| ch == ':') {
                 Some(_) => Punct,
                 _ => match self.chars.peek() {
-                    None => Op,
-                    Some(&(_, ch)) if ch.is_ascii_whitespace() => Op,
-                    Some(&(_, ch @ '\'' | ch @ '"')) => {
-                        self.chars.next();
-                        self.symbol_lit(Some(ch))
-                    }
-                    _ => self.symbol_lit(None),
+                    Some(&(_, ' ' | '\t')) | None => Op,
+                    _ => match self.chars.next_if(|&(_, ch)| ch == '\'' || ch == '"') {
+                        Some((_, ch)) => self.symbol_lit(ch),
+                        _ => self.pure_symbol_lit(),
+                    },
                 },
             },
 
             // regexp
             '/' => match self.prev {
                 Some(prev) => match prev.kind {
-                    Bar | Comma | KeywordWithExpr | OpenBrace | OpenBracket | OpenParen | Op
-                    | Semi => self.regexp_lit(Some('/')),
+                    Comma
+                    | Key
+                    | Keyword { takes_expr: true }
+                    | Op
+                    | OpenBrace
+                    | OpenBracket
+                    | OpenParen
+                    | Semi => self.regexp_lit(ch),
+                    Def | DefDot => self.method_decl(),
+                    Dot => self.method_call(),
                     Ident => match start == prev.end {
                         true => Op,
                         false => match self.chars.peek() {
-                            None => Op,
-                            Some(&(_, ch)) if ch.is_ascii_whitespace() => Op,
-                            _ => self.regexp_lit(Some('/')),
+                            Some(&(_, ' ' | '\t')) | None => Op,
+                            _ => self.regexp_lit(ch),
                         },
                     },
                     _ => Op,
                 },
-                None => self.regexp_lit(Some('/')),
+                None => self.regexp_lit(ch),
             },
 
             // percent literal
             '%' => match self.prev {
                 Some(prev) => match prev.kind {
-                    Bar | Comma | KeywordWithExpr | OpenBrace | OpenBracket | OpenParen | Op
+                    Comma
+                    | Key
+                    | Keyword { takes_expr: true }
+                    | Op
+                    | OpenBrace
+                    | OpenBracket
+                    | OpenParen
                     | Semi => self.percent_lit(),
+                    Def | DefDot => self.method_decl(),
+                    Dot => self.method_call(),
                     Ident => match start == prev.end {
                         true => Op,
                         false => match self.chars.peek() {
-                            None => Op,
-                            Some(&(_, ch)) if ch.is_ascii_whitespace() => Op,
+                            Some(&(_, ' ' | '\t')) | None => Op,
                             _ => self.percent_lit(),
                         },
                     },
@@ -276,31 +289,53 @@ impl<'a> Iterator for Tokens<'a> {
                 None => self.percent_lit(),
             },
 
-            // punctuation
-            ',' => Comma,
-            '{' => OpenBrace,
-            '[' => OpenBracket,
-            '(' => OpenParen,
-            ';' => Semi,
-            '|' => match self.chars.next_if(|&(_, ch)| ch == '|') {
-                Some(_) => Op,
-                _ => Bar,
-            },
-
             // operator
-            '!' | '&' | '*' | '+' | '-' | '<' | '=' | '>' | '?' | '^' => Op,
+            '!' | '&' | '*' | '+' | '-' | '<' | '=' | '>' | '?' | '^' | '|' | '~' => {
+                match self.prev.map(|t| t.kind) {
+                    Some(Def | DefDot) => self.method_decl(),
+                    Some(Dot) => self.method_call(),
+                    _ => Op,
+                }
+            }
             '.' => match self.chars.next_if(|&(_, ch)| ch == '.') {
                 Some(_) => {
                     self.chars.next_if(|&(_, ch)| ch == '.');
                     Op
                 }
-                _ => Punct,
+                _ => match self.prev.map(|t| t.kind) {
+                    Some(MethodOwner) => DefDot,
+                    _ => Dot,
+                },
             },
+
+            // variable
+            '@' => self.variable(),
+
+            // punctuation
+            ',' => Comma,
+            '{' => OpenBrace,
+            '[' => match self.prev.map(|t| t.kind) {
+                Some(Def | DefDot) => self.method_decl(),
+                Some(Dot) => self.method_call(),
+                _ => OpenBracket,
+            },
+            '(' => OpenParen,
+            ';' => Semi,
             ch if is_delim(ch) => Punct,
 
             // identifier or keyword
-            ch if ch.is_ascii_uppercase() => self.upper_ident(),
-            _ => self.ident_or_keyword(start),
+            ch if ch.is_ascii_uppercase() => match self.prev.map(|t| t.kind) {
+                Some(Def) => self.method_owner_or_method_decl(),
+                Some(DefDot) => self.method_decl(),
+                Some(Dot) => self.method_call(),
+                _ => self.upper_ident(),
+            },
+            _ => match self.prev.map(|t| t.kind) {
+                Some(Def) => self.method_owner_or_method_decl(),
+                Some(DefDot) => self.method_decl(),
+                Some(Dot) => self.method_call(),
+                _ => self.ident_or_keyword(start),
+            },
         };
 
         let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
@@ -319,7 +354,7 @@ impl<'a> Tokens<'a> {
             '<' => '>',
             '[' => ']',
             '{' => '}',
-            ch => ch,
+            _ => delim,
         };
         while let Some((_, ch)) = self.chars.next() {
             match ch {
@@ -346,71 +381,95 @@ impl<'a> Tokens<'a> {
         Comment
     }
 
-    fn str_lit(&mut self, delim: Option<char>) -> TokenKind {
-        if let Some(ch) = delim {
-            let open = self.consume_content(ch);
-            StrLit { open, delim }
-        } else {
-            StrLit { open: false, delim }
-        }
+    #[rustfmt::skip]
+    fn str_lit(&mut self, delim: char) -> TokenKind {
+        let open = self.consume_content(delim);
+        StrLit { open, delim: Some(delim) }
     }
 
     #[rustfmt::skip]
-    fn symbol_lit(&mut self, delim: Option<char>) -> TokenKind {
-        if let Some(ch) = delim {
-            let open = self.consume_content(ch);
-            SymbolLit { open, delim }
-        } else {
-            // TODO
-            // MEMO: 別メソッド gprimary_symbol_lit にした方がよさそう
-            while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-            SymbolLit { open: false, delim }
-        }
+    fn symbol_lit(&mut self, delim: char) -> TokenKind {
+        let open = self.consume_content(delim);
+        SymbolLit { open, delim: Some(delim) }
     }
 
-    fn regexp_lit(&mut self, delim: Option<char>) -> TokenKind {
-        if let Some(ch) = delim {
-            let open = self.consume_content(ch);
-            while self
-                .chars
-                .next_if(|&(_, ch)| matches!(ch, 'i' | 'm' | 'o' | 'x'))
-                .is_some()
-            {}
-            RegexpLit { open, delim }
-        } else {
-            RegexpLit { open: false, delim }
-        }
+    #[rustfmt::skip]
+    fn pure_symbol_lit(&mut self) -> TokenKind {
+        // TODO
+        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+        self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
+        SymbolLit { open: false, delim: None }
     }
 
+    #[rustfmt::skip]
+    fn regexp_lit(&mut self, delim: char) -> TokenKind {
+        let open = self.consume_content(delim);
+        while let Some(&(_, 'i' | 'm' | 'o' | 'x')) = self.chars.peek() {
+            self.chars.next();
+        }
+        RegexpLit { open, delim: Some(delim) }
+    }
+
+    #[rustfmt::skip]
     fn percent_lit(&mut self) -> TokenKind {
         match self.chars.peek() {
-            Some(&(_, 'Q'| 'W' | 'q' | 'w' | 'x')) => {
+            Some(&(_, 'Q' | 'W' | 'q' | 'w' | 'x')) => {
                 self.chars.next();
                 match self.chars.next_if(|&(_, ch)| ch.is_ascii_punctuation()) {
-                    Some((_, ch)) => self.str_lit(Some(ch)),
-                    _ => self.str_lit(None),
+                    Some((_, ch)) => self.str_lit(ch),
+                    _ => StrLit { open: false, delim: None },
                 }
             }
             Some(&(_, 'I' | 'i' | 's')) => {
                 self.chars.next();
                 match self.chars.next_if(|&(_, ch)| ch.is_ascii_punctuation()) {
-                    Some((_, ch)) => self.symbol_lit(Some(ch)),
+                    Some((_, ch)) => self.symbol_lit(ch),
                     _ => SymbolLit { open: false, delim: None },
                 }
             }
             Some(&(_, 'r')) => {
                 self.chars.next();
                 match self.chars.next_if(|&(_, ch)| ch.is_ascii_punctuation()) {
-                    Some((_, ch)) => self.regexp_lit(Some(ch)),
-                    _ => self.regexp_lit(None),
+                    Some((_, ch)) => self.regexp_lit(ch),
+                    _ => RegexpLit { open: false, delim: None },
                 }
             }
             Some(&(_, ch)) if ch.is_ascii_punctuation() => {
                 self.chars.next();
-                self.str_lit(Some(ch))
+                self.str_lit(ch)
             }
             _ => Op,
         }
+    }
+
+    fn variable(&mut self) -> TokenKind {
+        self.chars.next_if(|&(_, ch)| ch == '@');
+        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+        Variable
+    }
+
+    fn method_owner_or_method_decl(&mut self) -> TokenKind {
+        // TODO: method_delim 的な
+        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+        self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
+        match self.chars.peek() {
+            Some(&(_, '.')) => MethodOwner,
+            _ => MethodDecl,
+        }
+    }
+
+    fn method_decl(&mut self) -> TokenKind {
+        // TODO: method_delim 的な
+        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+        self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
+        MethodDecl
+    }
+
+    fn method_call(&mut self) -> TokenKind {
+        // TODO: method_delim 的な
+        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+        self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
+        MethodCall
     }
 
     fn upper_ident(&mut self) -> TokenKind {
@@ -420,19 +479,70 @@ impl<'a> Tokens<'a> {
 
     fn ident_or_keyword(&mut self, start: usize) -> TokenKind {
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-        if self.chars.next_if(|&(_, ch)| ch == ':').is_some() {
-            return Key;
+        self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
+        if let Some(&(_, ':')) = self.chars.peek() {
+            if !matches!(self.chars.clone().nth(1), Some((_, ':'))) {
+                self.chars.next();
+                return Key;
+            }
         }
         let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
         match &self.text[start..end] {
             "def" => Def,
-            "alias" | "class" | "defined?" | "else" | "ensure" | "false" | "for" | "end"
-            | "in" | "module" | "next" | "nil" | "redo" | "retry" | "self" | "super"
-            | "then" | "true" | "undef" | "yield" => Keyword,
-            "and" | "begin" | "break" | "case" | "do" | "elsif" | "fail" | "if" | "not"
-            | "or" | "rescue" | "return" | "unless" | "until" | "when" | "while" => {
-                KeywordWithExpr
-            }
+            "alias" | "class" | "defined?" | "else" | "ensure" | "false" | "for" | "end" | "in"
+            | "module" | "next" | "nil" | "redo" | "rescue" | "retry" | "self" | "super"
+            | "then" | "true" | "undef" | "yield" => Keyword { takes_expr: false },
+            "and" | "begin" | "break" | "case" | "do" | "elsif" | "if" | "not" | "or"
+            | "return" | "unless" | "until" | "when" | "while" => Keyword { takes_expr: true },
+            "__callee__" | "__dir__" | "__method__" | "abort" | "binding" | "block_given?"
+            | "caller" | "exit" | "exit!" | "fail" | "fork" | "global_variables"
+            | "local_variables" | "private" | "protected" | "public" | "raise" | "rand"
+            | "readline" | "readlines" | "sleep" | "srand" => BuiltinMethod { takes_arg: false },
+            "alias_method"
+            | "at_exit"
+            | "attr"
+            | "attr_accessor"
+            | "attr_reader"
+            | "attr_writer"
+            | "autoload"
+            | "autoload?"
+            | "callcc"
+            | "catch"
+            | "define_method"
+            | "eval"
+            | "exec"
+            | "extend"
+            | "format"
+            | "include"
+            | "lambda"
+            | "load"
+            | "loop"
+            | "module_function"
+            | "open"
+            | "p"
+            | "prepend"
+            | "print"
+            | "printf"
+            | "private_class_method"
+            | "private_constant"
+            | "proc"
+            | "public_class_method"
+            | "public_constant"
+            | "putc"
+            | "puts"
+            | "refine"
+            | "require"
+            | "require_relative"
+            | "spawn"
+            | "sprintf"
+            | "syscall"
+            | "system"
+            | "throw"
+            | "trace_var"
+            | "trap"
+            | "untrace_var"
+            | "using"
+            | "warn" => BuiltinMethod { takes_arg: true },
             _ => Ident,
         }
     }
