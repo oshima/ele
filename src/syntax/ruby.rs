@@ -75,15 +75,21 @@ impl Ruby {
         while let Some(token) = tokens.next() {
             // Highlight
             let fg = match token.kind {
+                BuiltinMethod { takes_arg: false } => Fg::Macro,
                 BuiltinMethod { takes_arg: true } => match tokens.peek().map(|t| t.kind) {
-                    Some(Comma | Dot | Op | Semi) | None => Fg::Default,
+                    Some(Comma | Dot | Keyword { .. } | Op | Punct | Semi) | None => Fg::Default,
                     _ => Fg::Macro,
                 },
-                BuiltinMethod { takes_arg: false } => Fg::Macro,
                 Comment => Fg::Comment,
                 Def | Keyword { .. } => Fg::Keyword,
+                Ident => match tokens.peek().map(|t| t.kind) {
+                    Some(Comma | Dot | Keyword { .. } | Op | OpenBracket | Punct | Semi) | None => {
+                        Fg::Default
+                    }
+                    _ => Fg::Function,
+                },
                 Key => Fg::Macro,
-                MethodDecl => Fg::Function,
+                Method => Fg::Function,
                 MethodOwner => Fg::Variable,
                 RegexpLit { .. } | StrLit { .. } => Fg::String,
                 SymbolLit { .. } => Fg::Macro,
@@ -167,16 +173,15 @@ struct Token {
 #[derive(Clone, Copy)]
 enum TokenKind {
     BuiltinMethod { takes_arg: bool },
+    ColonColon,
     Comma,
     Comment,
     Def,
-    DefDot,
     Dot,
     Ident,
     Key,
     Keyword { takes_expr: bool },
-    MethodCall,
-    MethodDecl,
+    Method,
     MethodOwner,
     OpenBrace,
     OpenBracket,
@@ -229,7 +234,7 @@ impl<'a> Iterator for Tokens<'a> {
 
             // symbol
             ':' => match self.chars.next_if(|&(_, ch)| ch == ':') {
-                Some(_) => Punct,
+                Some(_) => ColonColon,
                 _ => match self.chars.peek() {
                     Some(&(_, ' ' | '\t')) | None => Op,
                     _ => match self.chars.next_if(|&(_, ch)| ch == '\'' || ch == '"') {
@@ -250,8 +255,7 @@ impl<'a> Iterator for Tokens<'a> {
                     | OpenBracket
                     | OpenParen
                     | Semi => self.regexp_lit(ch),
-                    Def | DefDot => self.method_decl(),
-                    Dot => self.method_call(),
+                    Def | Dot => self.method(),
                     Ident => match start == prev.end {
                         true => Op,
                         false => match self.chars.peek() {
@@ -275,8 +279,7 @@ impl<'a> Iterator for Tokens<'a> {
                     | OpenBracket
                     | OpenParen
                     | Semi => self.percent_lit(),
-                    Def | DefDot => self.method_decl(),
-                    Dot => self.method_call(),
+                    Def | Dot => self.method(),
                     Ident => match start == prev.end {
                         true => Op,
                         false => match self.chars.peek() {
@@ -292,8 +295,7 @@ impl<'a> Iterator for Tokens<'a> {
             // operator
             '!' | '&' | '*' | '+' | '-' | '<' | '=' | '>' | '?' | '^' | '|' | '~' => {
                 match self.prev.map(|t| t.kind) {
-                    Some(Def | DefDot) => self.method_decl(),
-                    Some(Dot) => self.method_call(),
+                    Some(Def | Dot) => self.method(),
                     _ => Op,
                 }
             }
@@ -302,10 +304,7 @@ impl<'a> Iterator for Tokens<'a> {
                     self.chars.next_if(|&(_, ch)| ch == '.');
                     Op
                 }
-                _ => match self.prev.map(|t| t.kind) {
-                    Some(MethodOwner) => DefDot,
-                    _ => Dot,
-                },
+                _ => Dot,
             },
 
             // variable
@@ -315,8 +314,7 @@ impl<'a> Iterator for Tokens<'a> {
             ',' => Comma,
             '{' => OpenBrace,
             '[' => match self.prev.map(|t| t.kind) {
-                Some(Def | DefDot) => self.method_decl(),
-                Some(Dot) => self.method_call(),
+                Some(Def | Dot) => self.method(),
                 _ => OpenBracket,
             },
             '(' => OpenParen,
@@ -325,15 +323,13 @@ impl<'a> Iterator for Tokens<'a> {
 
             // identifier or keyword
             ch if ch.is_ascii_uppercase() => match self.prev.map(|t| t.kind) {
-                Some(Def) => self.method_owner_or_method_decl(),
-                Some(DefDot) => self.method_decl(),
-                Some(Dot) => self.method_call(),
+                Some(Def) => self.method_owner_or_method(),
+                Some(Dot) => self.method(),
                 _ => self.upper_ident(),
             },
             _ => match self.prev.map(|t| t.kind) {
-                Some(Def) => self.method_owner_or_method_decl(),
-                Some(DefDot) => self.method_decl(),
-                Some(Dot) => self.method_call(),
+                Some(Def) => self.method_owner_or_method(),
+                Some(Dot) => self.method(),
                 _ => self.ident_or_keyword(start),
             },
         };
@@ -448,32 +444,32 @@ impl<'a> Tokens<'a> {
         Variable
     }
 
-    fn method_owner_or_method_decl(&mut self) -> TokenKind {
+    fn method_owner_or_method(&mut self) -> TokenKind {
         // TODO: method_delim 的な
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
         self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
         match self.chars.peek() {
             Some(&(_, '.')) => MethodOwner,
-            _ => MethodDecl,
+            _ => Method,
         }
     }
 
-    fn method_decl(&mut self) -> TokenKind {
+    fn method(&mut self) -> TokenKind {
         // TODO: method_delim 的な
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
         self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
-        MethodDecl
-    }
-
-    fn method_call(&mut self) -> TokenKind {
-        // TODO: method_delim 的な
-        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-        self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
-        MethodCall
+        Method
     }
 
     fn upper_ident(&mut self) -> TokenKind {
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+        self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
+        if let Some(&(_, ':')) = self.chars.peek() {
+            if !matches!(self.chars.clone().nth(1), Some((_, ':'))) {
+                self.chars.next();
+                return Key;
+            }
+        }
         UpperIdent
     }
 
