@@ -78,16 +78,37 @@ impl Ruby {
             let fg = match token.kind {
                 BuiltinMethod { takes_arg: false } => Fg::Macro,
                 BuiltinMethod { takes_arg: true } => match tokens.peek().map(|t| t.kind) {
-                    Some(Comma | Dot | Keyword { .. } | Op | Punct | Semi) | None => Fg::Default,
+                    Some(
+                        CloseBrace
+                        | CloseExpansion { .. }
+                        | Comma
+                        | Comment
+                        | Dot
+                        | Keyword { .. }
+                        | Op
+                        | Punct
+                        | Semi,
+                    )
+                    | None => Fg::Default,
                     _ => Fg::Macro,
                 },
                 CloseExpansion { .. } | OpenExpansion { .. } => Fg::Variable,
                 Comment => Fg::Comment,
                 Def | Keyword { .. } => Fg::Keyword,
                 Ident => match tokens.peek().map(|t| t.kind) {
-                    Some(CloseBrace | CloseExpansion { .. } | Comma | Dot | Keyword { .. } | Op | OpenBracket | Punct | Semi) | None => {
-                        Fg::Default
-                    }
+                    Some(
+                        CloseBrace
+                        | CloseExpansion { .. }
+                        | Comma
+                        | Comment
+                        | Dot
+                        | Keyword { .. }
+                        | Op
+                        | OpenBracket
+                        | Punct
+                        | Semi,
+                    )
+                    | None => Fg::Default,
                     _ => Fg::Function,
                 },
                 Key => Fg::Macro,
@@ -110,38 +131,38 @@ impl Ruby {
                     [.., RegexpLit { .. }] => (),
                     _ => {
                         context_v.push(token.kind);
-                    },
-                }
+                    }
+                },
                 RegexpLit { open: false, .. } => match context_v[..] {
                     [.., RegexpLit { .. }] => {
                         context_v.pop();
-                    },
+                    }
                     _ => (),
-                }
+                },
                 StrLit { open: true, .. } => match context_v[..] {
                     [.., StrLit { .. }] => (),
                     _ => {
                         context_v.push(token.kind);
-                    },
-                }
+                    }
+                },
                 StrLit { open: false, .. } => match context_v[..] {
                     [.., StrLit { .. }] => {
                         context_v.pop();
-                    },
+                    }
                     _ => (),
-                }
+                },
                 SymbolLit { open: true, .. } => match context_v[..] {
                     [.., SymbolLit { .. }] => (),
                     _ => {
                         context_v.push(token.kind);
-                    },
-                }
+                    }
+                },
                 SymbolLit { open: false, .. } => match context_v[..] {
                     [.., SymbolLit { .. }] => {
                         context_v.pop();
-                    },
+                    }
                     _ => (),
-                }
+                },
                 OpenBrace | OpenExpansion { .. } => {
                     context_v.push(token.kind);
                 }
@@ -295,15 +316,24 @@ impl<'a> Iterator for Tokens<'a> {
         let kind = match ch {
             // comment
             '#' => match self.prev.map(|t| t.kind) {
-                Some(RegexpLit { open: true, delim: Some(ch) }) => {
+                Some(RegexpLit {
+                    open: true,
+                    delim: Some(ch),
+                }) => {
                     self.chars.next();
                     OpenExpansion { kind: InRegexp(ch) }
                 }
-                Some(StrLit { open: true, delim: Some(ch) }) => {
+                Some(StrLit {
+                    open: true,
+                    delim: Some(ch),
+                }) => {
                     self.chars.next();
                     OpenExpansion { kind: InStr(ch) }
                 }
-                Some(SymbolLit { open: true, delim: Some(ch) }) => {
+                Some(SymbolLit {
+                    open: true,
+                    delim: Some(ch),
+                }) => {
                     self.chars.next();
                     OpenExpansion { kind: InSymbol(ch) }
                 }
@@ -324,11 +354,11 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(&(_, '\'')) => {
                     self.chars.next();
                     self.symbol_lit('\'', false)
-                },
+                }
                 Some(&(_, '"')) => {
                     self.chars.next();
                     self.symbol_lit('\'', true)
-                },
+                }
                 _ => self.pure_symbol_lit(),
             },
 
@@ -340,11 +370,12 @@ impl<'a> Iterator for Tokens<'a> {
                     | Keyword { takes_expr: true }
                     | Op
                     | OpenBrace
+                    | OpenExpansion { .. }
                     | OpenBracket
                     | OpenParen
                     | Semi => self.regexp_lit(ch, true),
                     Def | Dot => self.method(),
-                    Ident => match start == prev.end {
+                    BuiltinMethod { takes_arg: true } | Ident => match start == prev.end {
                         true => Op,
                         false => match self.chars.peek() {
                             Some(&(_, ' ' | '\t')) | None => Op,
@@ -364,11 +395,12 @@ impl<'a> Iterator for Tokens<'a> {
                     | Keyword { takes_expr: true }
                     | Op
                     | OpenBrace
+                    | OpenExpansion { .. }
                     | OpenBracket
                     | OpenParen
                     | Semi => self.percent_lit(),
                     Def | Dot => self.method(),
-                    Ident => match start == prev.end {
+                    BuiltinMethod { takes_arg: true } | Ident => match start == prev.end {
                         true => Op,
                         false => match self.chars.peek() {
                             Some(&(_, ' ' | '\t')) | None => Op,
