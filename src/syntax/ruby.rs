@@ -136,7 +136,10 @@ impl Ruby {
                     _ => (),
                 },
                 RegexpLit { .. } => match context_v[..] {
-                    [.., RegexpLit { .. }] => (),
+                    [.., RegexpLit { .. }] => {
+                        context_v.pop();
+                        context_v.push(token.kind);
+                    },
                     _ => {
                         context_v.push(token.kind);
                     }
@@ -148,7 +151,10 @@ impl Ruby {
                     _ => (),
                 },
                 StrLit { .. } => match context_v[..] {
-                    [.., StrLit { .. }] => (),
+                    [.., StrLit { .. }] => {
+                        context_v.pop();
+                        context_v.push(token.kind);
+                    },
                     _ => {
                         context_v.push(token.kind);
                     }
@@ -160,7 +166,10 @@ impl Ruby {
                     _ => (),
                 },
                 SymbolLit { .. } => match context_v[..] {
-                    [.., SymbolLit { .. }] => (),
+                    [.., SymbolLit { .. }] => {
+                        context_v.pop();
+                        context_v.push(token.kind);
+                    },
                     _ => {
                         context_v.push(token.kind);
                     }
@@ -418,10 +427,7 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(BuiltinMethod { takes_arg: true } | Ident) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op,
-                        None => match self.chars.peek() {
-                            Some(&(_, ' ' | '\t')) | None => Op,
-                            _ => self.percent_lit(),
-                        },
+                        None => self.percent_lit(),
                     }
                 }
                 Some(_) => Op,
