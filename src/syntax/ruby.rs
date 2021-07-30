@@ -206,14 +206,9 @@ impl Ruby {
                     ('\'', false) | ('"' | '`', true) => {
                         string.push(delim);
                     }
-                    (_, false) => {
-                        string.push_str("%q");
-                        for _ in 0..depth {
-                            string.push(delim);
-                        }
-                    }
-                    (_, true) => {
-                        string.push_str("%");
+                    _ => {
+                        string.push('%');
+                        string.push(if expand { 'Q' } else { 'q' });
                         for _ in 0..depth {
                             string.push(delim);
                         }
@@ -224,14 +219,9 @@ impl Ruby {
                         string.push(':');
                         string.push(delim);
                     }
-                    (_, false) => {
-                        string.push_str("%s");
-                        for _ in 0..depth {
-                            string.push(delim);
-                        }
-                    }
-                    (_, true) => {
-                        string.push_str("%I");
+                    _ => {
+                        string.push('%');
+                        string.push(if expand { 'I' } else { 'i' });
                         for _ in 0..depth {
                             string.push(delim);
                         }
@@ -257,6 +247,7 @@ struct Token {
 }
 
 #[derive(Clone, Copy)]
+#[rustfmt::skip]
 enum TokenKind {
     BuiltinMethod { takes_arg: bool },
     CloseBrace,
@@ -288,6 +279,7 @@ enum TokenKind {
 }
 
 #[derive(Clone, Copy)]
+#[rustfmt::skip]
 enum ExpansionKind {
     InRegexp { delim: char, expand: bool, depth: usize },
     InStr { delim: char, expand: bool, depth: usize },
@@ -326,13 +318,27 @@ impl<'a> Iterator for Tokens<'a> {
         if let Some(CloseExpansion { kind }) = self.prev.map(|t| t.kind) {
             let start = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
             let kind = match kind {
-                InRegexp { delim, expand, depth } => self.regexp_lit(delim, expand, depth),
-                InStr { delim, expand, depth } => self.str_lit(delim, expand, depth),
-                InSymbol { delim, expand, depth } => self.symbol_lit(delim, expand, depth),
+                InRegexp {
+                    delim,
+                    expand,
+                    depth,
+                } => self.regexp_lit(delim, expand, depth),
+                InStr {
+                    delim,
+                    expand,
+                    depth,
+                } => self.str_lit(delim, expand, depth),
+                InSymbol {
+                    delim,
+                    expand,
+                    depth,
+                } => self.symbol_lit(delim, expand, depth),
             };
             let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
+
             let token = Token { kind, start, end };
             self.prev.replace(token);
+
             return Some(token);
         }
 
@@ -480,8 +486,8 @@ impl<'a> Iterator for Tokens<'a> {
         };
 
         let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
-        let token = Token { kind, start, end };
 
+        let token = Token { kind, start, end };
         self.prev.replace(token);
         match kind {
             OpenBrace | OpenExpansion { .. } => {
