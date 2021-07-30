@@ -166,6 +166,18 @@ impl Ruby {
                 OpenBrace | OpenExpansion { .. } => {
                     context_v.push(token.kind);
                 }
+                CloseBrace => match context_v[..] {
+                    [.., OpenBrace] => {
+                        context_v.pop();
+                    }
+                    _ => (),
+                },
+                CloseExpansion { .. } => match context_v[..] {
+                    [.., OpenExpansion { .. }] => {
+                        context_v.pop();
+                    }
+                    _ => (),
+                },
                 _ => (),
             }
         }
@@ -314,26 +326,18 @@ impl<'a> Iterator for Tokens<'a> {
         let (start, ch) = self.chars.find(|&(_, ch)| !ch.is_ascii_whitespace())?;
 
         let kind = match ch {
-            // comment
+            // comment or expression expansion
+            #[rustfmt::skip]
             '#' => match self.prev.map(|t| t.kind) {
-                Some(RegexpLit {
-                    open: true,
-                    delim: Some(ch),
-                }) => {
+                Some(RegexpLit { open: true, delim: Some(ch) }) => {
                     self.chars.next();
                     OpenExpansion { kind: InRegexp(ch) }
                 }
-                Some(StrLit {
-                    open: true,
-                    delim: Some(ch),
-                }) => {
+                Some(StrLit { open: true, delim: Some(ch) }) => {
                     self.chars.next();
                     OpenExpansion { kind: InStr(ch) }
                 }
-                Some(SymbolLit {
-                    open: true,
-                    delim: Some(ch),
-                }) => {
+                Some(SymbolLit { open: true, delim: Some(ch) }) => {
                     self.chars.next();
                     OpenExpansion { kind: InSymbol(ch) }
                 }
@@ -357,14 +361,14 @@ impl<'a> Iterator for Tokens<'a> {
                 }
                 Some(&(_, '"')) => {
                     self.chars.next();
-                    self.symbol_lit('\'', true)
+                    self.symbol_lit('"', true)
                 }
                 _ => self.pure_symbol_lit(),
             },
 
             // regexp
-            '/' => match self.prev {
-                Some(prev) => match prev.kind {
+            '/' => match self.prev.map(|t| t.kind) {
+                Some(
                     Comma
                     | Key
                     | Keyword { takes_expr: true }
@@ -373,23 +377,25 @@ impl<'a> Iterator for Tokens<'a> {
                     | OpenExpansion { .. }
                     | OpenBracket
                     | OpenParen
-                    | Semi => self.regexp_lit(ch, true),
-                    Def | Dot => self.method(),
-                    BuiltinMethod { takes_arg: true } | Ident => match start == prev.end {
-                        true => Op,
-                        false => match self.chars.peek() {
+                    | Semi,
+                ) => self.regexp_lit(ch, true),
+                Some(Def | Dot) => self.method(),
+                Some(BuiltinMethod { takes_arg: true } | Ident) => {
+                    match self.prev.filter(|t| t.end == start) {
+                        Some(_) => Op,
+                        None => match self.chars.peek() {
                             Some(&(_, ' ' | '\t')) | None => Op,
                             _ => self.regexp_lit(ch, true),
                         },
-                    },
-                    _ => Op,
-                },
+                    }
+                }
+                Some(_) => Op,
                 None => self.regexp_lit(ch, true),
             },
 
             // percent literal
-            '%' => match self.prev {
-                Some(prev) => match prev.kind {
+            '%' => match self.prev.map(|t| t.kind) {
+                Some(
                     Comma
                     | Key
                     | Keyword { takes_expr: true }
@@ -398,17 +404,19 @@ impl<'a> Iterator for Tokens<'a> {
                     | OpenExpansion { .. }
                     | OpenBracket
                     | OpenParen
-                    | Semi => self.percent_lit(),
-                    Def | Dot => self.method(),
-                    BuiltinMethod { takes_arg: true } | Ident => match start == prev.end {
-                        true => Op,
-                        false => match self.chars.peek() {
+                    | Semi,
+                ) => self.percent_lit(),
+                Some(Def | Dot) => self.method(),
+                Some(BuiltinMethod { takes_arg: true } | Ident) => {
+                    match self.prev.filter(|t| t.end == start) {
+                        Some(_) => Op,
+                        None => match self.chars.peek() {
                             Some(&(_, ' ' | '\t')) | None => Op,
                             _ => self.percent_lit(),
                         },
-                    },
-                    _ => Op,
-                },
+                    }
+                }
+                Some(_) => Op,
                 None => self.percent_lit(),
             },
 
