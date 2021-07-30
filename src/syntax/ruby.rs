@@ -77,6 +77,16 @@ impl Ruby {
             // Highlight
             let fg = match token.kind {
                 BuiltinMethod { takes_arg: false } => Fg::Macro,
+                CloseExpansion { .. } | OpenExpansion { .. } => Fg::Variable,
+                Comment => Fg::Comment,
+                Def | Keyword { .. } => Fg::Keyword,
+                Key => Fg::Macro,
+                Method => Fg::Function,
+                MethodOwner => Fg::Variable,
+                RegexpLit { .. } | StrLit { .. } => Fg::String,
+                SymbolLit { .. } => Fg::Macro,
+                UpperIdent => Fg::Type,
+                Variable => Fg::Variable,
                 BuiltinMethod { takes_arg: true } => match tokens.peek().map(|t| t.kind) {
                     Some(
                         CloseBrace
@@ -92,9 +102,6 @@ impl Ruby {
                     | None => Fg::Default,
                     _ => Fg::Macro,
                 },
-                CloseExpansion { .. } | OpenExpansion { .. } => Fg::Variable,
-                Comment => Fg::Comment,
-                Def | Keyword { .. } => Fg::Keyword,
                 Ident => match tokens.peek().map(|t| t.kind) {
                     Some(
                         CloseBrace
@@ -111,13 +118,6 @@ impl Ruby {
                     | None => Fg::Default,
                     _ => Fg::Function,
                 },
-                Key => Fg::Macro,
-                Method => Fg::Function,
-                MethodOwner => Fg::Variable,
-                RegexpLit { .. } | StrLit { .. } => Fg::String,
-                SymbolLit { .. } => Fg::Macro,
-                UpperIdent => Fg::Type,
-                Variable => Fg::Variable,
                 _ => Fg::Default,
             };
 
@@ -189,42 +189,36 @@ impl Ruby {
     fn convert_context(&self, slice: &[TokenKind], string: &mut String) {
         for token_kind in slice {
             match *token_kind {
-                RegexpLit { open: true, delim } => {
-                    match delim {
-                        Some('/') => {
-                            string.push('/');
-                        }
-                        Some(ch) => {
-                            string.push_str("%r");
-                            string.push(ch);
-                        }
-                        _ => (),
+                RegexpLit { open: true, delim } => match delim {
+                    Some('/') => {
+                        string.push('/');
                     }
+                    Some(ch) => {
+                        string.push_str("%r");
+                        string.push(ch);
+                    }
+                    _ => (),
                 },
-                StrLit { open: true, delim } => {
-                    match delim {
-                        Some(ch @ '\'' | ch @ '"' | ch @ '`') => {
-                            string.push(ch);
-                        }
-                        Some(ch) => {
-                            string.push('%');
-                            string.push(ch);
-                        }
-                        _ => (),
+                StrLit { open: true, delim } => match delim {
+                    Some(ch @ '\'' | ch @ '"' | ch @ '`') => {
+                        string.push(ch);
                     }
+                    Some(ch) => {
+                        string.push('%');
+                        string.push(ch);
+                    }
+                    _ => (),
                 },
-                SymbolLit { open: true, delim } => {
-                    match delim {
-                        Some(ch @ '\'' | ch @ '"') => {
-                            string.push(':');
-                            string.push(ch);
-                        }
-                        Some(ch) => {
-                            string.push_str("%s");
-                            string.push(ch);
-                        }
-                        _ => (),
+                SymbolLit { open: true, delim } => match delim {
+                    Some(ch @ '\'' | ch @ '"') => {
+                        string.push(':');
+                        string.push(ch);
                     }
+                    Some(ch) => {
+                        string.push_str("%s");
+                        string.push(ch);
+                    }
+                    _ => (),
                 },
                 OpenBrace => {
                     string.push('{');
