@@ -129,41 +129,41 @@ impl Ruby {
 
             // Derive the context of the next row
             match token.kind {
-                RegexpLit { open: true, .. } => match context_v[..] {
-                    [.., RegexpLit { .. }] => (),
-                    _ => {
-                        context_v.push(token.kind);
-                    }
-                },
-                RegexpLit { open: false, .. } => match context_v[..] {
+                RegexpLit { depth: 0, .. } => match context_v[..] {
                     [.., RegexpLit { .. }] => {
                         context_v.pop();
                     }
                     _ => (),
                 },
-                StrLit { open: true, .. } => match context_v[..] {
-                    [.., StrLit { .. }] => (),
+                RegexpLit { .. } => match context_v[..] {
+                    [.., RegexpLit { .. }] => (),
                     _ => {
                         context_v.push(token.kind);
                     }
                 },
-                StrLit { open: false, .. } => match context_v[..] {
+                StrLit { depth: 0, .. } => match context_v[..] {
                     [.., StrLit { .. }] => {
                         context_v.pop();
                     }
                     _ => (),
                 },
-                SymbolLit { open: true, .. } => match context_v[..] {
-                    [.., SymbolLit { .. }] => (),
+                StrLit { .. } => match context_v[..] {
+                    [.., StrLit { .. }] => (),
                     _ => {
                         context_v.push(token.kind);
                     }
                 },
-                SymbolLit { open: false, .. } => match context_v[..] {
+                SymbolLit { depth: 0, .. } => match context_v[..] {
                     [.., SymbolLit { .. }] => {
                         context_v.pop();
                     }
                     _ => (),
+                },
+                SymbolLit { .. } => match context_v[..] {
+                    [.., SymbolLit { .. }] => (),
+                    _ => {
+                        context_v.push(token.kind);
+                    }
                 },
                 OpenBrace | OpenExpansion { .. } => {
                     context_v.push(token.kind);
@@ -191,8 +191,8 @@ impl Ruby {
     fn convert_context(&self, slice: &[TokenKind], string: &mut String) {
         for token_kind in slice {
             match *token_kind {
-                RegexpLit { open: true, delim, depth } => match delim {
-                    '/' => {
+                RegexpLit { delim, expand, depth } => match (delim, expand) {
+                    ('/', true) => {
                         string.push(delim);
                     }
                     _ => {
@@ -202,24 +202,36 @@ impl Ruby {
                         }
                     }
                 },
-                StrLit { open: true, delim, depth } => match delim {
-                    '\'' | '"' | '`' => {
+                StrLit { delim, expand, depth } => match (delim, expand) {
+                    ('\'', false) | ('"' | '`', true) => {
                         string.push(delim);
                     }
-                    _ => {
-                        string.push('%');
+                    (_, false) => {
+                        string.push_str("%q");
+                        for _ in 0..depth {
+                            string.push(delim);
+                        }
+                    }
+                    (_, true) => {
+                        string.push_str("%");
                         for _ in 0..depth {
                             string.push(delim);
                         }
                     }
                 },
-                SymbolLit { open: true, delim, depth } => match delim {
-                    '\'' | '"' => {
+                SymbolLit { delim, expand, depth } => match (delim, expand) {
+                    ('\'', false) | ('"', true) => {
                         string.push(':');
                         string.push(delim);
                     }
-                    _ => {
+                    (_, false) => {
                         string.push_str("%s");
+                        for _ in 0..depth {
+                            string.push(delim);
+                        }
+                    }
+                    (_, true) => {
+                        string.push_str("%I");
                         for _ in 0..depth {
                             string.push(delim);
                         }
@@ -267,19 +279,19 @@ enum TokenKind {
     Op,
     Punct,
     PureSymbolLit,
-    RegexpLit { open: bool, delim: char, depth: usize },
+    RegexpLit { delim: char, expand: bool, depth: usize },
     Semi,
-    StrLit { open: bool, delim: char, depth: usize },
-    SymbolLit { open: bool, delim: char, depth: usize },
+    StrLit { delim: char, expand: bool, depth: usize },
+    SymbolLit { delim: char, expand: bool, depth: usize },
     UpperIdent,
     Variable,
 }
 
 #[derive(Clone, Copy)]
 enum ExpansionKind {
-    InRegexp { delim: char, depth: usize },
-    InStr { delim: char, depth: usize },
-    InSymbol { delim: char, depth: usize },
+    InRegexp { delim: char, expand: bool, depth: usize },
+    InStr { delim: char, expand: bool, depth: usize },
+    InSymbol { delim: char, expand: bool, depth: usize },
 }
 
 struct Tokens<'a> {
@@ -314,9 +326,9 @@ impl<'a> Iterator for Tokens<'a> {
         if let Some(CloseExpansion { kind }) = self.prev.map(|t| t.kind) {
             let start = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
             let kind = match kind {
-                InRegexp { delim, depth } => self.regexp_lit(delim, depth, true),
-                InStr { delim, depth } => self.str_lit(delim, depth, true),
-                InSymbol { delim, depth } => self.symbol_lit(delim, depth, true),
+                InRegexp { delim, expand, depth } => self.regexp_lit(delim, expand, depth),
+                InStr { delim, expand, depth } => self.str_lit(delim, expand, depth),
+                InSymbol { delim, expand, depth } => self.symbol_lit(delim, expand, depth),
             };
             let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
             let token = Token { kind, start, end };
@@ -330,24 +342,24 @@ impl<'a> Iterator for Tokens<'a> {
             // comment or expression expansion
             #[rustfmt::skip]
             '#' => match self.prev.map(|t| t.kind) {
-                Some(RegexpLit { open: true, delim, depth }) => {
+                Some(RegexpLit { delim, expand, depth }) => {
                     self.chars.next();
-                    OpenExpansion { kind: InRegexp { delim, depth } }
+                    OpenExpansion { kind: InRegexp { delim, expand, depth } }
                 }
-                Some(StrLit { open: true, delim, depth }) => {
+                Some(StrLit { delim, expand, depth }) => {
                     self.chars.next();
-                    OpenExpansion { kind: InStr { delim, depth } }
+                    OpenExpansion { kind: InStr { delim, expand, depth } }
                 }
-                Some(SymbolLit { open: true, delim, depth }) => {
+                Some(SymbolLit { delim, expand, depth }) => {
                     self.chars.next();
-                    OpenExpansion { kind: InSymbol { delim, depth } }
+                    OpenExpansion { kind: InSymbol { delim, expand, depth } }
                 }
                 _ => self.comment(),
             },
 
             // string
-            '\'' => self.str_lit(ch, 1, false),
-            '"' | '`' => self.str_lit(ch, 1, true),
+            '\'' => self.str_lit(ch, false, 1),
+            '"' | '`' => self.str_lit(ch, true, 1),
 
             // symbol
             ':' => match self.chars.peek() {
@@ -358,11 +370,11 @@ impl<'a> Iterator for Tokens<'a> {
                 }
                 Some(&(_, '\'')) => {
                     self.chars.next();
-                    self.symbol_lit('\'', 1, false)
+                    self.symbol_lit('\'', false, 1)
                 }
                 Some(&(_, '"')) => {
                     self.chars.next();
-                    self.symbol_lit('"', 1, true)
+                    self.symbol_lit('"', true, 1)
                 }
                 _ => self.pure_symbol_lit(),
             },
@@ -379,19 +391,19 @@ impl<'a> Iterator for Tokens<'a> {
                     | OpenBracket
                     | OpenParen
                     | Semi,
-                ) => self.regexp_lit(ch, 1, true),
+                ) => self.regexp_lit(ch, true, 1),
                 Some(Def | Dot) => self.method(),
                 Some(BuiltinMethod { takes_arg: true } | Ident) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op,
                         None => match self.chars.peek() {
                             Some(&(_, ' ' | '\t')) | None => Op,
-                            _ => self.regexp_lit(ch, 1, true),
+                            _ => self.regexp_lit(ch, true, 1),
                         },
                     }
                 }
                 Some(_) => Op,
-                None => self.regexp_lit(ch, 1, true),
+                None => self.regexp_lit(ch, true, 1),
             },
 
             // percent literal
@@ -486,7 +498,7 @@ impl<'a> Iterator for Tokens<'a> {
 }
 
 impl<'a> Tokens<'a> {
-    fn consume_content(&mut self, delim: char, depth: usize, expand: bool) -> usize {
+    fn consume_content(&mut self, delim: char, expand: bool, depth: usize) -> usize {
         let mut depth = depth;
         let close_delim = match delim {
             '(' => ')',
@@ -533,15 +545,15 @@ impl<'a> Tokens<'a> {
     }
 
     #[rustfmt::skip]
-    fn str_lit(&mut self, delim: char, depth: usize, expand: bool) -> TokenKind {
-        let depth = self.consume_content(delim, depth, expand);
-        StrLit { open: depth > 0, delim, depth }
+    fn str_lit(&mut self, delim: char, expand: bool, depth: usize) -> TokenKind {
+        let depth = self.consume_content(delim, expand, depth);
+        StrLit { delim, expand, depth }
     }
 
     #[rustfmt::skip]
-    fn symbol_lit(&mut self, delim: char, depth: usize, expand: bool) -> TokenKind {
-        let depth = self.consume_content(delim, depth, expand);
-        SymbolLit { open: depth > 0, delim, depth }
+    fn symbol_lit(&mut self, delim: char, expand: bool, depth: usize) -> TokenKind {
+        let depth = self.consume_content(delim, expand, depth);
+        SymbolLit { delim, expand, depth }
     }
 
     #[rustfmt::skip]
@@ -553,12 +565,12 @@ impl<'a> Tokens<'a> {
     }
 
     #[rustfmt::skip]
-    fn regexp_lit(&mut self, delim: char, depth: usize, expand: bool) -> TokenKind {
-        let depth = self.consume_content(delim, depth, expand);
+    fn regexp_lit(&mut self, delim: char, expand: bool, depth: usize) -> TokenKind {
+        let depth = self.consume_content(delim, expand, depth);
         while let Some(&(_, 'i' | 'm' | 'o' | 'x')) = self.chars.peek() {
             self.chars.next();
         }
-        RegexpLit { open: depth > 0, delim, depth }
+        RegexpLit { delim, expand, depth }
     }
 
     #[rustfmt::skip]
@@ -566,13 +578,13 @@ impl<'a> Tokens<'a> {
         match self.chars.peek() {
             Some(&(_, ch)) if ch.is_ascii_punctuation() => {
                 self.chars.next();
-                self.str_lit(ch, 1, true)
+                self.str_lit(ch, true, 1)
             }
             Some(&(_, 'q' | 'w')) => match self.chars.clone().nth(1) {
                 Some((_, ch)) if ch.is_ascii_punctuation() => {
                     self.chars.next();
                     self.chars.next();
-                    self.str_lit(ch, 1, false)
+                    self.str_lit(ch, false, 1)
                 }
                 _ => Op,
             }
@@ -580,7 +592,7 @@ impl<'a> Tokens<'a> {
                 Some((_, ch)) if ch.is_ascii_punctuation() => {
                     self.chars.next();
                     self.chars.next();
-                    self.str_lit(ch, 1, true)
+                    self.str_lit(ch, true, 1)
                 }
                 _ => Op,
             }
@@ -588,7 +600,7 @@ impl<'a> Tokens<'a> {
                 Some((_, ch)) if ch.is_ascii_punctuation() => {
                     self.chars.next();
                     self.chars.next();
-                    self.symbol_lit(ch, 1, false)
+                    self.symbol_lit(ch, false, 1)
                 }
                 _ => Op,
             }
@@ -596,7 +608,7 @@ impl<'a> Tokens<'a> {
                 Some((_, ch)) if ch.is_ascii_punctuation() => {
                     self.chars.next();
                     self.chars.next();
-                    self.symbol_lit(ch, 1, true)
+                    self.symbol_lit(ch, true, 1)
                 }
                 _ => Op,
             }
@@ -604,7 +616,7 @@ impl<'a> Tokens<'a> {
                 Some((_, ch)) if ch.is_ascii_punctuation() => {
                     self.chars.next();
                     self.chars.next();
-                    self.regexp_lit(ch, 1, true)
+                    self.regexp_lit(ch, true, 1)
                 }
                 _ => Op,
             }
