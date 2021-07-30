@@ -317,22 +317,11 @@ impl<'a> Iterator for Tokens<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(CloseExpansion { kind }) = self.prev.map(|t| t.kind) {
             let start = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
+            #[rustfmt::skip]
             let kind = match kind {
-                InRegexp {
-                    delim,
-                    expand,
-                    depth,
-                } => self.regexp_lit(delim, expand, depth),
-                InStr {
-                    delim,
-                    expand,
-                    depth,
-                } => self.str_lit(delim, expand, depth),
-                InSymbol {
-                    delim,
-                    expand,
-                    depth,
-                } => self.symbol_lit(delim, expand, depth),
+                InRegexp { delim, expand, depth } => self.regexp_lit(delim, expand, depth),
+                InStr { delim, expand, depth } => self.str_lit(delim, expand, depth),
+                InSymbol { delim, expand, depth } => self.symbol_lit(delim, expand, depth),
             };
             let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
 
@@ -348,15 +337,15 @@ impl<'a> Iterator for Tokens<'a> {
             // comment or expression expansion
             #[rustfmt::skip]
             '#' => match self.prev.map(|t| t.kind) {
-                Some(RegexpLit { delim, expand, depth }) => {
+                Some(RegexpLit { delim, expand, depth }) if depth > 0 => {
                     self.chars.next();
                     OpenExpansion { kind: InRegexp { delim, expand, depth } }
                 }
-                Some(StrLit { delim, expand, depth }) => {
+                Some(StrLit { delim, expand, depth }) if depth > 0 => {
                     self.chars.next();
                     OpenExpansion { kind: InStr { delim, expand, depth } }
                 }
-                Some(SymbolLit { delim, expand, depth }) => {
+                Some(SymbolLit { delim, expand, depth }) if depth > 0 => {
                     self.chars.next();
                     OpenExpansion { kind: InSymbol { delim, expand, depth } }
                 }
