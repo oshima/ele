@@ -79,7 +79,7 @@ impl Ruby {
                 BuiltinMethod { takes_arg: false } => Fg::Macro,
                 CloseExpansion { .. } | OpenExpansion { .. } => Fg::Variable,
                 Comment => Fg::Comment,
-                Def | Keyword { .. } => Fg::Keyword,
+                Def | Do | Keyword { .. } => Fg::Keyword,
                 Key => Fg::Macro,
                 Method => Fg::Function,
                 MethodOwner => Fg::Variable,
@@ -93,6 +93,7 @@ impl Ruby {
                         | CloseExpansion { .. }
                         | Comma
                         | Comment
+                        | Def
                         | Dot
                         | Keyword { .. }
                         | Op
@@ -108,6 +109,7 @@ impl Ruby {
                         | CloseExpansion { .. }
                         | Comma
                         | Comment
+                        | Def
                         | Dot
                         | Keyword { .. }
                         | Op
@@ -248,6 +250,7 @@ enum TokenKind {
     Comma,
     Comment,
     Def,
+    Do,
     Dot,
     Ident,
     Key,
@@ -639,11 +642,12 @@ impl<'a> Tokens<'a> {
         let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
         match &self.text[start..end] {
             "def" => Def,
+            "do" => Do,
             "alias" | "class" | "defined?" | "else" | "ensure" | "false" | "for" | "end" | "in"
             | "module" | "next" | "nil" | "redo" | "rescue" | "retry" | "self" | "super"
             | "then" | "true" | "undef" | "yield" => Keyword { takes_expr: false },
-            "and" | "begin" | "break" | "case" | "do" | "elsif" | "if" | "not" | "or"
-            | "return" | "unless" | "until" | "when" | "while" => Keyword { takes_expr: true },
+            "and" | "begin" | "break" | "case" | "elsif" | "if" | "not" | "or" | "return"
+            | "unless" | "until" | "when" | "while" => Keyword { takes_expr: true },
             "__callee__" | "__dir__" | "__method__" | "abort" | "binding" | "block_given?"
             | "caller" | "exit" | "exit!" | "fail" | "fork" | "global_variables"
             | "local_variables" | "private" | "protected" | "public" | "raise" | "rand"
