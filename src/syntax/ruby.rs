@@ -139,7 +139,7 @@ impl Ruby {
                     [.., RegexpLit { .. }] => {
                         context_v.pop();
                         context_v.push(token.kind);
-                    },
+                    }
                     _ => {
                         context_v.push(token.kind);
                     }
@@ -154,7 +154,7 @@ impl Ruby {
                     [.., StrLit { .. }] => {
                         context_v.pop();
                         context_v.push(token.kind);
-                    },
+                    }
                     _ => {
                         context_v.push(token.kind);
                     }
@@ -169,7 +169,7 @@ impl Ruby {
                     [.., SymbolLit { .. }] => {
                         context_v.pop();
                         context_v.push(token.kind);
-                    },
+                    }
                     _ => {
                         context_v.push(token.kind);
                     }
@@ -380,7 +380,7 @@ impl<'a> Iterator for Tokens<'a> {
                     self.chars.next();
                     self.symbol_lit('"', true, 1)
                 }
-                _ => self.pure_symbol_lit(),
+                Some(&(_, ch)) => self.pure_symbol_lit(ch),
             },
 
             // regexp
@@ -396,7 +396,7 @@ impl<'a> Iterator for Tokens<'a> {
                     | OpenParen
                     | Semi,
                 ) => self.regexp_lit(ch, true, 1),
-                Some(Def | Dot) => self.method(),
+                Some(Def | Dot) => self.method(ch),
                 Some(BuiltinMethod { takes_arg: true } | Ident) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op,
@@ -423,7 +423,7 @@ impl<'a> Iterator for Tokens<'a> {
                     | OpenParen
                     | Semi,
                 ) => self.percent_lit(),
-                Some(Def | Dot) => self.method(),
+                Some(Def | Dot) => self.method(ch),
                 Some(BuiltinMethod { takes_arg: true } | Ident) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op,
@@ -435,9 +435,10 @@ impl<'a> Iterator for Tokens<'a> {
             },
 
             // operator
-            '!' | '&' | '*' | '+' | '-' | '<' | '=' | '>' | '?' | '^' | '|' | '~' => {
+            '?' => Op,
+            '!' | '&' | '*' | '+' | '-' | '<' | '=' | '>' | '^' | '|' | '~' => {
                 match self.prev.map(|t| t.kind) {
-                    Some(Def | Dot) => self.method(),
+                    Some(Def | Dot) => self.method(ch),
                     _ => Op,
                 }
             }
@@ -457,7 +458,7 @@ impl<'a> Iterator for Tokens<'a> {
             ';' => Semi,
             '{' => OpenBrace,
             '[' => match self.prev.map(|t| t.kind) {
-                Some(Def | Dot) => self.method(),
+                Some(Def | Dot) => self.method(ch),
                 _ => OpenBracket,
             },
             '(' => OpenParen,
@@ -470,12 +471,12 @@ impl<'a> Iterator for Tokens<'a> {
             // identifier or keyword
             ch if ch.is_ascii_uppercase() => match self.prev.map(|t| t.kind) {
                 Some(Def) => self.method_owner_or_method(),
-                Some(Dot) => self.method(),
+                Some(Dot) => self.method(ch),
                 _ => self.upper_ident(),
             },
             _ => match self.prev.map(|t| t.kind) {
                 Some(Def) => self.method_owner_or_method(),
-                Some(Dot) => self.method(),
+                Some(Dot) => self.method(ch),
                 _ => self.ident_or_keyword(start),
             },
         };
@@ -557,12 +558,21 @@ impl<'a> Tokens<'a> {
         SymbolLit { delim, expand, depth }
     }
 
-    #[rustfmt::skip]
-    fn pure_symbol_lit(&mut self) -> TokenKind {
-        // TODO
-        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-        self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
-        PureSymbolLit
+    fn pure_symbol_lit(&mut self, peeked: char) -> TokenKind {
+        let valid = match peeked {
+            '!' | '%' | '&' | '*' | '+' | '-' | '/' | '<' | '>' | '^' | '|' | '~' => true,
+            '=' => matches!(self.chars.clone().nth(1), Some((_, '=' | '~'))),
+            '[' => matches!(self.chars.clone().nth(1), Some((_, ']'))),
+            ch if !is_delim(ch) && !ch.is_ascii_digit() => true,
+            _ => false,
+        };
+        if valid {
+            self.chars.next();
+            self.method(peeked);
+            PureSymbolLit
+        } else {
+            Op
+        }
     }
 
     #[rustfmt::skip]
@@ -632,19 +642,64 @@ impl<'a> Tokens<'a> {
     }
 
     fn method_owner_or_method(&mut self) -> TokenKind {
-        // TODO: method_delim 的な
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-        self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
         match self.chars.peek() {
+            Some(&(_, '!' | '?')) => {
+                self.chars.next();
+                Method
+            }
             Some(&(_, '.')) => MethodOwner,
             _ => Method,
         }
     }
 
-    fn method(&mut self) -> TokenKind {
-        // TODO: method_delim 的な
-        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-        self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
+    fn method(&mut self, ch: char) -> TokenKind {
+        match ch {
+            '|' | '^' | '&' | '/' | '%' | '~' | '`' => (),
+            '+' | '-' => {
+                self.chars.next_if(|&(_, ch)| ch == '@');
+            }
+            '*' => {
+                self.chars.next_if(|&(_, ch)| ch == '*');
+            }
+            '<' => match self.chars.peek() {
+                Some(&(_, '<')) => {
+                    self.chars.next();
+                }
+                Some(&(_, '=')) => {
+                    self.chars.next();
+                    self.chars.next_if(|&(_, ch)| ch == '>');
+                }
+                _ => (),
+            },
+            '>' => {
+                self.chars.next_if(|&(_, ch)| ch == '>' || ch == '=');
+            }
+            '!' => {
+                self.chars.next_if(|&(_, ch)| ch == '=' || ch == '~');
+            }
+            '=' => match self.chars.peek() {
+                Some(&(_, '=')) => {
+                    self.chars.next();
+                    self.chars.next_if(|&(_, ch)| ch == '=');
+                }
+                Some(&(_, '~')) => {
+                    self.chars.next();
+                }
+                _ => return Op,
+            },
+            '[' => match self.chars.peek() {
+                Some(&(_, ']')) => {
+                    self.chars.next();
+                    self.chars.next_if(|&(_, ch)| ch == '=');
+                }
+                _ => return OpenBracket,
+            },
+            _ => {
+                while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+                self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
+            }
+        }
         Method
     }
 
