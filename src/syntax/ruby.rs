@@ -644,7 +644,7 @@ impl<'a> Tokens<'a> {
     fn method_owner_or_method(&mut self) -> TokenKind {
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
         match self.chars.peek() {
-            Some(&(_, '!' | '?')) => {
+            Some(&(_, '!' | '?' | '=')) => {
                 self.chars.next();
                 Method
             }
@@ -697,7 +697,7 @@ impl<'a> Tokens<'a> {
             },
             _ => {
                 while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-                self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
+                self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?' || ch == '=');
             }
         }
         Method
