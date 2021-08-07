@@ -80,6 +80,7 @@ impl Ruby {
                 CloseExpansion { .. } | OpenExpansion { .. } => Fg::Variable,
                 Comment => Fg::Comment,
                 Def | Do | Keyword { .. } => Fg::Keyword,
+                HeredocLabel { .. } => Fg::String,
                 Key => Fg::Macro,
                 Method => Fg::Function,
                 MethodOwner => Fg::Variable,
@@ -267,6 +268,7 @@ enum TokenKind {
     Def,
     Do,
     Dot,
+    HeredocLabel { label: String, expand: bool, valid: bool },
     Ident,
     Key,
     Keyword { takes_expr: bool },
@@ -436,7 +438,11 @@ impl<'a> Iterator for Tokens<'a> {
 
             // operator
             '?' => Op,
-            '!' | '&' | '*' | '+' | '-' | '<' | '=' | '>' | '^' | '|' | '~' => {
+            '<' => match self.prev.map(|t| t.kind) {
+                Some(Def | Dot) => self.method(ch),
+                _ => self.heredoc_label(),
+            }
+            '!' | '&' | '*' | '+' | '-' | '=' | '>' | '^' | '|' | '~' => {
                 match self.prev.map(|t| t.kind) {
                     Some(Def | Dot) => self.method(ch),
                     _ => Op,
@@ -628,6 +634,60 @@ impl<'a> Tokens<'a> {
                     self.chars.next();
                     self.chars.next();
                     self.regexp_lit(ch, true, 1)
+                }
+                _ => Op,
+            }
+            _ => Op,
+        }
+    }
+
+    fn index(&mut self) -> usize {
+        self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx)
+    }
+
+    fn heredoc_label(&mut self) -> TokenKind {
+        match self.chars.peek() {
+            Some(&(_, '<')) => match self.chars.clone().nth(1) {
+                Some((_, ch)) if !is_delim(ch) => {
+                    self.chars.next();
+                    let start = self.index();
+                    while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+                    let end = self.index();
+                    let label = self.text[start..end].to_string();
+                    HeredocLabel { label, expand: true, valid: true }
+                }
+                Some((_, d @ '\'' | d @ '"' | d @ '`')) => {
+                    self.chars.next();
+                    self.chars.next();
+                    let start = self.index();
+                    let valid = self.chars.any(|(_, ch)| ch == d);
+                    let end = self.index() - 1;
+                    let label = self.text[start..end].to_string();
+                    let expand = d == '"' || d == '`';
+                    HeredocLabel { label, expand, valid }
+                }
+                Some((_, '-' | '~')) => match self.chars.clone().nth(2) {
+                    Some((_, ch)) if !is_delim(ch) => {
+                        self.chars.next();
+                        self.chars.next();
+                        let start = self.index();
+                        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+                        let end = self.index();
+                        let label = self.text[start..end].to_string();
+                        HeredocLabel { label, expand: true, valid: true }
+                    }
+                    Some((_, d @ '\'' | d @ '"' | d @ '`')) => {
+                        self.chars.next();
+                        self.chars.next();
+                        self.chars.next();
+                        let start = self.index();
+                        let valid = self.chars.any(|(_, ch)| ch == d);
+                        let end = self.index() - 1;
+                        let label = self.text[start..end].to_string();
+                        let expand = d == '"' || d == '`';
+                        HeredocLabel { label, expand, valid }
+                    }
+                    _ => Op,
                 }
                 _ => Op,
             }
