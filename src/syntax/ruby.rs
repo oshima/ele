@@ -88,7 +88,7 @@ impl Ruby {
                 RegexpLit { .. } | StrLit { .. } => Fg::String,
                 UpperIdent => Fg::Type,
                 Variable => Fg::Variable,
-                BuiltinMethod { takes_arg: true } => match tokens.peek().map(|t| t.kind) {
+                BuiltinMethod { takes_arg: true } => match tokens.peek().map(|t| &t.kind) {
                     Some(
                         CloseBrace
                         | CloseExpansion { .. }
@@ -104,7 +104,7 @@ impl Ruby {
                     | None => Fg::Default,
                     _ => Fg::Macro,
                 },
-                Ident => match tokens.peek().map(|t| t.kind) {
+                Ident => match tokens.peek().map(|t| &t.kind) {
                     Some(
                         CloseBrace
                         | CloseExpansion { .. }
@@ -249,14 +249,14 @@ impl Ruby {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Token {
     kind: TokenKind,
     start: usize,
     end: usize,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 #[rustfmt::skip]
 enum TokenKind {
     BuiltinMethod { takes_arg: bool },
@@ -289,7 +289,7 @@ enum TokenKind {
     Variable,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 #[rustfmt::skip]
 enum ExpansionKind {
     InRegexp { delim: char, expand: bool, depth: usize },
@@ -326,10 +326,10 @@ impl<'a> Iterator for Tokens<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(CloseExpansion { kind }) = self.prev.map(|t| t.kind) {
+        if let Some(CloseExpansion { kind }) = self.prev.as_ref().map(|t| &t.kind) {
             let start = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
             #[rustfmt::skip]
-            let kind = match kind {
+            let kind = match *kind {
                 InRegexp { delim, expand, depth } => self.regexp_lit(delim, expand, depth),
                 InStr { delim, expand, depth } => self.str_lit(delim, expand, depth),
                 InSymbol { delim, expand, depth } => self.symbol_lit(delim, expand, depth),
@@ -337,7 +337,7 @@ impl<'a> Iterator for Tokens<'a> {
             let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
 
             let token = Token { kind, start, end };
-            self.prev.replace(token);
+            self.prev.replace(token.clone());
 
             return Some(token);
         }
@@ -347,18 +347,18 @@ impl<'a> Iterator for Tokens<'a> {
         let kind = match ch {
             // comment or expression expansion
             #[rustfmt::skip]
-            '#' => match self.prev.map(|t| t.kind) {
-                Some(RegexpLit { delim, expand, depth }) if depth > 0 => {
+            '#' => match self.prev.as_ref().map(|t| &t.kind) {
+                Some(RegexpLit { delim, expand, depth }) if *depth > 0 => {
                     self.chars.next();
-                    OpenExpansion { kind: InRegexp { delim, expand, depth } }
+                    OpenExpansion { kind: InRegexp { delim: *delim, expand: *expand, depth: *depth } }
                 }
-                Some(StrLit { delim, expand, depth }) if depth > 0 => {
+                Some(StrLit { delim, expand, depth }) if *depth > 0 => {
                     self.chars.next();
-                    OpenExpansion { kind: InStr { delim, expand, depth } }
+                    OpenExpansion { kind: InStr { delim: *delim, expand: *expand, depth: *depth } }
                 }
-                Some(SymbolLit { delim, expand, depth }) if depth > 0 => {
+                Some(SymbolLit { delim, expand, depth }) if *depth > 0 => {
                     self.chars.next();
-                    OpenExpansion { kind: InSymbol { delim, expand, depth } }
+                    OpenExpansion { kind: InSymbol { delim: *delim, expand: *expand, depth: *depth } }
                 }
                 _ => self.comment(),
             },
@@ -386,7 +386,7 @@ impl<'a> Iterator for Tokens<'a> {
             },
 
             // regexp
-            '/' => match self.prev.map(|t| t.kind) {
+            '/' => match self.prev.as_ref().map(|t| &t.kind) {
                 Some(
                     Comma
                     | Key
@@ -400,7 +400,7 @@ impl<'a> Iterator for Tokens<'a> {
                 ) => self.regexp_lit(ch, true, 1),
                 Some(Def | Dot) => self.method(ch),
                 Some(BuiltinMethod { takes_arg: true } | Ident) => {
-                    match self.prev.filter(|t| t.end == start) {
+                    match self.prev.as_ref().filter(|t| t.end == start) {
                         Some(_) => Op,
                         None => match self.chars.peek() {
                             Some(&(_, ' ' | '\t')) | None => Op,
@@ -413,7 +413,7 @@ impl<'a> Iterator for Tokens<'a> {
             },
 
             // percent literal
-            '%' => match self.prev.map(|t| t.kind) {
+            '%' => match self.prev.as_ref().map(|t| &t.kind) {
                 Some(
                     Comma
                     | Key
@@ -427,7 +427,7 @@ impl<'a> Iterator for Tokens<'a> {
                 ) => self.percent_lit(),
                 Some(Def | Dot) => self.method(ch),
                 Some(BuiltinMethod { takes_arg: true } | Ident) => {
-                    match self.prev.filter(|t| t.end == start) {
+                    match self.prev.as_ref().filter(|t| t.end == start) {
                         Some(_) => Op,
                         None => self.percent_lit(),
                     }
@@ -438,12 +438,12 @@ impl<'a> Iterator for Tokens<'a> {
 
             // operator
             '?' => Op,
-            '<' => match self.prev.map(|t| t.kind) {
+            '<' => match self.prev.as_ref().map(|t| &t.kind) {
                 Some(Def | Dot) => self.method(ch),
                 _ => self.heredoc_label(),
             }
             '!' | '&' | '*' | '+' | '-' | '=' | '>' | '^' | '|' | '~' => {
-                match self.prev.map(|t| t.kind) {
+                match self.prev.as_ref().map(|t| &t.kind) {
                     Some(Def | Dot) => self.method(ch),
                     _ => Op,
                 }
@@ -463,24 +463,24 @@ impl<'a> Iterator for Tokens<'a> {
             ',' => Comma,
             ';' => Semi,
             '{' => OpenBrace,
-            '[' => match self.prev.map(|t| t.kind) {
+            '[' => match self.prev.as_ref().map(|t| &t.kind) {
                 Some(Def | Dot) => self.method(ch),
                 _ => OpenBracket,
             },
             '(' => OpenParen,
             '}' => match self.braces.last() {
-                Some(&OpenExpansion { kind }) => CloseExpansion { kind },
+                Some(OpenExpansion { kind }) => CloseExpansion { kind: kind.clone() },
                 _ => CloseBrace,
             },
             ch if is_delim(ch) => Punct,
 
             // identifier or keyword
-            ch if ch.is_ascii_uppercase() => match self.prev.map(|t| t.kind) {
+            ch if ch.is_ascii_uppercase() => match self.prev.as_ref().map(|t| &t.kind) {
                 Some(Def) => self.method_owner_or_method(),
                 Some(Dot) => self.method(ch),
                 _ => self.upper_ident(),
             },
-            _ => match self.prev.map(|t| t.kind) {
+            _ => match self.prev.as_ref().map(|t| &t.kind) {
                 Some(Def) => self.method_owner_or_method(),
                 Some(Dot) => self.method(ch),
                 _ => self.ident_or_keyword(start),
@@ -490,10 +490,10 @@ impl<'a> Iterator for Tokens<'a> {
         let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
 
         let token = Token { kind, start, end };
-        self.prev.replace(token);
-        match kind {
+        self.prev.replace(token.clone());
+        match token.kind {
             OpenBrace | OpenExpansion { .. } => {
-                self.braces.push(kind);
+                self.braces.push(token.kind.clone());
             }
             CloseBrace | CloseExpansion { .. } => {
                 self.braces.pop();
