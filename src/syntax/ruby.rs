@@ -176,7 +176,7 @@ impl Ruby {
                         context_v.push(token.kind);
                     }
                 },
-                Heredoc { open: true, .. } => {
+                Heredoc { .. } => {
                     context_v.push(token.kind);
                 }
                 HeredocLabel { valid: true, .. } => {
@@ -244,11 +244,20 @@ impl Ruby {
                         }
                     }
                 },
-                Heredoc { label, expand, .. } | HeredocLabel { label, expand, .. } => {
+                HeredocLabel { label, expand, .. } => {
                     string.push('\0');
                     string.push(if *expand { '"' } else { '\'' });
                     string.push_str(label);
                     string.push(if *expand { '"' } else { '\'' });
+                }
+                Heredoc { label, expand, trailing_context, open } => {
+                    if *open {
+                        string.push('\0');
+                        string.push(if *expand { '"' } else { '\'' });
+                        string.push_str(label);
+                        string.push(if *expand { '"' } else { '\'' });
+                    }
+                    string.push_str(trailing_context);
                 }
                 OpenBrace => {
                     string.push('{');
@@ -281,7 +290,7 @@ enum TokenKind {
     Def,
     Do,
     Dot,
-    Heredoc { label: String, expand: bool, open: bool },
+    Heredoc { label: String, expand: bool, trailing_context: String, open: bool },
     HeredocLabel { label: String, expand: bool, valid: bool },
     Ident,
     Key,
@@ -726,9 +735,18 @@ impl<'a> Tokens<'a> {
             .map(|(_, ch)| ch)
             .take_while(|&ch| ch != delim)
             .collect();
+        let mut trailing_context = String::new();
+        while let Some((_, ch)) = self.chars.next() {
+            let in_context = self.chars.peek().map_or(true, |&(idx, _)| idx == 0);
+            if in_context {
+                trailing_context.push(ch);
+            } else {
+                break;
+            }
+        }
         while self.chars.next().is_some() {}
         let open = !self.text.contains(&label) || self.text.trim() != label.trim();
-        Heredoc { label, expand, open }
+        Heredoc { label, expand, trailing_context, open }
     }
 
     fn variable(&mut self) -> TokenKind {
