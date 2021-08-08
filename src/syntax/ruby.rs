@@ -80,7 +80,8 @@ impl Ruby {
                 CloseExpansion { .. } | OpenExpansion { .. } => Fg::Variable,
                 Comment => Fg::Comment,
                 Def | Do | Keyword { .. } => Fg::Keyword,
-                HeredocLabel { .. } => Fg::String,
+                Heredoc { open: false, .. } | HeredocLabel { .. } => Fg::Variable,
+                Heredoc { open: true, .. } => Fg::String,
                 Key => Fg::Macro,
                 Method => Fg::Function,
                 MethodOwner => Fg::Variable,
@@ -175,6 +176,12 @@ impl Ruby {
                         context_v.push(token.kind);
                     }
                 },
+                Heredoc { open: true, .. } => {
+                    context_v.push(token.kind);
+                }
+                HeredocLabel { valid: true, .. } => {
+                    context_v.push(token.kind);
+                }
                 OpenBrace | OpenExpansion { .. } => {
                     context_v.push(token.kind);
                 }
@@ -200,43 +207,49 @@ impl Ruby {
     #[rustfmt::skip]
     fn convert_context(&self, slice: &[TokenKind], string: &mut String) {
         for token_kind in slice {
-            match *token_kind {
+            match token_kind {
                 RegexpLit { delim, expand, depth } => match (delim, expand) {
                     ('/', true) => {
-                        string.push(delim);
+                        string.push(*delim);
                     }
                     _ => {
                         string.push_str("%r");
-                        for _ in 0..depth {
-                            string.push(delim);
+                        for _ in 0..*depth {
+                            string.push(*delim);
                         }
                     }
                 },
                 StrLit { delim, expand, depth } => match (delim, expand) {
                     ('\'', false) | ('"' | '`', true) => {
-                        string.push(delim);
+                        string.push(*delim);
                     }
                     _ => {
                         string.push('%');
-                        string.push(if expand { 'Q' } else { 'q' });
-                        for _ in 0..depth {
-                            string.push(delim);
+                        string.push(if *expand { 'Q' } else { 'q' });
+                        for _ in 0..*depth {
+                            string.push(*delim);
                         }
                     }
                 },
                 SymbolLit { delim, expand, depth } => match (delim, expand) {
                     ('\'', false) | ('"', true) => {
                         string.push(':');
-                        string.push(delim);
+                        string.push(*delim);
                     }
                     _ => {
                         string.push('%');
-                        string.push(if expand { 'I' } else { 'i' });
-                        for _ in 0..depth {
-                            string.push(delim);
+                        string.push(if *expand { 'I' } else { 'i' });
+                        for _ in 0..*depth {
+                            string.push(*delim);
                         }
                     }
                 },
+                Heredoc { label, expand, .. } | HeredocLabel { label, expand, .. } => {
+                    string.push('\0');
+                    string.push(if *expand { '"' } else { '\'' });
+                    string.push_str(label);
+                    string.push(if *expand { '"' } else { '\'' });
+                }
                 OpenBrace => {
                     string.push('{');
                 }
@@ -268,6 +281,7 @@ enum TokenKind {
     Def,
     Do,
     Dot,
+    Heredoc { label: String, expand: bool, open: bool },
     HeredocLabel { label: String, expand: bool, valid: bool },
     Ident,
     Key,
@@ -474,6 +488,9 @@ impl<'a> Iterator for Tokens<'a> {
             },
             ch if is_delim(ch) => Punct,
 
+            // heredoc
+            '\0' => self.heredoc(),
+
             // identifier or keyword
             ch if ch.is_ascii_uppercase() => match self.prev.as_ref().map(|t| &t.kind) {
                 Some(Def) => self.method_owner_or_method(),
@@ -660,11 +677,14 @@ impl<'a> Tokens<'a> {
                     self.chars.next();
                     self.chars.next();
                     let start = self.index();
-                    let valid = self.chars.any(|(_, ch)| ch == d);
-                    let end = self.index() - 1;
-                    let label = self.text[start..end].to_string();
                     let expand = d == '"' || d == '`';
-                    HeredocLabel { label, expand, valid }
+                    if self.chars.any(|(_, ch)| ch == d) {
+                        let end = self.index() - 1;
+                        let label = self.text[start..end].to_string();
+                        HeredocLabel { label, expand, valid: true }
+                    } else {
+                        HeredocLabel { label: "".to_string(), expand, valid: false }
+                    }
                 }
                 Some((_, '-' | '~')) => match self.chars.clone().nth(2) {
                     Some((_, ch)) if !is_delim(ch) => {
@@ -681,11 +701,14 @@ impl<'a> Tokens<'a> {
                         self.chars.next();
                         self.chars.next();
                         let start = self.index();
-                        let valid = self.chars.any(|(_, ch)| ch == d);
-                        let end = self.index() - 1;
-                        let label = self.text[start..end].to_string();
                         let expand = d == '"' || d == '`';
-                        HeredocLabel { label, expand, valid }
+                        if self.chars.any(|(_, ch)| ch == d) {
+                            let end = self.index() - 1;
+                            let label = self.text[start..end].to_string();
+                            HeredocLabel { label, expand, valid: true }
+                        } else {
+                            HeredocLabel { label: "".to_string(), expand, valid: false }
+                        }
                     }
                     _ => Op,
                 }
@@ -693,6 +716,19 @@ impl<'a> Tokens<'a> {
             }
             _ => Op,
         }
+    }
+
+    fn heredoc(&mut self) -> TokenKind {
+        let delim = self.chars.next().map(|(_, ch)| ch).unwrap();
+        let expand = delim == '"';
+        let label: String = self.chars
+            .by_ref()
+            .map(|(_, ch)| ch)
+            .take_while(|&ch| ch != delim)
+            .collect();
+        while self.chars.next().is_some() {}
+        let open = !self.text.contains(&label) || self.text.trim() != label.trim();
+        Heredoc { label, expand, open }
     }
 
     fn variable(&mut self) -> TokenKind {
