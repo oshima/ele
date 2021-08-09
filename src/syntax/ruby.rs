@@ -80,8 +80,7 @@ impl Ruby {
                 CloseExpansion { .. } | OpenExpansion { .. } => Fg::Variable,
                 Comment => Fg::Comment,
                 Def | Do | Keyword { .. } => Fg::Keyword,
-                Heredoc { open: false, .. } | HeredocLabel { .. } => Fg::Variable,
-                Heredoc { open: true, .. } => Fg::String,
+                Heredoc { .. } | HeredocLabel { .. } => Fg::String,
                 Key => Fg::Macro,
                 Method => Fg::Function,
                 MethodOwner => Fg::Variable,
@@ -176,8 +175,14 @@ impl Ruby {
                         context_v.push(token.kind);
                     }
                 },
-                Heredoc { .. } => {
-                    context_v.push(token.kind);
+                Heredoc { .. } => match context_v[..] {
+                    [.., Heredoc { .. }] => {
+                        context_v.pop();
+                        context_v.push(token.kind);
+                    }
+                    _ => {
+                        context_v.push(token.kind);
+                    }
                 }
                 HeredocLabel { label: Some(_), .. } => {
                     context_v.push(token.kind);
@@ -722,13 +727,22 @@ impl<'a> Tokens<'a> {
             .collect();
         let expand = delim == '"';
         let mut trailing_context = String::new();
-        while let Some((_, ch)) = self.chars.next() {
-            let in_context = self.chars.peek().map_or(true, |&(idx, _)| idx == 0);
-            if in_context {
-                trailing_context.push(ch);
-            } else {
-                break;
+        while let Some(&(_, ch)) = self.chars.peek() {
+            match (ch, self.chars.clone().nth(1)) {
+                ('#', Some((_, '{'))) => {
+                    return Heredoc { label, expand, trailing_context, open: true };
+                },
+                (ch, Some((idx, _))) if idx == 0 => {
+                    trailing_context.push(ch);
+                }
+                (ch, None) => {
+                    if self.text.is_empty() {
+                        trailing_context.push(ch);
+                    }
+                }
+                _ => break,
             }
+            self.chars.next();
         }
         while let Some(&(_, ch)) = self.chars.peek() {
             if expand && ch == '#' && matches!(self.chars.clone().nth(1), Some((_, '{'))) {

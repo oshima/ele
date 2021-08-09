@@ -201,6 +201,7 @@ impl Editor {
                 }
                 _ => {
                     let message = self.buffer.process_key(key, &mut self.clipboard);
+                    let message = &format!("{:?}", message);
                     self.minibuffer.set_message(message);
                 }
             },
