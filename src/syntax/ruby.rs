@@ -179,7 +179,7 @@ impl Ruby {
                 Heredoc { .. } => {
                     context_v.push(token.kind);
                 }
-                HeredocLabel { valid: true, .. } => {
+                HeredocLabel { label: Some(_), .. } => {
                     context_v.push(token.kind);
                 }
                 OpenBrace | OpenExpansion { .. } => {
@@ -244,7 +244,7 @@ impl Ruby {
                         }
                     }
                 },
-                HeredocLabel { label, expand, .. } => {
+                HeredocLabel { label: Some(label), expand } => {
                     string.push('\0');
                     string.push(if *expand { '"' } else { '\'' });
                     string.push_str(label);
@@ -291,7 +291,7 @@ enum TokenKind {
     Do,
     Dot,
     Heredoc { label: String, expand: bool, trailing_context: String, open: bool },
-    HeredocLabel { label: String, expand: bool, valid: bool },
+    HeredocLabel { label: Option<String>, expand: bool },
     Ident,
     Key,
     Keyword { takes_expr: bool },
@@ -667,57 +667,37 @@ impl<'a> Tokens<'a> {
         }
     }
 
-    fn index(&mut self) -> usize {
-        self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx)
-    }
-
     fn heredoc_label(&mut self) -> TokenKind {
         match self.chars.peek() {
             Some(&(_, '<')) => match self.chars.clone().nth(1) {
-                Some((_, ch)) if !is_delim(ch) => {
-                    self.chars.next();
-                    let start = self.index();
+                Some((start, ch)) if !is_delim(ch) => {
+                    self.chars.nth(1);
                     while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-                    let end = self.index();
-                    let label = self.text[start..end].to_string();
-                    HeredocLabel { label, expand: true, valid: true }
+                    let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
+                    let label = Some(self.text[start..end].to_string());
+                    HeredocLabel { label, expand: true }
                 }
-                Some((_, d @ '\'' | d @ '"' | d @ '`')) => {
-                    self.chars.next();
-                    self.chars.next();
-                    let start = self.index();
-                    let expand = d == '"' || d == '`';
-                    if self.chars.any(|(_, ch)| ch == d) {
-                        let end = self.index() - 1;
-                        let label = self.text[start..end].to_string();
-                        HeredocLabel { label, expand, valid: true }
-                    } else {
-                        HeredocLabel { label: "".to_string(), expand, valid: false }
-                    }
+                Some((start, d @ '\'' | d @ '"' | d @ '`')) => {
+                    self.chars.nth(1);
+                    let label = self.chars
+                        .find(|&(_, ch)| ch == d)
+                        .map(|(end, _)| self.text[(start + 1)..end].to_string());
+                    HeredocLabel { label, expand: d != '\'' }
                 }
                 Some((_, '-' | '~')) => match self.chars.clone().nth(2) {
-                    Some((_, ch)) if !is_delim(ch) => {
-                        self.chars.next();
-                        self.chars.next();
-                        let start = self.index();
+                    Some((start, ch)) if !is_delim(ch) => {
+                        self.chars.nth(2);
                         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-                        let end = self.index();
-                        let label = self.text[start..end].to_string();
-                        HeredocLabel { label, expand: true, valid: true }
+                        let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
+                        let label = Some(self.text[start..end].to_string());
+                        HeredocLabel { label, expand: true }
                     }
-                    Some((_, d @ '\'' | d @ '"' | d @ '`')) => {
-                        self.chars.next();
-                        self.chars.next();
-                        self.chars.next();
-                        let start = self.index();
-                        let expand = d == '"' || d == '`';
-                        if self.chars.any(|(_, ch)| ch == d) {
-                            let end = self.index() - 1;
-                            let label = self.text[start..end].to_string();
-                            HeredocLabel { label, expand, valid: true }
-                        } else {
-                            HeredocLabel { label: "".to_string(), expand, valid: false }
-                        }
+                    Some((start, d @ '\'' | d @ '"' | d @ '`')) => {
+                        self.chars.nth(2);
+                        let label = self.chars
+                            .find(|&(_, ch)| ch == d)
+                            .map(|(end, _)| self.text[(start + 1)..end].to_string());
+                        HeredocLabel { label, expand: d != '\'' }
                     }
                     _ => Op,
                 }
@@ -729,12 +709,12 @@ impl<'a> Tokens<'a> {
 
     fn heredoc(&mut self) -> TokenKind {
         let delim = self.chars.next().map(|(_, ch)| ch).unwrap();
-        let expand = delim == '"';
         let label: String = self.chars
             .by_ref()
             .map(|(_, ch)| ch)
             .take_while(|&ch| ch != delim)
             .collect();
+        let expand = delim == '"';
         let mut trailing_context = String::new();
         while let Some((_, ch)) = self.chars.next() {
             let in_context = self.chars.peek().map_or(true, |&(idx, _)| idx == 0);
