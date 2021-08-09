@@ -315,6 +315,7 @@ enum TokenKind {
 #[derive(Clone)]
 #[rustfmt::skip]
 enum ExpansionKind {
+    InHeredoc { label: String, trailing_context: String },
     InRegexp { delim: char, depth: usize },
     InStr { delim: char, depth: usize },
     InSymbol { delim: char, depth: usize },
@@ -349,10 +350,11 @@ impl<'a> Iterator for Tokens<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(CloseExpansion { kind }) = self.prev.as_ref().map(|t| &t.kind) {
+        if let Some(CloseExpansion { kind }) = self.prev.clone().map(|t| t.kind) {
             let start = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
             #[rustfmt::skip]
-            let kind = match *kind {
+            let kind = match kind {
+                InHeredoc { label, trailing_context } => self.heredoc_temp(label, trailing_context),
                 InRegexp { delim, depth } => self.regexp_lit(delim, true, depth),
                 InStr { delim, depth } => self.str_lit(delim, true, depth),
                 InSymbol { delim, depth } => self.symbol_lit(delim, true, depth),
@@ -371,6 +373,10 @@ impl<'a> Iterator for Tokens<'a> {
             // comment or expression expansion
             #[rustfmt::skip]
             '#' => match self.prev.as_ref().map(|t| &t.kind) {
+                Some(Heredoc { label, trailing_context, open: true, .. }) => {
+                    self.chars.next();
+                    OpenExpansion { kind: InHeredoc { label: label.clone(), trailing_context: trailing_context.clone() } }
+                }
                 Some(RegexpLit { delim, depth, .. }) if *depth > 0 => {
                     self.chars.next();
                     OpenExpansion { kind: InRegexp { delim: *delim, depth: *depth } }
@@ -724,9 +730,24 @@ impl<'a> Tokens<'a> {
                 break;
             }
         }
-        while self.chars.next().is_some() {}
+        while let Some(&(_, ch)) = self.chars.peek() {
+            if expand && ch == '#' && matches!(self.chars.clone().nth(1), Some((_, '{'))) {
+                return Heredoc { label, expand, trailing_context, open: true };
+            }
+            self.chars.next();
+        }
         let open = !self.text.contains(&label) || self.text.trim() != label.trim();
         Heredoc { label, expand, trailing_context, open }
+    }
+
+    fn heredoc_temp(&mut self, label: String, trailing_context: String) -> TokenKind {
+        while let Some(&(_, ch)) = self.chars.peek() {
+            if ch == '#' && matches!(self.chars.clone().nth(1), Some((_, '{'))) {
+                return Heredoc { label, expand: true, trailing_context, open: true };
+            }
+            self.chars.next();
+        }
+        Heredoc { label, expand: true, trailing_context, open: true }
     }
 
     fn variable(&mut self) -> TokenKind {
