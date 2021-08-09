@@ -315,9 +315,9 @@ enum TokenKind {
 #[derive(Clone)]
 #[rustfmt::skip]
 enum ExpansionKind {
-    InRegexp { delim: char, expand: bool, depth: usize },
-    InStr { delim: char, expand: bool, depth: usize },
-    InSymbol { delim: char, expand: bool, depth: usize },
+    InRegexp { delim: char, depth: usize },
+    InStr { delim: char, depth: usize },
+    InSymbol { delim: char, depth: usize },
 }
 
 struct Tokens<'a> {
@@ -353,9 +353,9 @@ impl<'a> Iterator for Tokens<'a> {
             let start = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
             #[rustfmt::skip]
             let kind = match *kind {
-                InRegexp { delim, expand, depth } => self.regexp_lit(delim, expand, depth),
-                InStr { delim, expand, depth } => self.str_lit(delim, expand, depth),
-                InSymbol { delim, expand, depth } => self.symbol_lit(delim, expand, depth),
+                InRegexp { delim, depth } => self.regexp_lit(delim, true, depth),
+                InStr { delim, depth } => self.str_lit(delim, true, depth),
+                InSymbol { delim, depth } => self.symbol_lit(delim, true, depth),
             };
             let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
 
@@ -371,17 +371,17 @@ impl<'a> Iterator for Tokens<'a> {
             // comment or expression expansion
             #[rustfmt::skip]
             '#' => match self.prev.as_ref().map(|t| &t.kind) {
-                Some(RegexpLit { delim, expand, depth }) if *depth > 0 => {
+                Some(RegexpLit { delim, depth, .. }) if *depth > 0 => {
                     self.chars.next();
-                    OpenExpansion { kind: InRegexp { delim: *delim, expand: *expand, depth: *depth } }
+                    OpenExpansion { kind: InRegexp { delim: *delim, depth: *depth } }
                 }
-                Some(StrLit { delim, expand, depth }) if *depth > 0 => {
+                Some(StrLit { delim, depth, .. }) if *depth > 0 => {
                     self.chars.next();
-                    OpenExpansion { kind: InStr { delim: *delim, expand: *expand, depth: *depth } }
+                    OpenExpansion { kind: InStr { delim: *delim, depth: *depth } }
                 }
-                Some(SymbolLit { delim, expand, depth }) if *depth > 0 => {
+                Some(SymbolLit { delim, depth, .. }) if *depth > 0 => {
                     self.chars.next();
-                    OpenExpansion { kind: InSymbol { delim: *delim, expand: *expand, depth: *depth } }
+                    OpenExpansion { kind: InSymbol { delim: *delim, depth: *depth } }
                 }
                 _ => self.comment(),
             },
