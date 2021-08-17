@@ -276,16 +276,16 @@ impl Ruby {
     }
 }
 
-#[derive(Clone)]
-struct Token {
-    kind: TokenKind,
+#[derive(Clone, Copy)]
+struct Token<'a> {
+    kind: TokenKind<'a>,
     start: usize,
     end: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 #[rustfmt::skip]
-enum TokenKind {
+enum TokenKind<'a> {
     BuiltinMethod { takes_arg: bool },
     CloseBrace,
     CloseExpansion { kind: ExpansionKind },
@@ -295,8 +295,8 @@ enum TokenKind {
     Def,
     Do,
     Dot,
-    Heredoc { label: String, expand: bool, trailing_context: String, open: bool },
-    HeredocLabel { label: Option<String>, expand: bool },
+    Heredoc { label: &'a str, expand: bool, trailing_context: &'a str, open: bool },
+    HeredocLabel { label: Option<&'a str>, expand: bool },
     Ident,
     Key,
     Keyword { takes_expr: bool },
@@ -304,7 +304,7 @@ enum TokenKind {
     MethodOwner,
     OpenBrace,
     OpenBracket,
-    OpenExpansion { kind: ExpansionKind },
+    OpenExpansion { kind: ExpansionKind<'a> },
     OpenParen,
     Op,
     Punct,
@@ -317,10 +317,10 @@ enum TokenKind {
     Variable,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 #[rustfmt::skip]
-enum ExpansionKind {
-    InHeredoc { label: String, trailing_context: String },
+enum ExpansionKind<'a> {
+    InHeredoc { label: &'a str, trailing_context: &'a str },
     InRegexp { delim: char, depth: usize },
     InStr { delim: char, depth: usize },
     InSymbol { delim: char, depth: usize },
@@ -685,14 +685,14 @@ impl<'a> Tokens<'a> {
                     self.chars.nth(1);
                     while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
                     let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
-                    let label = Some(self.text[start..end].to_string());
+                    let label = Some(&self.text[start..end]);
                     HeredocLabel { label, expand: true }
                 }
                 Some((start, d @ '\'' | d @ '"' | d @ '`')) => {
                     self.chars.nth(1);
                     let label = self.chars
                         .find(|&(_, ch)| ch == d)
-                        .map(|(end, _)| self.text[(start + 1)..end].to_string());
+                        .map(|(end, _)| &self.text[(start + 1)..end]);
                     HeredocLabel { label, expand: d != '\'' }
                 }
                 Some((_, '-' | '~')) => match self.chars.clone().nth(2) {
@@ -700,14 +700,14 @@ impl<'a> Tokens<'a> {
                         self.chars.nth(2);
                         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
                         let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
-                        let label = Some(self.text[start..end].to_string());
+                        let label = Some(&self.text[start..end]);
                         HeredocLabel { label, expand: true }
                     }
                     Some((start, d @ '\'' | d @ '"' | d @ '`')) => {
                         self.chars.nth(2);
                         let label = self.chars
                             .find(|&(_, ch)| ch == d)
-                            .map(|(end, _)| self.text[(start + 1)..end].to_string());
+                            .map(|(end, _)| &self.text[(start + 1)..end]);
                         HeredocLabel { label, expand: d != '\'' }
                     }
                     _ => Op,
@@ -720,30 +720,20 @@ impl<'a> Tokens<'a> {
 
     fn heredoc(&mut self) -> TokenKind {
         let delim = self.chars.next().map(|(_, ch)| ch).unwrap();
-        let label: String = self.chars
-            .by_ref()
-            .map(|(_, ch)| ch)
-            .take_while(|&ch| ch != delim)
-            .collect();
         let expand = delim == '"';
-        let mut trailing_context = String::new();
-        while let Some(&(_, ch)) = self.chars.peek() {
-            match (ch, self.chars.clone().nth(1)) {
-                ('#', Some((_, '{'))) => {
-                    return Heredoc { label, expand, trailing_context, open: true };
-                },
-                (ch, Some((idx, _))) if idx == 0 => {
-                    trailing_context.push(ch);
-                }
-                (ch, None) => {
-                    if self.text.is_empty() {
-                        trailing_context.push(ch);
-                    }
-                }
-                _ => break,
-            }
-            self.chars.next();
+        let start = self.context.find(delim).unwrap() + 1;
+        let end = self.chars.find(|&(_, ch)| ch == delim).map(|(idx, _)| idx).unwrap();
+        let label = &self.context[start..end];
+
+        let start = end + 1;
+        let end = self.context.find('#').unwrap_or(self.context.len());
+        let trailing_context = &self.context[start..end];
+
+        self.chars.nth(trailing_context.len());
+        if end < self.context.len() {
+            return Heredoc { label, expand, trailing_context, open: true };
         }
+
         while let Some(&(_, ch)) = self.chars.peek() {
             if expand && ch == '#' && matches!(self.chars.clone().nth(1), Some((_, '{'))) {
                 return Heredoc { label, expand, trailing_context, open: true };
@@ -754,7 +744,7 @@ impl<'a> Tokens<'a> {
         Heredoc { label, expand, trailing_context, open }
     }
 
-    fn heredoc_temp(&mut self, label: String, trailing_context: String) -> TokenKind {
+    fn heredoc_temp(&mut self, label: &str, trailing_context: &str) -> TokenKind {
         while let Some(&(_, ch)) = self.chars.peek() {
             if ch == '#' && matches!(self.chars.clone().nth(1), Some((_, '{'))) {
                 return Heredoc { label, expand: true, trailing_context, open: true };
