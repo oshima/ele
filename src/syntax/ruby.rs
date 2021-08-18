@@ -1,5 +1,5 @@
 use std::iter::{self, Chain, Iterator, Peekable, Repeat, Zip};
-use std::str::{CharIndices, Chars};
+use std::str::CharIndices;
 
 use self::ExpansionKind::*;
 use self::TokenKind::*;
@@ -64,7 +64,12 @@ impl Syntax for Ruby {
 
 impl Ruby {
     #![allow(clippy::single_match)]
-    fn update_row<'a>(&self, row: &'a mut Row, context_v: &mut Vec<TokenKind<'a>>, context_s: &mut String) {
+    fn update_row<'a>(
+        &self,
+        row: &'a mut Row,
+        context_v: &mut Vec<TokenKind<'a>>,
+        context_s: &mut String,
+    ) {
         let mut tokens = Tokens::from(&row.string, row.context.as_deref().unwrap()).peekable();
 
         row.faces.clear();
@@ -183,7 +188,7 @@ impl Ruby {
                     _ => {
                         context_v.push(token.kind);
                     }
-                }
+                },
                 HeredocLabel { label: Some(_), .. } => {
                     context_v.push(token.kind);
                 }
@@ -329,7 +334,7 @@ enum ExpansionKind<'a> {
 struct Tokens<'a> {
     text: &'a str,
     context: &'a str,
-    chars: Peekable<Chain<Zip<Repeat<usize>, Chars<'a>>, CharIndices<'a>>>,
+    chars: Peekable<Chain<Zip<Repeat<bool>, CharIndices<'a>>, Zip<Repeat<bool>, CharIndices<'a>>>>,
     prev: Option<Token<'a>>,
     braces: Vec<TokenKind<'a>>,
 }
@@ -339,9 +344,9 @@ impl<'a> Tokens<'a> {
         Self {
             text,
             context,
-            chars: iter::repeat(0)
-                .zip(context.chars())
-                .chain(text.char_indices())
+            chars: iter::repeat(true)
+                .zip(context.char_indices())
+                .chain(iter::repeat(false).zip(text.char_indices()))
                 .peekable(),
             prev: None,
             braces: Vec::new(),
@@ -358,7 +363,10 @@ impl<'a> Iterator for Tokens<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(CloseExpansion { kind }) = self.prev.map(|t| t.kind) {
-            let start = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
+            let start = self
+                .chars
+                .peek()
+                .map_or(self.text.len(), |&(_, (idx, _))| idx);
             #[rustfmt::skip]
             let kind = match kind {
                 InHeredoc { label, trailing_context } => {
@@ -369,7 +377,10 @@ impl<'a> Iterator for Tokens<'a> {
                 InStr { delim, depth } => self.str_lit(delim, true, depth),
                 InSymbol { delim, depth } => self.symbol_lit(delim, true, depth),
             };
-            let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
+            let end = self
+                .chars
+                .peek()
+                .map_or(self.text.len(), |&(_, (idx, _))| idx);
 
             let token = Token { kind, start, end };
             self.prev.replace(token);
@@ -377,7 +388,10 @@ impl<'a> Iterator for Tokens<'a> {
             return Some(token);
         }
 
-        let (start, ch) = self.chars.find(|&(_, ch)| !ch.is_ascii_whitespace())?;
+        let (start, ch) = match self.chars.find(|&(_, (_, ch))| !ch.is_ascii_whitespace())? {
+            (true, (_, ch)) => (0, ch),
+            (false, (idx, ch)) => (idx, ch),
+        };
 
         let kind = match ch {
             // comment or expression expansion
@@ -408,20 +422,20 @@ impl<'a> Iterator for Tokens<'a> {
 
             // symbol
             ':' => match self.chars.peek() {
-                Some(&(_, ' ' | '\t')) | None => Op,
-                Some(&(_, ':')) => {
+                Some(&(_, (_, ' ' | '\t'))) | None => Op,
+                Some(&(_, (_, ':'))) => {
                     self.chars.next();
                     ColonColon
                 }
-                Some(&(_, '\'')) => {
+                Some(&(_, (_, '\''))) => {
                     self.chars.next();
                     self.symbol_lit('\'', false, 1)
                 }
-                Some(&(_, '"')) => {
+                Some(&(_, (_, '"'))) => {
                     self.chars.next();
                     self.symbol_lit('"', true, 1)
                 }
-                Some(&(_, ch)) => self.pure_symbol_lit(ch),
+                Some(&(_, (_, ch))) => self.pure_symbol_lit(ch),
             },
 
             // regexp
@@ -442,7 +456,7 @@ impl<'a> Iterator for Tokens<'a> {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op,
                         None => match self.chars.peek() {
-                            Some(&(_, ' ' | '\t')) | None => Op,
+                            Some(&(_, (_, ' ' | '\t'))) | None => Op,
                             _ => self.regexp_lit(ch, true, 1),
                         },
                     }
@@ -480,16 +494,16 @@ impl<'a> Iterator for Tokens<'a> {
             '<' => match self.prev.map(|t| t.kind) {
                 Some(Def | Dot) => self.method(ch),
                 _ => self.heredoc_label(),
-            }
+            },
             '!' | '&' | '*' | '+' | '-' | '=' | '>' | '^' | '|' | '~' => {
                 match self.prev.map(|t| t.kind) {
                     Some(Def | Dot) => self.method(ch),
                     _ => Op,
                 }
             }
-            '.' => match self.chars.next_if(|&(_, ch)| ch == '.') {
+            '.' => match self.chars.next_if(|&(_, (_, ch))| ch == '.') {
                 Some(_) => {
-                    self.chars.next_if(|&(_, ch)| ch == '.');
+                    self.chars.next_if(|&(_, (_, ch))| ch == '.');
                     Op
                 }
                 _ => Dot,
@@ -529,7 +543,11 @@ impl<'a> Iterator for Tokens<'a> {
             },
         };
 
-        let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
+        let end = match self.chars.peek() {
+            Some(&(true, _)) => 0,
+            Some(&(false, (idx, _))) => idx,
+            None => self.text.len(),
+        };
 
         let token = Token { kind, start, end };
         self.prev.replace(token);
@@ -557,7 +575,7 @@ impl<'a> Tokens<'a> {
             '{' => '}',
             _ => delim,
         };
-        while let Some(&(_, ch)) = self.chars.peek() {
+        while let Some(&(_, (_, ch))) = self.chars.peek() {
             match ch {
                 ch if ch == close_delim => {
                     self.chars.next();
@@ -575,7 +593,7 @@ impl<'a> Tokens<'a> {
                     self.chars.next();
                 }
                 '#' => {
-                    if expand && matches!(self.chars.clone().nth(1), Some((_, '{'))) {
+                    if expand && matches!(self.chars.clone().nth(1), Some((_, (_, '{')))) {
                         return depth;
                     } else {
                         self.chars.next();
@@ -609,8 +627,8 @@ impl<'a> Tokens<'a> {
     fn pure_symbol_lit(&mut self, peeked: char) -> TokenKind<'a> {
         let valid = match peeked {
             '!' | '%' | '&' | '*' | '+' | '-' | '/' | '<' | '>' | '^' | '|' | '~' => true,
-            '=' => matches!(self.chars.clone().nth(1), Some((_, '=' | '~'))),
-            '[' => matches!(self.chars.clone().nth(1), Some((_, ']'))),
+            '=' => matches!(self.chars.clone().nth(1), Some((_, (_, '=' | '~')))),
+            '[' => matches!(self.chars.clone().nth(1), Some((_, (_, ']')))),
             ch if !is_delim(ch) && !ch.is_ascii_digit() => true,
             _ => false,
         };
@@ -626,7 +644,7 @@ impl<'a> Tokens<'a> {
     #[rustfmt::skip]
     fn regexp_lit(&mut self, delim: char, expand: bool, depth: usize) -> TokenKind<'a> {
         let depth = self.consume_content(delim, expand, depth);
-        while let Some(&(_, 'i' | 'm' | 'o' | 'x')) = self.chars.peek() {
+        while let Some(&(_, (_, 'i' | 'm' | 'o' | 'x'))) = self.chars.peek() {
             self.chars.next();
         }
         RegexpLit { delim, expand, depth }
@@ -635,44 +653,44 @@ impl<'a> Tokens<'a> {
     #[rustfmt::skip]
     fn percent_lit(&mut self) -> TokenKind<'a> {
         match self.chars.peek() {
-            Some(&(_, ch)) if ch.is_ascii_punctuation() => {
+            Some(&(_, (_, ch))) if ch.is_ascii_punctuation() => {
                 self.chars.next();
                 self.str_lit(ch, true, 1)
             }
-            Some(&(_, 'q' | 'w')) => match self.chars.clone().nth(1) {
-                Some((_, ch)) if ch.is_ascii_punctuation() => {
+            Some(&(_, (_, 'q' | 'w'))) => match self.chars.clone().nth(1) {
+                Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
                     self.chars.next();
                     self.chars.next();
                     self.str_lit(ch, false, 1)
                 }
                 _ => Op,
             }
-            Some(&(_, 'Q' | 'W' | 'x')) => match self.chars.clone().nth(1) {
-                Some((_, ch)) if ch.is_ascii_punctuation() => {
+            Some(&(_, (_, 'Q' | 'W' | 'x'))) => match self.chars.clone().nth(1) {
+                Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
                     self.chars.next();
                     self.chars.next();
                     self.str_lit(ch, true, 1)
                 }
                 _ => Op,
             }
-            Some(&(_, 'i' | 's')) => match self.chars.clone().nth(1) {
-                Some((_, ch)) if ch.is_ascii_punctuation() => {
+            Some(&(_, (_, 'i' | 's'))) => match self.chars.clone().nth(1) {
+                Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
                     self.chars.next();
                     self.chars.next();
                     self.symbol_lit(ch, false, 1)
                 }
                 _ => Op,
             }
-            Some(&(_, 'I')) => match self.chars.clone().nth(1) {
-                Some((_, ch)) if ch.is_ascii_punctuation() => {
+            Some(&(_, (_, 'I'))) => match self.chars.clone().nth(1) {
+                Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
                     self.chars.next();
                     self.chars.next();
                     self.symbol_lit(ch, true, 1)
                 }
                 _ => Op,
             }
-            Some(&(_, 'r')) => match self.chars.clone().nth(1) {
-                Some((_, ch)) if ch.is_ascii_punctuation() => {
+            Some(&(_, (_, 'r'))) => match self.chars.clone().nth(1) {
+                Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
                     self.chars.next();
                     self.chars.next();
                     self.regexp_lit(ch, true, 1)
@@ -685,74 +703,114 @@ impl<'a> Tokens<'a> {
 
     fn heredoc_label(&mut self) -> TokenKind<'a> {
         match self.chars.peek() {
-            Some(&(_, '<')) => match self.chars.clone().nth(1) {
-                Some((start, ch)) if !is_delim(ch) => {
+            Some(&(_, (_, '<'))) => match self.chars.clone().nth(1) {
+                Some((_, (start, ch))) if !is_delim(ch) => {
                     self.chars.nth(1);
-                    while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-                    let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
+                    while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
+                    let end = self
+                        .chars
+                        .peek()
+                        .map_or(self.text.len(), |&(_, (idx, _))| idx);
                     let label = Some(&self.text[start..end]);
-                    HeredocLabel { label, expand: true }
-                }
-                Some((start, d @ '\'' | d @ '"' | d @ '`')) => {
-                    self.chars.nth(1);
-                    let label = self.chars
-                        .find(|&(_, ch)| ch == d)
-                        .map(|(end, _)| &self.text[(start + 1)..end]);
-                    HeredocLabel { label, expand: d != '\'' }
-                }
-                Some((_, '-' | '~')) => match self.chars.clone().nth(2) {
-                    Some((start, ch)) if !is_delim(ch) => {
-                        self.chars.nth(2);
-                        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-                        let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
-                        let label = Some(&self.text[start..end]);
-                        HeredocLabel { label, expand: true }
+                    HeredocLabel {
+                        label,
+                        expand: true,
                     }
-                    Some((start, d @ '\'' | d @ '"' | d @ '`')) => {
+                }
+                Some((_, (start, d @ '\'' | d @ '"' | d @ '`'))) => {
+                    self.chars.nth(1);
+                    let label = self
+                        .chars
+                        .find(|&(_, (_, ch))| ch == d)
+                        .map(|(_, (end, _))| &self.text[(start + 1)..end]);
+                    HeredocLabel {
+                        label,
+                        expand: d != '\'',
+                    }
+                }
+                Some((_, (_, '-' | '~'))) => match self.chars.clone().nth(2) {
+                    Some((_, (start, ch))) if !is_delim(ch) => {
                         self.chars.nth(2);
-                        let label = self.chars
-                            .find(|&(_, ch)| ch == d)
-                            .map(|(end, _)| &self.text[(start + 1)..end]);
-                        HeredocLabel { label, expand: d != '\'' }
+                        while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
+                        let end = self
+                            .chars
+                            .peek()
+                            .map_or(self.text.len(), |&(_, (idx, _))| idx);
+                        let label = Some(&self.text[start..end]);
+                        HeredocLabel {
+                            label,
+                            expand: true,
+                        }
+                    }
+                    Some((_, (start, d @ '\'' | d @ '"' | d @ '`'))) => {
+                        self.chars.nth(2);
+                        let label = self
+                            .chars
+                            .find(|&(_, (_, ch))| ch == d)
+                            .map(|(_, (end, _))| &self.text[(start + 1)..end]);
+                        HeredocLabel {
+                            label,
+                            expand: d != '\'',
+                        }
                     }
                     _ => Op,
-                }
+                },
                 _ => Op,
-            }
+            },
             _ => Op,
         }
     }
 
     fn heredoc(&mut self) -> TokenKind<'a> {
-        let delim = self.chars.next().map(|(_, ch)| ch).unwrap();
-        self.chars.find(|&(_, ch)| ch == delim);
+        let delim = self.chars.next().map(|(_, (_, ch))| ch).unwrap();
         let expand = delim == '"';
-        let start = self.context.find(delim).unwrap() + 1;
-        let end = start + self.context[start..].find(delim).unwrap();
+
+        let start = self.chars.peek().map(|&(_, (idx, _))| idx).unwrap();
+        let end = self
+            .chars
+            .find(|&(_, (_, ch))| ch == delim)
+            .map(|(_, (idx, _))| idx)
+            .unwrap();
         let label = &self.context[start..end];
 
         let start = end + 1;
-        let end = self.context.find('#').unwrap_or(self.context.len());
-        let trailing_context = &self.context[start..end];
-
-        self.chars.nth(trailing_context.len());
-        if end < self.context.len() {
-            return Heredoc { label, expand, trailing_context, open: true };
+        while let Some(&(true, (end, ch))) = self.chars.peek() {
+            if ch == '#' {
+                let trailing_context = &self.context[start..end];
+                return Heredoc {
+                    label,
+                    expand,
+                    trailing_context,
+                    open: true,
+                };
+            }
+            self.chars.next();
         }
+        let trailing_context = &self.context[start..];
 
-        while let Some(&(_, ch)) = self.chars.peek() {
-            if expand && ch == '#' && matches!(self.chars.clone().nth(1), Some((_, '{'))) {
-                return Heredoc { label, expand, trailing_context, open: true };
+        while let Some(&(_, (_, ch))) = self.chars.peek() {
+            if expand && ch == '#' && matches!(self.chars.clone().nth(1), Some((_, (_, '{')))) {
+                return Heredoc {
+                    label,
+                    expand,
+                    trailing_context,
+                    open: true,
+                };
             }
             self.chars.next();
         }
         let open = !self.text.contains(&label) || self.text.trim() != label.trim();
-        Heredoc { label, expand, trailing_context, open }
+        Heredoc {
+            label,
+            expand,
+            trailing_context,
+            open,
+        }
     }
 
     fn heredoc_temp(&mut self) {
-        while let Some(&(_, ch)) = self.chars.peek() {
-            if ch == '#' && matches!(self.chars.clone().nth(1), Some((_, '{'))) {
+        while let Some(&(_, (_, ch))) = self.chars.peek() {
+            if ch == '#' && matches!(self.chars.clone().nth(1), Some((_, (_, '{')))) {
                 return;
             }
             self.chars.next();
@@ -760,19 +818,19 @@ impl<'a> Tokens<'a> {
     }
 
     fn variable(&mut self) -> TokenKind<'a> {
-        self.chars.next_if(|&(_, ch)| ch == '@');
-        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+        self.chars.next_if(|&(_, (_, ch))| ch == '@');
+        while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
         Variable
     }
 
     fn method_owner_or_method(&mut self) -> TokenKind<'a> {
-        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
+        while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
         match self.chars.peek() {
-            Some(&(_, '!' | '?' | '=')) => {
+            Some(&(_, (_, '!' | '?' | '='))) => {
                 self.chars.next();
                 Method
             }
-            Some(&(_, '.')) => MethodOwner,
+            Some(&(_, (_, '.'))) => MethodOwner,
             _ => Method,
         }
     }
@@ -781,57 +839,58 @@ impl<'a> Tokens<'a> {
         match ch {
             '|' | '^' | '&' | '/' | '%' | '~' | '`' => (),
             '+' | '-' => {
-                self.chars.next_if(|&(_, ch)| ch == '@');
+                self.chars.next_if(|&(_, (_, ch))| ch == '@');
             }
             '*' => {
-                self.chars.next_if(|&(_, ch)| ch == '*');
+                self.chars.next_if(|&(_, (_, ch))| ch == '*');
             }
             '<' => match self.chars.peek() {
-                Some(&(_, '<')) => {
+                Some(&(_, (_, '<'))) => {
                     self.chars.next();
                 }
-                Some(&(_, '=')) => {
+                Some(&(_, (_, '='))) => {
                     self.chars.next();
-                    self.chars.next_if(|&(_, ch)| ch == '>');
+                    self.chars.next_if(|&(_, (_, ch))| ch == '>');
                 }
                 _ => (),
             },
             '>' => {
-                self.chars.next_if(|&(_, ch)| ch == '>' || ch == '=');
+                self.chars.next_if(|&(_, (_, ch))| ch == '>' || ch == '=');
             }
             '!' => {
-                self.chars.next_if(|&(_, ch)| ch == '=' || ch == '~');
+                self.chars.next_if(|&(_, (_, ch))| ch == '=' || ch == '~');
             }
             '=' => match self.chars.peek() {
-                Some(&(_, '=')) => {
+                Some(&(_, (_, '='))) => {
                     self.chars.next();
-                    self.chars.next_if(|&(_, ch)| ch == '=');
+                    self.chars.next_if(|&(_, (_, ch))| ch == '=');
                 }
-                Some(&(_, '~')) => {
+                Some(&(_, (_, '~'))) => {
                     self.chars.next();
                 }
                 _ => return Op,
             },
             '[' => match self.chars.peek() {
-                Some(&(_, ']')) => {
+                Some(&(_, (_, ']'))) => {
                     self.chars.next();
-                    self.chars.next_if(|&(_, ch)| ch == '=');
+                    self.chars.next_if(|&(_, (_, ch))| ch == '=');
                 }
                 _ => return OpenBracket,
             },
             _ => {
-                while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-                self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?' || ch == '=');
+                while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
+                self.chars
+                    .next_if(|&(_, (_, ch))| ch == '!' || ch == '?' || ch == '=');
             }
         }
         Method
     }
 
     fn upper_ident(&mut self) -> TokenKind<'a> {
-        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-        self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
-        if let Some(&(_, ':')) = self.chars.peek() {
-            if !matches!(self.chars.clone().nth(1), Some((_, ':'))) {
+        while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
+        self.chars.next_if(|&(_, (_, ch))| ch == '!' || ch == '?');
+        if let Some(&(_, (_, ':'))) = self.chars.peek() {
+            if !matches!(self.chars.clone().nth(1), Some((_, (_, ':')))) {
                 self.chars.next();
                 return Key;
             }
@@ -840,15 +899,18 @@ impl<'a> Tokens<'a> {
     }
 
     fn ident_or_keyword(&mut self, start: usize) -> TokenKind<'a> {
-        while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
-        self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
-        if let Some(&(_, ':')) = self.chars.peek() {
-            if !matches!(self.chars.clone().nth(1), Some((_, ':'))) {
+        while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
+        self.chars.next_if(|&(_, (_, ch))| ch == '!' || ch == '?');
+        if let Some(&(_, (_, ':'))) = self.chars.peek() {
+            if !matches!(self.chars.clone().nth(1), Some((_, (_, ':')))) {
                 self.chars.next();
                 return Key;
             }
         }
-        let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
+        let end = self
+            .chars
+            .peek()
+            .map_or(self.text.len(), |&(_, (idx, _))| idx);
         match &self.text[start..end] {
             "def" => Def,
             "do" => Do,
