@@ -64,7 +64,7 @@ impl Syntax for Ruby {
 
 impl Ruby {
     #![allow(clippy::single_match)]
-    fn update_row(&self, row: &mut Row, context_v: &mut Vec<TokenKind>, context_s: &mut String) {
+    fn update_row<'a>(&self, row: &'a mut Row, context_v: &mut Vec<TokenKind<'a>>, context_s: &mut String) {
         let mut tokens = Tokens::from(&row.string, row.context.as_deref().unwrap()).peekable();
 
         row.faces.clear();
@@ -88,7 +88,7 @@ impl Ruby {
                 RegexpLit { .. } | StrLit { .. } => Fg::String,
                 UpperIdent => Fg::Type,
                 Variable => Fg::Variable,
-                BuiltinMethod { takes_arg: true } => match tokens.peek().map(|t| &t.kind) {
+                BuiltinMethod { takes_arg: true } => match tokens.peek().map(|t| t.kind) {
                     Some(
                         CloseBrace
                         | CloseExpansion { .. }
@@ -104,7 +104,7 @@ impl Ruby {
                     | None => Fg::Default,
                     _ => Fg::Macro,
                 },
-                Ident => match tokens.peek().map(|t| &t.kind) {
+                Ident => match tokens.peek().map(|t| t.kind) {
                     Some(
                         CloseBrace
                         | CloseExpansion { .. }
@@ -212,55 +212,55 @@ impl Ruby {
     #[rustfmt::skip]
     fn convert_context(&self, slice: &[TokenKind], string: &mut String) {
         for token_kind in slice {
-            match token_kind {
+            match *token_kind {
                 RegexpLit { delim, expand, depth } => match (delim, expand) {
                     ('/', true) => {
-                        string.push(*delim);
+                        string.push(delim);
                     }
                     _ => {
                         string.push_str("%r");
-                        for _ in 0..*depth {
-                            string.push(*delim);
+                        for _ in 0..depth {
+                            string.push(delim);
                         }
                     }
                 },
                 StrLit { delim, expand, depth } => match (delim, expand) {
                     ('\'', false) | ('"' | '`', true) => {
-                        string.push(*delim);
+                        string.push(delim);
                     }
                     _ => {
                         string.push('%');
-                        string.push(if *expand { 'Q' } else { 'q' });
-                        for _ in 0..*depth {
-                            string.push(*delim);
+                        string.push(if expand { 'Q' } else { 'q' });
+                        for _ in 0..depth {
+                            string.push(delim);
                         }
                     }
                 },
                 SymbolLit { delim, expand, depth } => match (delim, expand) {
                     ('\'', false) | ('"', true) => {
                         string.push(':');
-                        string.push(*delim);
+                        string.push(delim);
                     }
                     _ => {
                         string.push('%');
-                        string.push(if *expand { 'I' } else { 'i' });
-                        for _ in 0..*depth {
-                            string.push(*delim);
+                        string.push(if expand { 'I' } else { 'i' });
+                        for _ in 0..depth {
+                            string.push(delim);
                         }
                     }
                 },
                 HeredocLabel { label: Some(label), expand } => {
                     string.push('\0');
-                    string.push(if *expand { '"' } else { '\'' });
+                    string.push(if expand { '"' } else { '\'' });
                     string.push_str(label);
-                    string.push(if *expand { '"' } else { '\'' });
+                    string.push(if expand { '"' } else { '\'' });
                 }
                 Heredoc { label, expand, trailing_context, open } => {
-                    if *open {
+                    if open {
                         string.push('\0');
-                        string.push(if *expand { '"' } else { '\'' });
+                        string.push(if expand { '"' } else { '\'' });
                         string.push_str(label);
-                        string.push(if *expand { '"' } else { '\'' });
+                        string.push(if expand { '"' } else { '\'' });
                     }
                     string.push_str(trailing_context);
                 }
@@ -288,7 +288,7 @@ struct Token<'a> {
 enum TokenKind<'a> {
     BuiltinMethod { takes_arg: bool },
     CloseBrace,
-    CloseExpansion { kind: ExpansionKind },
+    CloseExpansion { kind: ExpansionKind<'a> },
     ColonColon,
     Comma,
     Comment,
@@ -328,15 +328,17 @@ enum ExpansionKind<'a> {
 
 struct Tokens<'a> {
     text: &'a str,
+    context: &'a str,
     chars: Peekable<Chain<Zip<Repeat<usize>, Chars<'a>>, CharIndices<'a>>>,
-    prev: Option<Token>,
-    braces: Vec<TokenKind>,
+    prev: Option<Token<'a>>,
+    braces: Vec<TokenKind<'a>>,
 }
 
 impl<'a> Tokens<'a> {
     fn from(text: &'a str, context: &'a str) -> Self {
         Self {
             text,
+            context,
             chars: iter::repeat(0)
                 .zip(context.chars())
                 .chain(text.char_indices())
@@ -352,14 +354,17 @@ fn is_delim(ch: char) -> bool {
 }
 
 impl<'a> Iterator for Tokens<'a> {
-    type Item = Token;
+    type Item = Token<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(CloseExpansion { kind }) = self.prev.clone().map(|t| t.kind) {
+        if let Some(CloseExpansion { kind }) = self.prev.map(|t| t.kind) {
             let start = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
             #[rustfmt::skip]
             let kind = match kind {
-                InHeredoc { label, trailing_context } => self.heredoc_temp(label, trailing_context),
+                InHeredoc { label, trailing_context } => {
+                    self.heredoc_temp();
+                    Heredoc { label, expand: true, trailing_context, open: true }
+                },
                 InRegexp { delim, depth } => self.regexp_lit(delim, true, depth),
                 InStr { delim, depth } => self.str_lit(delim, true, depth),
                 InSymbol { delim, depth } => self.symbol_lit(delim, true, depth),
@@ -367,7 +372,7 @@ impl<'a> Iterator for Tokens<'a> {
             let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
 
             let token = Token { kind, start, end };
-            self.prev.replace(token.clone());
+            self.prev.replace(token);
 
             return Some(token);
         }
@@ -377,22 +382,22 @@ impl<'a> Iterator for Tokens<'a> {
         let kind = match ch {
             // comment or expression expansion
             #[rustfmt::skip]
-            '#' => match self.prev.as_ref().map(|t| &t.kind) {
+            '#' => match self.prev.map(|t| t.kind) {
                 Some(Heredoc { label, trailing_context, open: true, .. }) => {
                     self.chars.next();
-                    OpenExpansion { kind: InHeredoc { label: label.clone(), trailing_context: trailing_context.clone() } }
+                    OpenExpansion { kind: InHeredoc { label, trailing_context } }
                 }
-                Some(RegexpLit { delim, depth, .. }) if *depth > 0 => {
+                Some(RegexpLit { delim, depth, .. }) if depth > 0 => {
                     self.chars.next();
-                    OpenExpansion { kind: InRegexp { delim: *delim, depth: *depth } }
+                    OpenExpansion { kind: InRegexp { delim, depth } }
                 }
-                Some(StrLit { delim, depth, .. }) if *depth > 0 => {
+                Some(StrLit { delim, depth, .. }) if depth > 0 => {
                     self.chars.next();
-                    OpenExpansion { kind: InStr { delim: *delim, depth: *depth } }
+                    OpenExpansion { kind: InStr { delim, depth } }
                 }
-                Some(SymbolLit { delim, depth, .. }) if *depth > 0 => {
+                Some(SymbolLit { delim, depth, .. }) if depth > 0 => {
                     self.chars.next();
-                    OpenExpansion { kind: InSymbol { delim: *delim, depth: *depth } }
+                    OpenExpansion { kind: InSymbol { delim, depth } }
                 }
                 _ => self.comment(),
             },
@@ -420,7 +425,7 @@ impl<'a> Iterator for Tokens<'a> {
             },
 
             // regexp
-            '/' => match self.prev.as_ref().map(|t| &t.kind) {
+            '/' => match self.prev.map(|t| t.kind) {
                 Some(
                     Comma
                     | Key
@@ -434,7 +439,7 @@ impl<'a> Iterator for Tokens<'a> {
                 ) => self.regexp_lit(ch, true, 1),
                 Some(Def | Dot) => self.method(ch),
                 Some(BuiltinMethod { takes_arg: true } | Ident) => {
-                    match self.prev.as_ref().filter(|t| t.end == start) {
+                    match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op,
                         None => match self.chars.peek() {
                             Some(&(_, ' ' | '\t')) | None => Op,
@@ -447,7 +452,7 @@ impl<'a> Iterator for Tokens<'a> {
             },
 
             // percent literal
-            '%' => match self.prev.as_ref().map(|t| &t.kind) {
+            '%' => match self.prev.map(|t| t.kind) {
                 Some(
                     Comma
                     | Key
@@ -461,7 +466,7 @@ impl<'a> Iterator for Tokens<'a> {
                 ) => self.percent_lit(),
                 Some(Def | Dot) => self.method(ch),
                 Some(BuiltinMethod { takes_arg: true } | Ident) => {
-                    match self.prev.as_ref().filter(|t| t.end == start) {
+                    match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op,
                         None => self.percent_lit(),
                     }
@@ -472,12 +477,12 @@ impl<'a> Iterator for Tokens<'a> {
 
             // operator
             '?' => Op,
-            '<' => match self.prev.as_ref().map(|t| &t.kind) {
+            '<' => match self.prev.map(|t| t.kind) {
                 Some(Def | Dot) => self.method(ch),
                 _ => self.heredoc_label(),
             }
             '!' | '&' | '*' | '+' | '-' | '=' | '>' | '^' | '|' | '~' => {
-                match self.prev.as_ref().map(|t| &t.kind) {
+                match self.prev.map(|t| t.kind) {
                     Some(Def | Dot) => self.method(ch),
                     _ => Op,
                 }
@@ -497,13 +502,13 @@ impl<'a> Iterator for Tokens<'a> {
             ',' => Comma,
             ';' => Semi,
             '{' => OpenBrace,
-            '[' => match self.prev.as_ref().map(|t| &t.kind) {
+            '[' => match self.prev.map(|t| t.kind) {
                 Some(Def | Dot) => self.method(ch),
                 _ => OpenBracket,
             },
             '(' => OpenParen,
             '}' => match self.braces.last() {
-                Some(OpenExpansion { kind }) => CloseExpansion { kind: kind.clone() },
+                Some(&OpenExpansion { kind }) => CloseExpansion { kind },
                 _ => CloseBrace,
             },
             ch if is_delim(ch) => Punct,
@@ -512,12 +517,12 @@ impl<'a> Iterator for Tokens<'a> {
             '\0' => self.heredoc(),
 
             // identifier or keyword
-            ch if ch.is_ascii_uppercase() => match self.prev.as_ref().map(|t| &t.kind) {
+            ch if ch.is_ascii_uppercase() => match self.prev.map(|t| t.kind) {
                 Some(Def) => self.method_owner_or_method(),
                 Some(Dot) => self.method(ch),
                 _ => self.upper_ident(),
             },
-            _ => match self.prev.as_ref().map(|t| &t.kind) {
+            _ => match self.prev.map(|t| t.kind) {
                 Some(Def) => self.method_owner_or_method(),
                 Some(Dot) => self.method(ch),
                 _ => self.ident_or_keyword(start),
@@ -527,10 +532,10 @@ impl<'a> Iterator for Tokens<'a> {
         let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
 
         let token = Token { kind, start, end };
-        self.prev.replace(token.clone());
+        self.prev.replace(token);
         match token.kind {
             OpenBrace | OpenExpansion { .. } => {
-                self.braces.push(token.kind.clone());
+                self.braces.push(token.kind);
             }
             CloseBrace | CloseExpansion { .. } => {
                 self.braces.pop();
@@ -584,24 +589,24 @@ impl<'a> Tokens<'a> {
         depth
     }
 
-    fn comment(&mut self) -> TokenKind {
+    fn comment(&mut self) -> TokenKind<'a> {
         while self.chars.next().is_some() {}
         Comment
     }
 
     #[rustfmt::skip]
-    fn str_lit(&mut self, delim: char, expand: bool, depth: usize) -> TokenKind {
+    fn str_lit(&mut self, delim: char, expand: bool, depth: usize) -> TokenKind<'a> {
         let depth = self.consume_content(delim, expand, depth);
         StrLit { delim, expand, depth }
     }
 
     #[rustfmt::skip]
-    fn symbol_lit(&mut self, delim: char, expand: bool, depth: usize) -> TokenKind {
+    fn symbol_lit(&mut self, delim: char, expand: bool, depth: usize) -> TokenKind<'a> {
         let depth = self.consume_content(delim, expand, depth);
         SymbolLit { delim, expand, depth }
     }
 
-    fn pure_symbol_lit(&mut self, peeked: char) -> TokenKind {
+    fn pure_symbol_lit(&mut self, peeked: char) -> TokenKind<'a> {
         let valid = match peeked {
             '!' | '%' | '&' | '*' | '+' | '-' | '/' | '<' | '>' | '^' | '|' | '~' => true,
             '=' => matches!(self.chars.clone().nth(1), Some((_, '=' | '~'))),
@@ -619,7 +624,7 @@ impl<'a> Tokens<'a> {
     }
 
     #[rustfmt::skip]
-    fn regexp_lit(&mut self, delim: char, expand: bool, depth: usize) -> TokenKind {
+    fn regexp_lit(&mut self, delim: char, expand: bool, depth: usize) -> TokenKind<'a> {
         let depth = self.consume_content(delim, expand, depth);
         while let Some(&(_, 'i' | 'm' | 'o' | 'x')) = self.chars.peek() {
             self.chars.next();
@@ -628,7 +633,7 @@ impl<'a> Tokens<'a> {
     }
 
     #[rustfmt::skip]
-    fn percent_lit(&mut self) -> TokenKind {
+    fn percent_lit(&mut self) -> TokenKind<'a> {
         match self.chars.peek() {
             Some(&(_, ch)) if ch.is_ascii_punctuation() => {
                 self.chars.next();
@@ -678,7 +683,7 @@ impl<'a> Tokens<'a> {
         }
     }
 
-    fn heredoc_label(&mut self) -> TokenKind {
+    fn heredoc_label(&mut self) -> TokenKind<'a> {
         match self.chars.peek() {
             Some(&(_, '<')) => match self.chars.clone().nth(1) {
                 Some((start, ch)) if !is_delim(ch) => {
@@ -718,11 +723,12 @@ impl<'a> Tokens<'a> {
         }
     }
 
-    fn heredoc(&mut self) -> TokenKind {
+    fn heredoc(&mut self) -> TokenKind<'a> {
         let delim = self.chars.next().map(|(_, ch)| ch).unwrap();
+        self.chars.find(|&(_, ch)| ch == delim);
         let expand = delim == '"';
         let start = self.context.find(delim).unwrap() + 1;
-        let end = self.chars.find(|&(_, ch)| ch == delim).map(|(idx, _)| idx).unwrap();
+        let end = start + self.context[start..].find(delim).unwrap();
         let label = &self.context[start..end];
 
         let start = end + 1;
@@ -744,23 +750,22 @@ impl<'a> Tokens<'a> {
         Heredoc { label, expand, trailing_context, open }
     }
 
-    fn heredoc_temp(&mut self, label: &str, trailing_context: &str) -> TokenKind {
+    fn heredoc_temp(&mut self) {
         while let Some(&(_, ch)) = self.chars.peek() {
             if ch == '#' && matches!(self.chars.clone().nth(1), Some((_, '{'))) {
-                return Heredoc { label, expand: true, trailing_context, open: true };
+                return;
             }
             self.chars.next();
         }
-        Heredoc { label, expand: true, trailing_context, open: true }
     }
 
-    fn variable(&mut self) -> TokenKind {
+    fn variable(&mut self) -> TokenKind<'a> {
         self.chars.next_if(|&(_, ch)| ch == '@');
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
         Variable
     }
 
-    fn method_owner_or_method(&mut self) -> TokenKind {
+    fn method_owner_or_method(&mut self) -> TokenKind<'a> {
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
         match self.chars.peek() {
             Some(&(_, '!' | '?' | '=')) => {
@@ -772,7 +777,7 @@ impl<'a> Tokens<'a> {
         }
     }
 
-    fn method(&mut self, ch: char) -> TokenKind {
+    fn method(&mut self, ch: char) -> TokenKind<'a> {
         match ch {
             '|' | '^' | '&' | '/' | '%' | '~' | '`' => (),
             '+' | '-' => {
@@ -822,7 +827,7 @@ impl<'a> Tokens<'a> {
         Method
     }
 
-    fn upper_ident(&mut self) -> TokenKind {
+    fn upper_ident(&mut self) -> TokenKind<'a> {
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
         self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
         if let Some(&(_, ':')) = self.chars.peek() {
@@ -834,7 +839,7 @@ impl<'a> Tokens<'a> {
         UpperIdent
     }
 
-    fn ident_or_keyword(&mut self, start: usize) -> TokenKind {
+    fn ident_or_keyword(&mut self, start: usize) -> TokenKind<'a> {
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
         self.chars.next_if(|&(_, ch)| ch == '!' || ch == '?');
         if let Some(&(_, ':')) = self.chars.peek() {
