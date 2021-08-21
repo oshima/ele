@@ -363,25 +363,8 @@ impl<'a> Iterator for Tokens<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(CloseExpansion { kind }) = self.prev.map(|t| t.kind) {
-            let start = self
-                .chars
-                .peek()
-                .map_or(self.text.len(), |&(_, (idx, _))| idx);
-            #[rustfmt::skip]
-            let kind = match kind {
-                InHeredoc { label, trailing_context } => self.heredoc_resume(label, trailing_context),
-                InRegexp { delim, depth } => self.regexp_lit(delim, depth, true),
-                InStr { delim, depth } => self.str_lit(delim, depth, true),
-                InSymbol { delim, depth } => self.symbol_lit(delim, depth, true),
-            };
-            let end = self
-                .chars
-                .peek()
-                .map_or(self.text.len(), |&(_, (idx, _))| idx);
-
-            let token = Token { kind, start, end };
+            let token = self.after_expansion(kind);
             self.prev.replace(token);
-
             return Some(token);
         }
 
@@ -539,6 +522,15 @@ impl<'a> Iterator for Tokens<'a> {
                 _ => self.ident_or_keyword(start),
             },
         };
+        match kind {
+            OpenBrace | OpenExpansion { .. } => {
+                self.braces.push(kind);
+            }
+            CloseBrace | CloseExpansion { .. } => {
+                self.braces.pop();
+            }
+            _ => (),
+        };
 
         let end = match self.chars.peek() {
             Some(&(true, _)) => 0,
@@ -548,21 +540,32 @@ impl<'a> Iterator for Tokens<'a> {
 
         let token = Token { kind, start, end };
         self.prev.replace(token);
-        match token.kind {
-            OpenBrace | OpenExpansion { .. } => {
-                self.braces.push(token.kind);
-            }
-            CloseBrace | CloseExpansion { .. } => {
-                self.braces.pop();
-            }
-            _ => (),
-        };
-
         Some(token)
     }
 }
 
 impl<'a> Tokens<'a> {
+    fn after_expansion(&mut self, kind: ExpansionKind<'a>) -> Token<'a> {
+        let start = self
+            .chars
+            .peek()
+            .map_or(self.text.len(), |&(_, (idx, _))| idx);
+        let kind = match kind {
+            InHeredoc {
+                label,
+                trailing_context,
+            } => self.heredoc_resume(label, trailing_context),
+            InRegexp { delim, depth } => self.regexp_lit(delim, depth, true),
+            InStr { delim, depth } => self.str_lit(delim, depth, true),
+            InSymbol { delim, depth } => self.symbol_lit(delim, depth, true),
+        };
+        let end = self
+            .chars
+            .peek()
+            .map_or(self.text.len(), |&(_, (idx, _))| idx);
+        Token { kind, start, end }
+    }
+
     fn consume_content(&mut self, delim: char, depth: usize, expand: bool) -> usize {
         let close_delim = match delim {
             '(' => ')',
