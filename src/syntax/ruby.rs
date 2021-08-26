@@ -135,61 +135,41 @@ impl Ruby {
 
             // Derive the context of the next row
             match token.kind {
-                RegexpLit { depth, .. } if depth > 0 => {
+                Heredoc { .. }
+                | HeredocLabel { label: Some(_), .. }
+                | OpenBrace
+                | OpenExpansion { .. } => {
                     context_v.push(token.kind);
                 }
-                StrLit { depth, .. } if depth > 0 => {
+                RegexpLit { depth, .. } | StrLit { depth, .. } | SymbolLit { depth, .. }
+                    if depth > 0 =>
+                {
                     context_v.push(token.kind);
                 }
-                SymbolLit { depth, .. } if depth > 0 => {
-                    context_v.push(token.kind);
-                }
-                Heredoc { .. } => {
-                    context_v.push(token.kind);
-                }
-                HeredocLabel { label: Some(_), .. } => {
-                    context_v.push(token.kind);
-                }
-                OpenBrace | OpenExpansion { .. } => {
-                    context_v.push(token.kind);
-                }
-                CloseBrace => match context_v[..] {
-                    [.., OpenBrace] => {
-                        context_v.pop();
-                    }
-                    [.., HeredocLabel { .. }] => {
-                        for (i, kind) in context_v.iter().enumerate().rev() {
-                            match kind {
-                                HeredocLabel { .. } => (),
-                                OpenBrace => {
-                                    context_v.remove(i);
-                                    break;
-                                }
-                                _ => break,
+                CloseBrace => {
+                    for (i, kind) in context_v.iter().enumerate().rev() {
+                        match kind {
+                            HeredocLabel { .. } => (),
+                            OpenBrace => {
+                                context_v.remove(i);
+                                break;
                             }
+                            _ => break,
                         }
                     }
-                    _ => (),
                 },
-                CloseExpansion { .. } => match context_v[..] {
-                    [.., OpenExpansion { .. }] => {
-                        context_v.pop();
-                        context_v.pop();
-                    }
-                    [.., HeredocLabel { .. }] => {
-                        for (i, kind) in context_v.iter().enumerate().rev() {
-                            match kind {
-                                HeredocLabel { .. } => (),
-                                OpenExpansion { .. } => {
-                                    context_v.remove(i - 1);
-                                    context_v.remove(i - 1);
-                                    break;
-                                }
-                                _ => break,
+                CloseExpansion { .. } => {
+                    for (i, kind) in context_v.iter().enumerate().rev() {
+                        match kind {
+                            HeredocLabel { .. } => (),
+                            OpenExpansion { .. } => {
+                                context_v.remove(i - 1);
+                                context_v.remove(i - 1);
+                                break;
                             }
+                            _ => break,
                         }
                     }
-                    _ => (),
                 },
                 _ => (),
             }
