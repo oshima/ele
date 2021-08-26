@@ -135,60 +135,18 @@ impl Ruby {
 
             // Derive the context of the next row
             match token.kind {
-                RegexpLit { depth: 0, .. } => match context_v[..] {
-                    [.., RegexpLit { .. }] => {
-                        context_v.pop();
-                    }
-                    _ => (),
-                },
-                RegexpLit { .. } => match context_v[..] {
-                    [.., RegexpLit { .. }] => {
-                        context_v.pop();
-                        context_v.push(token.kind);
-                    }
-                    _ => {
-                        context_v.push(token.kind);
-                    }
-                },
-                StrLit { depth: 0, .. } => match context_v[..] {
-                    [.., StrLit { .. }] => {
-                        context_v.pop();
-                    }
-                    _ => (),
-                },
-                StrLit { .. } => match context_v[..] {
-                    [.., StrLit { .. }] => {
-                        context_v.pop();
-                        context_v.push(token.kind);
-                    }
-                    _ => {
-                        context_v.push(token.kind);
-                    }
-                },
-                SymbolLit { depth: 0, .. } => match context_v[..] {
-                    [.., SymbolLit { .. }] => {
-                        context_v.pop();
-                    }
-                    _ => (),
-                },
-                SymbolLit { .. } => match context_v[..] {
-                    [.., SymbolLit { .. }] => {
-                        context_v.pop();
-                        context_v.push(token.kind);
-                    }
-                    _ => {
-                        context_v.push(token.kind);
-                    }
-                },
-                Heredoc { .. } => match context_v[..] {
-                    [.., Heredoc { .. }] => {
-                        context_v.pop();
-                        context_v.push(token.kind);
-                    }
-                    _ => {
-                        context_v.push(token.kind);
-                    }
-                },
+                RegexpLit { depth, .. } if depth > 0 => {
+                    context_v.push(token.kind);
+                }
+                StrLit { depth, .. } if depth > 0 => {
+                    context_v.push(token.kind);
+                }
+                SymbolLit { depth, .. } if depth > 0 => {
+                    context_v.push(token.kind);
+                }
+                Heredoc { .. } => {
+                    context_v.push(token.kind);
+                }
                 HeredocLabel { label: Some(_), .. } => {
                     context_v.push(token.kind);
                 }
@@ -199,11 +157,37 @@ impl Ruby {
                     [.., OpenBrace] => {
                         context_v.pop();
                     }
+                    [.., HeredocLabel { .. }] => {
+                        for (i, kind) in context_v.iter().enumerate().rev() {
+                            match kind {
+                                HeredocLabel { .. } => (),
+                                OpenBrace => {
+                                    context_v.remove(i);
+                                    break;
+                                }
+                                _ => break,
+                            }
+                        }
+                    }
                     _ => (),
                 },
                 CloseExpansion { .. } => match context_v[..] {
                     [.., OpenExpansion { .. }] => {
                         context_v.pop();
+                        context_v.pop();
+                    }
+                    [.., HeredocLabel { .. }] => {
+                        for (i, kind) in context_v.iter().enumerate().rev() {
+                            match kind {
+                                HeredocLabel { .. } => (),
+                                OpenExpansion { .. } => {
+                                    context_v.remove(i - 1);
+                                    context_v.remove(i - 1);
+                                    break;
+                                }
+                                _ => break,
+                            }
+                        }
                     }
                     _ => (),
                 },
@@ -762,15 +746,11 @@ impl<'a> Tokens<'a> {
             .unwrap();
         let label = &self.context[start..end];
 
-        let start = end + 1;
-        while let Some(&(true, (end, ch))) = self.chars.peek() {
-            if ch == '#' {
-                let trailing_context = &self.context[start..end];
-                return Heredoc { label, trailing_context, expand, open: true };
-            }
-            self.chars.next();
+        if let Some(&(true, (_, '#'))) = self.chars.peek() {
+            return Heredoc { label, trailing_context: "", expand, open: true };
         }
-        let trailing_context = &self.context[start..];
+        while self.chars.next_if(|&(in_context, _)| in_context).is_some() {}
+        let trailing_context = &self.context[(end + 1)..];
 
         while let Some(&(_, (_, ch))) = self.chars.peek() {
             if expand && ch == '#' && matches!(self.chars.clone().nth(1), Some((_, (_, '{')))) {
