@@ -157,7 +157,7 @@ impl Ruby {
                             _ => break,
                         }
                     }
-                },
+                }
                 CloseExpansion { .. } => {
                     for (i, kind) in context_v.iter().enumerate().rev() {
                         match kind {
@@ -170,7 +170,7 @@ impl Ruby {
                             _ => break,
                         }
                     }
-                },
+                }
                 _ => (),
             }
         }
@@ -218,15 +218,21 @@ impl Ruby {
                         }
                     }
                 },
-                HeredocLabel { label: Some(label), expand } => {
+                HeredocLabel { label: Some(label), indent, expand } => {
                     string.push('\0');
+                    if indent {
+                        string.push('-');
+                    }
                     string.push(if expand { '"' } else { '\'' });
                     string.push_str(label);
                     string.push(if expand { '"' } else { '\'' });
                 }
-                Heredoc { label, trailing_context, expand, open } => {
+                Heredoc { label, trailing_context, indent, expand, open } => {
                     if open {
                         string.push('\0');
+                        if indent {
+                            string.push('-');
+                        }
                         string.push(if expand { '"' } else { '\'' });
                         string.push_str(label);
                         string.push(if expand { '"' } else { '\'' });
@@ -264,8 +270,8 @@ enum TokenKind<'a> {
     Def,
     Do,
     Dot,
-    Heredoc { label: &'a str, trailing_context: &'a str, expand: bool, open: bool },
-    HeredocLabel { label: Option<&'a str>, expand: bool },
+    Heredoc { label: &'a str, trailing_context: &'a str, indent: bool, expand: bool, open: bool },
+    HeredocLabel { label: Option<&'a str>, indent: bool, expand: bool },
     Ident,
     Key,
     Keyword { takes_expr: bool },
@@ -289,7 +295,7 @@ enum TokenKind<'a> {
 #[derive(Clone, Copy)]
 #[rustfmt::skip]
 enum ExpansionKind<'a> {
-    InHeredoc { label: &'a str, trailing_context: &'a str },
+    InHeredoc { label: &'a str, trailing_context: &'a str, indent: bool },
     InRegexp { delim: char, depth: usize },
     InStr { delim: char, depth: usize },
     InSymbol { delim: char, depth: usize },
@@ -341,9 +347,9 @@ impl<'a> Iterator for Tokens<'a> {
             // comment or expression expansion
             #[rustfmt::skip]
             '#' => match self.prev.map(|t| t.kind) {
-                Some(Heredoc { label, trailing_context, open: true, .. }) => {
+                Some(Heredoc { label, trailing_context, indent, open: true, .. }) => {
                     self.chars.next();
-                    OpenExpansion { kind: InHeredoc { label, trailing_context } }
+                    OpenExpansion { kind: InHeredoc { label, trailing_context, indent } }
                 }
                 Some(RegexpLit { delim, depth, .. }) if depth > 0 => {
                     self.chars.next();
@@ -518,7 +524,8 @@ impl<'a> Tokens<'a> {
             InHeredoc {
                 label,
                 trailing_context,
-            } => self.heredoc_resume(label, trailing_context),
+                indent,
+            } => self.heredoc_resume(label, trailing_context, indent),
             InRegexp { delim, depth } => self.regexp_lit(delim, depth, true),
             InStr { delim, depth } => self.str_lit(delim, depth, true),
             InSymbol { delim, depth } => self.symbol_lit(delim, depth, true),
@@ -676,7 +683,7 @@ impl<'a> Tokens<'a> {
                         .peek()
                         .map_or(self.text.len(), |&(_, (idx, _))| idx);
                     let label = Some(&self.text[start..end]);
-                    HeredocLabel { label, expand: true }
+                    HeredocLabel { label, indent: false, expand: true }
                 }
                 Some((_, (start, d @ '\'' | d @ '"' | d @ '`'))) => {
                     self.chars.nth(1);
@@ -684,7 +691,7 @@ impl<'a> Tokens<'a> {
                         .chars
                         .find(|&(_, (_, ch))| ch == d)
                         .map(|(_, (end, _))| &self.text[(start + 1)..end]);
-                    HeredocLabel { label, expand: d != '\'' }
+                    HeredocLabel { label, indent: false, expand: d != '\'' }
                 }
                 Some((_, (_, '-' | '~'))) => match self.chars.clone().nth(2) {
                     Some((_, (start, ch))) if !is_delim(ch) => {
@@ -695,7 +702,7 @@ impl<'a> Tokens<'a> {
                             .peek()
                             .map_or(self.text.len(), |&(_, (idx, _))| idx);
                         let label = Some(&self.text[start..end]);
-                        HeredocLabel { label, expand: true }
+                        HeredocLabel { label, indent: true, expand: true }
                     }
                     Some((_, (start, d @ '\'' | d @ '"' | d @ '`'))) => {
                         self.chars.nth(2);
@@ -703,7 +710,7 @@ impl<'a> Tokens<'a> {
                             .chars
                             .find(|&(_, (_, ch))| ch == d)
                             .map(|(_, (end, _))| &self.text[(start + 1)..end]);
-                        HeredocLabel { label, expand: d != '\'' }
+                        HeredocLabel { label, indent: true, expand: d != '\'' }
                     }
                     _ => Op,
                 },
@@ -715,6 +722,7 @@ impl<'a> Tokens<'a> {
 
     #[rustfmt::skip]
     fn heredoc(&mut self) -> TokenKind<'a> {
+        let indent = self.chars.next_if(|&(_, (_, ch))| ch == '-').is_some();
         let delim = self.chars.next().map(|(_, (_, ch))| ch).unwrap();
         let expand = delim == '"';
 
@@ -727,30 +735,36 @@ impl<'a> Tokens<'a> {
         let label = &self.context[start..end];
 
         if let Some(&(true, (_, '#'))) = self.chars.peek() {
-            return Heredoc { label, trailing_context: "", expand, open: true };
+            return Heredoc { label, trailing_context: "", indent, expand, open: true };
         }
         while self.chars.next_if(|&(in_context, _)| in_context).is_some() {}
         let trailing_context = &self.context[(end + 1)..];
 
         while let Some(&(_, (_, ch))) = self.chars.peek() {
             if expand && ch == '#' && matches!(self.chars.clone().nth(1), Some((_, (_, '{')))) {
-                return Heredoc { label, trailing_context, expand, open: true };
+                return Heredoc { label, trailing_context, indent, expand, open: true };
             }
             self.chars.next();
         }
-        let open = !self.text.contains(&label) || self.text.trim() != label.trim();
-        Heredoc { label, trailing_context, expand, open }
+        let open = if indent {
+            self.text.find(label).map_or(true, |i| {
+                self.text[..i].trim() != "" || self.text.len() > i + label.len()
+            })
+        } else {
+            self.text != label
+        };
+        Heredoc { label, trailing_context, indent, expand, open }
     }
 
     #[rustfmt::skip]
-    fn heredoc_resume(&mut self, label: &'a str, trailing_context: &'a str) -> TokenKind<'a> {
+    fn heredoc_resume(&mut self, label: &'a str, trailing_context: &'a str, indent: bool) -> TokenKind<'a> {
         while let Some(&(_, (_, ch))) = self.chars.peek() {
             if ch == '#' && matches!(self.chars.clone().nth(1), Some((_, (_, '{')))) {
-                return Heredoc { label, trailing_context, expand: true, open: true };
+                return Heredoc { label, trailing_context, indent, expand: true, open: true };
             }
             self.chars.next();
         }
-        Heredoc { label, trailing_context, expand: true, open: true }
+        Heredoc { label, trailing_context, indent, expand: true, open: true }
     }
 
     fn variable(&mut self) -> TokenKind<'a> {
