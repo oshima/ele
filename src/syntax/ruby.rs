@@ -81,10 +81,10 @@ impl Ruby {
         while let Some(token) = tokens.next() {
             // Highlight
             let fg = match token.kind {
-                BuiltinMethod { takes_arg: false } => Fg::Macro,
+                BuiltinMethod { takes_args: false } => Fg::Macro,
                 CloseExpansion { .. } | OpenExpansion { .. } => Fg::Variable,
                 Comment => Fg::Comment,
-                Def | Do | Keyword { .. } => Fg::Keyword,
+                Def | Keyword { .. } => Fg::Keyword,
                 Heredoc { .. } | HeredocLabel { .. } => Fg::String,
                 Key => Fg::Macro,
                 Method => Fg::Function,
@@ -93,15 +93,13 @@ impl Ruby {
                 RegexpLit { .. } | StrLit { .. } => Fg::String,
                 UpperIdent => Fg::Type,
                 Variable => Fg::Variable,
-                BuiltinMethod { takes_arg: true } => match tokens.peek().map(|t| t.kind) {
+                BuiltinMethod { takes_args: true } => match tokens.peek().map(|t| t.kind) {
                     Some(
                         CloseBrace
                         | CloseExpansion { .. }
                         | Comma
                         | Comment
-                        | Def
                         | Dot
-                        | Keyword { .. }
                         | Op
                         | Punct
                         | Semi,
@@ -110,21 +108,8 @@ impl Ruby {
                     _ => Fg::Macro,
                 },
                 Ident => match tokens.peek().map(|t| t.kind) {
-                    Some(
-                        CloseBrace
-                        | CloseExpansion { .. }
-                        | Comma
-                        | Comment
-                        | Def
-                        | Dot
-                        | Keyword { .. }
-                        | Op
-                        | OpenBracket
-                        | Punct
-                        | Semi,
-                    )
-                    | None => Fg::Default,
-                    _ => Fg::Function,
+                    Some(OpenParen) => Fg::Function,
+                    _ => Fg::Default,
                 },
                 _ => Fg::Default,
             };
@@ -261,14 +246,13 @@ struct Token<'a> {
 #[derive(Clone, Copy)]
 #[rustfmt::skip]
 enum TokenKind<'a> {
-    BuiltinMethod { takes_arg: bool },
+    BuiltinMethod { takes_args: bool },
     CloseBrace,
     CloseExpansion { kind: ExpansionKind<'a> },
     ColonColon,
     Comma,
     Comment,
     Def,
-    Do,
     Dot,
     Heredoc { label: &'a str, trailing_context: &'a str, indent: bool, expand: bool, open: bool },
     HeredocLabel { label: Option<&'a str>, indent: bool, expand: bool },
@@ -402,7 +386,7 @@ impl<'a> Iterator for Tokens<'a> {
                     | Semi,
                 ) => self.regexp_lit(ch, 1, true),
                 Some(Def | Dot) => self.method(ch),
-                Some(BuiltinMethod { takes_arg: true } | Ident) => {
+                Some(BuiltinMethod { takes_args: true } | Ident) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op,
                         None => match self.chars.peek() {
@@ -429,7 +413,7 @@ impl<'a> Iterator for Tokens<'a> {
                     | Semi,
                 ) => self.percent_lit(),
                 Some(Def | Dot) => self.method(ch),
-                Some(BuiltinMethod { takes_arg: true } | Ident) => {
+                Some(BuiltinMethod { takes_args: true } | Ident) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op,
                         None => self.percent_lit(),
@@ -863,61 +847,38 @@ impl<'a> Tokens<'a> {
             .map_or(self.text.len(), |&(_, (idx, _))| idx);
         match &self.text[start..end] {
             "def" => Def,
-            "do" => Do,
             "alias" | "class" | "defined?" | "else" | "ensure" | "false" | "for" | "end" | "in"
             | "module" | "next" | "nil" | "redo" | "rescue" | "retry" | "self" | "super"
             | "then" | "true" | "undef" | "yield" => Keyword { takes_expr: false },
-            "and" | "begin" | "break" | "case" | "elsif" | "if" | "not" | "or" | "return"
-            | "unless" | "until" | "when" | "while" => Keyword { takes_expr: true },
-            "__callee__" | "__dir__" | "__method__" | "abort" | "binding" | "block_given?"
-            | "caller" | "exit" | "exit!" | "fail" | "fork" | "global_variables"
-            | "local_variables" | "private" | "protected" | "public" | "raise" | "rand"
-            | "readline" | "readlines" | "sleep" | "srand" => BuiltinMethod { takes_arg: false },
+            "and" | "begin" | "break" | "case" | "do" | "elsif" | "if" | "not" | "or"
+            | "return" | "unless" | "until" | "when" | "while" => Keyword { takes_expr: true },
+            "__callee__" | "__dir__" | "__method__" | "block_given?" | "fail" | "private"
+            | "protected" | "public" | "raise" => BuiltinMethod { takes_args: false },
             "alias_method"
-            | "at_exit"
             | "attr"
             | "attr_accessor"
             | "attr_reader"
             | "attr_writer"
-            | "autoload"
-            | "autoload?"
-            | "callcc"
             | "catch"
             | "define_method"
-            | "eval"
-            | "exec"
             | "extend"
-            | "format"
             | "include"
             | "lambda"
-            | "load"
             | "loop"
             | "module_function"
-            | "open"
             | "p"
             | "prepend"
-            | "print"
-            | "printf"
             | "private_class_method"
             | "private_constant"
             | "proc"
             | "public_class_method"
             | "public_constant"
-            | "putc"
             | "puts"
             | "refine"
             | "require"
             | "require_relative"
-            | "spawn"
-            | "sprintf"
-            | "syscall"
-            | "system"
             | "throw"
-            | "trace_var"
-            | "trap"
-            | "untrace_var"
-            | "using"
-            | "warn" => BuiltinMethod { takes_arg: true },
+            | "using" => BuiltinMethod { takes_args: true },
             _ => Ident,
         }
     }
