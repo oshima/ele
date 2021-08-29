@@ -724,12 +724,6 @@ impl<'a> Tokens<'a> {
         while self.chars.next_if(|&(in_context, _)| in_context).is_some() {}
         let trailing_context = &self.context[(end + 1)..];
 
-        while let Some(&(_, (_, ch))) = self.chars.peek() {
-            if expand && ch == '#' && matches!(self.chars.clone().nth(1), Some((_, (_, '{')))) {
-                return Heredoc { label, trailing_context, indent, expand, open: true };
-            }
-            self.chars.next();
-        }
         let open = if indent {
             self.text.find(label).map_or(true, |i| {
                 self.text[..i].trim() != "" || self.text.len() > i + label.len()
@@ -737,6 +731,16 @@ impl<'a> Tokens<'a> {
         } else {
             self.text != label
         };
+        if open {
+            while let Some(&(_, (_, ch))) = self.chars.peek() {
+                if expand && ch == '#' && matches!(self.chars.clone().nth(1), Some((_, (_, '{')))) {
+                    break;
+                }
+                self.chars.next();
+            }
+        } else {
+            while self.chars.next().is_some() {}
+        }
         Heredoc { label, trailing_context, indent, expand, open }
     }
 
