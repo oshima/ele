@@ -636,40 +636,35 @@ impl<'a> Tokens<'a> {
             }
             Some(&(_, (_, 'q' | 'w'))) => match self.chars.clone().nth(1) {
                 Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
-                    self.chars.next();
-                    self.chars.next();
+                    self.chars.nth(1);
                     self.str_lit(ch, 1, false)
                 }
                 _ => Op,
             },
             Some(&(_, (_, 'Q' | 'W' | 'x'))) => match self.chars.clone().nth(1) {
                 Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
-                    self.chars.next();
-                    self.chars.next();
+                    self.chars.nth(1);
                     self.str_lit(ch, 1, true)
                 }
                 _ => Op,
             },
             Some(&(_, (_, 'i' | 's'))) => match self.chars.clone().nth(1) {
                 Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
-                    self.chars.next();
-                    self.chars.next();
+                    self.chars.nth(1);
                     self.symbol_lit(ch, 1, false)
                 }
                 _ => Op,
             },
             Some(&(_, (_, 'I'))) => match self.chars.clone().nth(1) {
                 Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
-                    self.chars.next();
-                    self.chars.next();
+                    self.chars.nth(1);
                     self.symbol_lit(ch, 1, true)
                 }
                 _ => Op,
             },
             Some(&(_, (_, 'r'))) => match self.chars.clone().nth(1) {
                 Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
-                    self.chars.next();
-                    self.chars.next();
+                    self.chars.nth(1);
                     self.regexp_lit(ch, 1, true)
                 }
                 _ => Op,
