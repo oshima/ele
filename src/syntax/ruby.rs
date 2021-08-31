@@ -82,6 +82,7 @@ impl Ruby {
             // Highlight
             let fg = match token.kind {
                 BuiltinMethod { takes_args: false } => Fg::Macro,
+                CharLit | RegexpLit { .. } | StrLit { .. } => Fg::String,
                 CloseExpansion { .. } | OpenExpansion { .. } => Fg::Variable,
                 Comment => Fg::Comment,
                 Def | Keyword { .. } => Fg::Keyword,
@@ -90,7 +91,6 @@ impl Ruby {
                 Method => Fg::Function,
                 MethodOwner => Fg::Variable,
                 PureSymbolLit | SymbolLit { .. } => Fg::Macro,
-                RegexpLit { .. } | StrLit { .. } => Fg::String,
                 UpperIdent => Fg::Type,
                 Variable => Fg::Variable,
                 BuiltinMethod { takes_args: true } => match tokens.peek().map(|t| t.kind) {
@@ -247,6 +247,7 @@ struct Token<'a> {
 #[rustfmt::skip]
 enum TokenKind<'a> {
     BuiltinMethod { takes_args: bool },
+    CharLit,
     CloseBrace,
     CloseExpansion { kind: ExpansionKind<'a> },
     ColonColon,
@@ -384,9 +385,9 @@ impl<'a> Iterator for Tokens<'a> {
                     | OpenBracket
                     | OpenParen
                     | Semi,
-                ) => self.regexp_lit(ch, 1, true),
-                Some(Def | Dot) => self.method(ch),
-                Some(BuiltinMethod { takes_args: true } | Ident) => {
+                )
+                | None => self.regexp_lit(ch, 1, true),
+                Some(BuiltinMethod { takes_args: true } | Ident | Method) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op,
                         None => match self.chars.peek() {
@@ -395,8 +396,8 @@ impl<'a> Iterator for Tokens<'a> {
                         },
                     }
                 }
-                Some(_) => Op,
-                None => self.regexp_lit(ch, 1, true),
+                Some(Def | Dot) => self.method(ch),
+                _ => Op,
             },
 
             // percent literal
@@ -411,20 +412,42 @@ impl<'a> Iterator for Tokens<'a> {
                     | OpenBracket
                     | OpenParen
                     | Semi,
-                ) => self.percent_lit(),
-                Some(Def | Dot) => self.method(ch),
-                Some(BuiltinMethod { takes_args: true } | Ident) => {
+                )
+                | None => self.percent_lit(),
+                Some(BuiltinMethod { takes_args: true } | Ident | Method) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op,
                         None => self.percent_lit(),
                     }
                 }
-                Some(_) => Op,
-                None => self.percent_lit(),
+                Some(Def | Dot) => self.method(ch),
+                _ => Op,
+            },
+
+            // char literal
+            '?' => match self.prev.map(|t| t.kind) {
+                Some(
+                    Comma
+                    | Key
+                    | Keyword { takes_expr: true }
+                    | Op
+                    | OpenBrace
+                    | OpenExpansion { .. }
+                    | OpenBracket
+                    | OpenParen
+                    | Semi,
+                )
+                | None => self.char_lit(),
+                Some(BuiltinMethod { takes_args: true } | Ident | Method) => {
+                    match self.prev.filter(|t| t.end == start) {
+                        Some(_) => Op,
+                        None => self.char_lit(),
+                    }
+                }
+                _ => Op,
             },
 
             // operator
-            '?' => Op,
             '<' => match self.prev.map(|t| t.kind) {
                 Some(Def | Dot) => self.method(ch),
                 _ => self.heredoc_label(),
@@ -653,6 +676,56 @@ impl<'a> Tokens<'a> {
             },
             _ => Op,
         }
+    }
+
+    fn char_lit(&mut self) -> TokenKind<'a> {
+        let mut clone = self.chars.clone();
+        let peek1 = clone.next().map(|(_, (_, ch))| ch);
+        let peek2 = clone.next().map(|(_, (_, ch))| ch);
+        match (peek1, peek2) {
+            (Some('\\'), Some('u')) => {
+                self.chars.nth(1);
+                for _ in 0..4 {
+                    self.chars.next_if(|&(_, (_, ch))| ch.is_ascii_hexdigit());
+                }
+            }
+            (Some('\\'), Some(ch)) if ch == 'C' || ch == 'M' => {
+                self.chars.nth(1);
+                if self.chars.next_if(|&(_, (_, ch))| ch == '-').is_none() {
+                    return CharLit;
+                }
+                let mut clone = self.chars.clone();
+                let peek1 = clone.next().map(|(_, (_, ch))| ch);
+                let peek2 = clone.next().map(|(_, (_, ch))| ch);
+                let c_or_m = if ch == 'C' { 'M' } else { 'C' };
+                match (peek1, peek2) {
+                    (Some('\\'), Some(ch)) if ch == c_or_m => {
+                        self.chars.nth(1);
+                        if self.chars.next_if(|&(_, (_, ch))| ch == '-').is_none() {
+                            return CharLit;
+                        }
+                        self.chars.next_if(|&(_, (_, ch))| ch == '\\');
+                        self.chars
+                            .next_if(|&(_, (_, ch))| ch.is_ascii() && !ch.is_ascii_control());
+                    }
+                    (Some('\\'), Some(ch)) if ch.is_ascii() && !ch.is_ascii_control() => {
+                        self.chars.nth(1);
+                    }
+                    (Some(ch), _) if ch.is_ascii() && !ch.is_ascii_control() => {
+                        self.chars.next();
+                    }
+                    _ => (),
+                }
+            }
+            (Some('\\'), _) => {
+                self.chars.nth(1);
+            }
+            (Some(ch), _) if !ch.is_ascii_whitespace() => {
+                self.chars.next();
+            }
+            _ => return Op,
+        }
+        CharLit
     }
 
     #[rustfmt::skip]
