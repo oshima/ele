@@ -262,6 +262,7 @@ enum TokenKind<'a> {
     Keyword { takes_expr: bool },
     Method,
     MethodOwner,
+    NumberLit,
     OpenBrace,
     OpenBracket,
     OpenExpansion { kind: ExpansionKind<'a> },
@@ -446,6 +447,29 @@ impl<'a> Iterator for Tokens<'a> {
                 }
                 _ => Op,
             },
+
+            // number literal
+            '0' => match self.chars.peek() {
+                Some(&(_, (_, '.'))) => self.number_lit(),
+                Some(&(_, (_, 'B' | 'b'))) => match self.chars.clone().nth(1) {
+                    Some((_, (_, '0'..='1'))) => self.n_ary_lit(2, true),
+                    _ => NumberLit,
+                },
+                Some(&(_, (_, 'O' | 'o'))) => match self.chars.clone().nth(1) {
+                    Some((_, (_, '0'..='7'))) => self.n_ary_lit(8, true),
+                    _ => NumberLit,
+                },
+                Some(&(_, (_, 'D' | 'd'))) => match self.chars.clone().nth(1) {
+                    Some((_, (_, '0'..='9'))) => self.n_ary_lit(10, true),
+                    _ => NumberLit,
+                },
+                Some(&(_, (_, 'X' | 'x'))) => match self.chars.clone().nth(1) {
+                    Some((_, (_, '0'..='9' | 'A'..='Z' | 'a'..='z'))) => self.n_ary_lit(16, true),
+                    _ => NumberLit,
+                },
+                _ => self.n_ary_lit(8, false),
+            },
+            '1'..='9' => self.number_lit(),
 
             // operator
             '<' => match self.prev.map(|t| t.kind) {
@@ -721,6 +745,119 @@ impl<'a> Tokens<'a> {
             _ => return Op,
         }
         CharLit
+    }
+
+    fn number_lit(&mut self) -> TokenKind<'a> {
+        let mut fractional = false;
+        let mut exponential = false;
+        while let Some(&(_, (_, ch))) = self.chars.peek() {
+            match ch {
+                '0'..='9' => {
+                    self.chars.next();
+                }
+                '_' => match self.chars.clone().nth(1) {
+                    Some((_, (_, '0'..='9'))) => {
+                        self.chars.nth(1);
+                    }
+                    _ => return NumberLit,
+                },
+                '.' => match self.chars.clone().nth(1) {
+                    Some((_, (_, '0'..='9'))) => {
+                        self.chars.nth(1);
+                        fractional = true;
+                        break;
+                    }
+                    _ => return NumberLit,
+                },
+                'e' | 'E' => match (self.chars.clone().nth(1), self.chars.clone().nth(2)) {
+                    (Some((_, (_, '0'..='9'))), _) => {
+                        self.chars.nth(1);
+                        exponential = true;
+                        break;
+                    }
+                    (Some((_, (_, '+' | '-'))), Some((_, (_, '0'..='9')))) => {
+                        self.chars.nth(2);
+                        exponential = true;
+                        break;
+                    }
+                    _ => return NumberLit,
+                },
+                _ => break,
+            }
+        }
+        if fractional {
+            while let Some(&(_, (_, ch))) = self.chars.peek() {
+                match ch {
+                    '0'..='9' => {
+                        self.chars.next();
+                    }
+                    '_' => match self.chars.clone().nth(1) {
+                        Some((_, (_, '0'..='9'))) => {
+                            self.chars.nth(1);
+                        }
+                        _ => return NumberLit,
+                    },
+                    'e' | 'E' => match (self.chars.clone().nth(1), self.chars.clone().nth(2)) {
+                        (Some((_, (_, '0'..='9'))), _) => {
+                            self.chars.nth(1);
+                            exponential = true;
+                            break;
+                        }
+                        (Some((_, (_, '+' | '-'))), Some((_, (_, '0'..='9')))) => {
+                            self.chars.nth(2);
+                            exponential = true;
+                            break;
+                        }
+                        _ => return NumberLit,
+                    },
+                    _ => break,
+                }
+            }
+        }
+        if exponential {
+            while let Some(&(_, (_, ch))) = self.chars.peek() {
+                match ch {
+                    '0'..='9' => {
+                        self.chars.next();
+                    }
+                    '_' => match self.chars.clone().nth(1) {
+                        Some((_, (_, '0'..='9'))) => {
+                            self.chars.nth(1);
+                        }
+                        _ => return NumberLit,
+                    },
+                    _ => break,
+                }
+            }
+        }
+        if !exponential {
+            self.chars.next_if(|&(_, (_, ch))| ch == 'r');
+        }
+        self.chars.next_if(|&(_, (_, ch))| ch == 'i');
+        NumberLit
+    }
+
+    fn n_ary_lit(&mut self, radix: u32, explicit: bool) -> TokenKind<'a> {
+        if explicit {
+            self.chars.nth(1);
+        }
+        while let Some(&(_, (_, ch))) = self.chars.peek() {
+            match ch {
+                ch if ch.to_digit(radix).is_some() => {
+                    self.chars.next();
+                }
+                '_' => match self.chars.clone().nth(1) {
+                    Some((_, (_, ch))) if ch.to_digit(radix).is_some() => {
+                        self.chars.nth(1);
+                    }
+                    _ => return NumberLit,
+                },
+                _ => break,
+            }
+        }
+        self.chars.next_if(|&(_, (_, ch))| ch == 'r');
+        self.chars.next_if(|&(_, (_, ch))| ch == 'i');
+        NumberLit
     }
 
     #[rustfmt::skip]
