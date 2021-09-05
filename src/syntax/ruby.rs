@@ -425,7 +425,7 @@ impl<'a> Iterator for Tokens<'a> {
                 _ => Op,
             },
 
-            // char literal
+            // char
             '?' => match self.prev.map(|t| t.kind) {
                 Some(
                     Comma
@@ -448,25 +448,13 @@ impl<'a> Iterator for Tokens<'a> {
                 _ => Op,
             },
 
-            // number literal
+            // number
             '0' => match self.chars.peek() {
                 Some(&(_, (_, '.'))) => self.number_lit(),
-                Some(&(_, (_, 'B' | 'b'))) => match self.chars.clone().nth(1) {
-                    Some((_, (_, '0'..='1'))) => self.n_ary_lit(2, true),
-                    _ => NumberLit,
-                },
-                Some(&(_, (_, 'O' | 'o'))) => match self.chars.clone().nth(1) {
-                    Some((_, (_, '0'..='7'))) => self.n_ary_lit(8, true),
-                    _ => NumberLit,
-                },
-                Some(&(_, (_, 'D' | 'd'))) => match self.chars.clone().nth(1) {
-                    Some((_, (_, '0'..='9'))) => self.n_ary_lit(10, true),
-                    _ => NumberLit,
-                },
-                Some(&(_, (_, 'X' | 'x'))) => match self.chars.clone().nth(1) {
-                    Some((_, (_, '0'..='9' | 'A'..='Z' | 'a'..='z'))) => self.n_ary_lit(16, true),
-                    _ => NumberLit,
-                },
+                Some(&(_, (_, 'B' | 'b'))) => self.n_ary_lit(2, true),
+                Some(&(_, (_, 'O' | 'o'))) => self.n_ary_lit(8, true),
+                Some(&(_, (_, 'D' | 'd'))) => self.n_ary_lit(10, true),
+                Some(&(_, (_, 'X' | 'x'))) => self.n_ary_lit(16, true),
                 _ => self.n_ary_lit(8, false),
             },
             '1'..='9' => self.number_lit(),
@@ -491,7 +479,8 @@ impl<'a> Iterator for Tokens<'a> {
             },
 
             // variable
-            '@' => self.variable(),
+            '@' => self.instance_variable(),
+            '$' => self.special_variable(),
 
             // punctuation
             ',' => Comma,
@@ -511,7 +500,7 @@ impl<'a> Iterator for Tokens<'a> {
             // heredoc
             '\0' => self.heredoc(),
 
-            // identifier or keyword
+            // identifier
             ch if ch.is_ascii_uppercase() => match self.prev.map(|t| t.kind) {
                 Some(Def) => self.method_owner_or_method(),
                 Some(Dot) => self.method(ch),
@@ -839,7 +828,12 @@ impl<'a> Tokens<'a> {
 
     fn n_ary_lit(&mut self, radix: u32, explicit: bool) -> TokenKind<'a> {
         if explicit {
-            self.chars.nth(1);
+            match self.chars.clone().nth(1) {
+                Some((_, (_, ch))) if ch.to_digit(radix).is_some() => {
+                    self.chars.nth(1);
+                }
+                _ => return NumberLit,
+            }
         }
         while let Some(&(_, (_, ch))) = self.chars.peek() {
             match ch {
@@ -960,10 +954,43 @@ impl<'a> Tokens<'a> {
         Heredoc { label, trailing_context, indent, expand: true, open: true }
     }
 
-    fn variable(&mut self) -> TokenKind<'a> {
-        self.chars.next_if(|&(_, (_, ch))| ch == '@');
-        while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
-        Variable
+    fn instance_variable(&mut self) -> TokenKind<'a> {
+        match self.chars.peek() {
+            Some(&(_, (_, ch))) if !is_delim(ch) && !ch.is_ascii_digit() => {
+                self.chars.next();
+                while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
+                Variable
+            }
+            Some(&(_, (_, '@'))) => match self.chars.clone().nth(1) {
+                Some((_, (_, ch))) if !is_delim(ch) && !ch.is_ascii_digit() => {
+                    self.chars.nth(1);
+                    while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
+                    Variable
+                }
+                _ => Punct,
+            }
+            _ => Punct,
+        }
+    }
+
+    fn special_variable(&mut self) -> TokenKind<'a> {
+        match self.chars.peek() {
+            Some(&(_, (_, '~' | '&' | '`' | '\'' | '+'))) => {
+                self.chars.next();
+                Variable
+            }
+            Some(&(_, (_, ch))) if ch.is_ascii_digit() => {
+                self.chars.next();
+                while self.chars.next_if(|&(_, (_, ch))| ch.is_ascii_digit()).is_some() {}
+                Variable
+            }
+            Some(&(_, (_, ch))) if !is_delim(ch) => {
+                self.chars.next();
+                while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
+                Variable
+            }
+            _ => Punct,
+        }
     }
 
     fn method_owner_or_method(&mut self) -> TokenKind<'a> {
