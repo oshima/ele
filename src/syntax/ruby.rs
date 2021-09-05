@@ -480,7 +480,7 @@ impl<'a> Iterator for Tokens<'a> {
 
             // variable
             '@' => self.instance_variable(),
-            '$' => self.special_variable(),
+            '$' => self.global_variable(),
 
             // punctuation
             ',' => Comma,
@@ -504,12 +504,12 @@ impl<'a> Iterator for Tokens<'a> {
             ch if ch.is_ascii_uppercase() => match self.prev.map(|t| t.kind) {
                 Some(Def) => self.method_owner_or_method(),
                 Some(Dot) => self.method(ch),
-                _ => self.upper_ident(),
+                _ => self.upper_ident(start),
             },
             _ => match self.prev.map(|t| t.kind) {
                 Some(Def) => self.method_owner_or_method(),
                 Some(Dot) => self.method(ch),
-                _ => self.ident_or_keyword(start),
+                _ => self.ident(start),
             },
         };
         match kind {
@@ -968,12 +968,12 @@ impl<'a> Tokens<'a> {
                     Variable
                 }
                 _ => Punct,
-            }
+            },
             _ => Punct,
         }
     }
 
-    fn special_variable(&mut self) -> TokenKind<'a> {
+    fn global_variable(&mut self) -> TokenKind<'a> {
         match self.chars.peek() {
             Some(&(_, (_, '~' | '&' | '`' | '\'' | '+'))) => {
                 self.chars.next();
@@ -981,7 +981,11 @@ impl<'a> Tokens<'a> {
             }
             Some(&(_, (_, ch))) if ch.is_ascii_digit() => {
                 self.chars.next();
-                while self.chars.next_if(|&(_, (_, ch))| ch.is_ascii_digit()).is_some() {}
+                while self
+                    .chars
+                    .next_if(|&(_, (_, ch))| ch.is_ascii_digit())
+                    .is_some()
+                {}
                 Variable
             }
             Some(&(_, (_, ch))) if !is_delim(ch) => {
@@ -1056,7 +1060,7 @@ impl<'a> Tokens<'a> {
         Method
     }
 
-    fn upper_ident(&mut self) -> TokenKind<'a> {
+    fn upper_ident(&mut self, start: usize) -> TokenKind<'a> {
         while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
         self.chars.next_if(|&(_, (_, ch))| ch == '!' || ch == '?');
         if let Some(&(_, (_, ':'))) = self.chars.peek() {
@@ -1065,10 +1069,17 @@ impl<'a> Tokens<'a> {
                 return Key;
             }
         }
-        UpperIdent
+        let end = self
+            .chars
+            .peek()
+            .map_or(self.text.len(), |&(_, (idx, _))| idx);
+        match &self.text[start..end] {
+            "BEGIN" | "END" => Keyword { takes_expr: false },
+            _ => UpperIdent,
+        }
     }
 
-    fn ident_or_keyword(&mut self, start: usize) -> TokenKind<'a> {
+    fn ident(&mut self, start: usize) -> TokenKind<'a> {
         while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
         self.chars.next_if(|&(_, (_, ch))| ch == '!' || ch == '?');
         if let Some(&(_, (_, ':'))) = self.chars.peek() {
@@ -1083,9 +1094,9 @@ impl<'a> Tokens<'a> {
             .map_or(self.text.len(), |&(_, (idx, _))| idx);
         match &self.text[start..end] {
             "def" => Def,
-            "alias" | "class" | "defined?" | "else" | "ensure" | "false" | "for" | "end" | "in"
-            | "module" | "next" | "nil" | "redo" | "rescue" | "retry" | "self" | "super"
-            | "then" | "true" | "undef" | "yield" => Keyword { takes_expr: false },
+            "alias" | "class" | "defined?" | "else" | "ensure" | "for" | "end" | "in"
+            | "module" | "next" | "redo" | "rescue" | "retry" | "super" | "then" | "undef"
+            | "yield" => Keyword { takes_expr: false },
             "and" | "begin" | "break" | "case" | "do" | "elsif" | "if" | "not" | "or"
             | "return" | "unless" | "until" | "when" | "while" => Keyword { takes_expr: true },
             "__callee__" | "__dir__" | "__method__" | "block_given?" | "fail" | "private"
@@ -1115,6 +1126,9 @@ impl<'a> Tokens<'a> {
             | "require_relative"
             | "throw"
             | "using" => BuiltinMethod { takes_args: true },
+            "__ENCODING__" | "__FILE__" | "__LINE__" | "false" | "nil" | "self" | "true" => {
+                Variable
+            }
             _ => Ident,
         }
     }
