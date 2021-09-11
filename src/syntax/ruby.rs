@@ -84,7 +84,7 @@ impl Ruby {
                 BuiltinMethod { takes_args: false } => Fg::Macro,
                 CharLit | RegexpLit { .. } | StrLit { .. } => Fg::String,
                 CloseExpansion { .. } | OpenExpansion { .. } => Fg::Variable,
-                Comment => Fg::Comment,
+                Comment | Document { .. } => Fg::Comment,
                 Def | Keyword { .. } => Fg::Keyword,
                 Heredoc { .. } | HeredocLabel { .. } => Fg::String,
                 Key => Fg::Macro,
@@ -120,7 +120,8 @@ impl Ruby {
 
             // Derive the context of the next row
             match token.kind {
-                Heredoc { .. }
+                Document { open: true }
+                | Heredoc { .. }
                 | HeredocLabel { label: Some(_), .. }
                 | OpenBrace
                 | OpenExpansion { .. } => {
@@ -203,8 +204,11 @@ impl Ruby {
                         }
                     }
                 },
+                Document { .. } => {
+                    string.push_str("\0d");
+                }
                 HeredocLabel { label: Some(label), indent, expand } => {
-                    string.push('\0');
+                    string.push_str("\0h");
                     if indent {
                         string.push('-');
                     }
@@ -214,7 +218,7 @@ impl Ruby {
                 }
                 Heredoc { label, trailing_context, indent, expand, open } => {
                     if open {
-                        string.push('\0');
+                        string.push_str("\0h");
                         if indent {
                             string.push('-');
                         }
@@ -254,6 +258,7 @@ enum TokenKind<'a> {
     Comma,
     Comment,
     Def,
+    Document { open: bool },
     Dot,
     Heredoc { label: &'a str, trailing_context: &'a str, indent: bool, expand: bool, open: bool },
     HeredocLabel { label: Option<&'a str>, indent: bool, expand: bool },
@@ -464,10 +469,20 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(Def | Dot) => self.method(ch),
                 _ => self.heredoc_label(),
             },
-            '!' | '&' | '*' | '+' | '-' | '=' | '>' | '^' | '|' | '~' => {
+            '!' | '&' | '*' | '+' | '-' | '>' | '^' | '|' | '~' => {
                 match self.prev.map(|t| t.kind) {
                     Some(Def | Dot) => self.method(ch),
                     _ => Op,
+                }
+            }
+            '=' => {
+                if start == 0 {
+                    self.document_begin()
+                } else {
+                    match self.prev.map(|t| t.kind) {
+                        Some(Def | Dot) => self.method(ch),
+                        _ => Op,
+                    }
                 }
             }
             '.' => match self.chars.next_if(|&(_, (_, ch))| ch == '.') {
@@ -497,8 +512,12 @@ impl<'a> Iterator for Tokens<'a> {
             },
             ch if is_delim(ch) => Punct,
 
-            // heredoc
-            '\0' => self.heredoc(),
+            // embedded document or heredoc
+            '\0' => match self.chars.next() {
+                Some((_, (_, 'd'))) => self.document(),
+                Some((_, (_, 'h'))) => self.heredoc(),
+                _ => Punct,
+            }
 
             // identifier
             ch if ch.is_ascii_uppercase() => match self.prev.map(|t| t.kind) {
@@ -601,6 +620,38 @@ impl<'a> Tokens<'a> {
     fn comment(&mut self) -> TokenKind<'a> {
         while self.chars.next().is_some() {}
         Comment
+    }
+
+    fn document_begin(&mut self) -> TokenKind<'a> {
+        if self.text.starts_with("=begin") {
+            match self.chars.nth(5) {
+                Some((_, (_, ' ' | '\t'))) | None => {
+                    while self.chars.next().is_some() {}
+                    Document { open: true }
+                }
+                _ => Op,
+            }
+        } else {
+            Op
+        }
+    }
+
+    fn document(&mut self) -> TokenKind<'a> {
+        if self.text.starts_with("=end") {
+            self.chars.nth(3);
+            match self.chars.peek() {
+                Some(&(_, (_, ' ' | '\t'))) | None => {
+                    Document { open: false }
+                }
+                _ => {
+                    while self.chars.next().is_some() {}
+                    Document { open: true }
+                },
+            }
+        } else {
+            while self.chars.next().is_some() {}
+            Document { open: true }
+        }
     }
 
     #[rustfmt::skip]
