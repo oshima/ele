@@ -517,7 +517,7 @@ impl<'a> Iterator for Tokens<'a> {
                 Some((_, (_, 'd'))) => self.document(),
                 Some((_, (_, 'h'))) => self.heredoc(),
                 _ => Punct,
-            }
+            },
 
             // identifier
             ch if ch.is_ascii_uppercase() => match self.prev.map(|t| t.kind) {
@@ -599,16 +599,14 @@ impl<'a> Tokens<'a> {
                     depth += 1;
                 }
                 '\\' => {
-                    self.chars.next();
-                    self.chars.next();
+                    self.chars.nth(1);
                 }
-                '#' => {
-                    if expand && matches!(self.chars.clone().nth(1), Some((_, (_, '{')))) {
-                        return depth;
-                    } else {
+                '#' if expand => match self.chars.clone().nth(1) {
+                    Some((_, (_, '{'))) => return depth,
+                    _ => {
                         self.chars.next();
                     }
-                }
+                },
                 _ => {
                     self.chars.next();
                 }
@@ -640,13 +638,11 @@ impl<'a> Tokens<'a> {
         if self.text.starts_with("=end") {
             self.chars.nth(3);
             match self.chars.peek() {
-                Some(&(_, (_, ' ' | '\t'))) | None => {
-                    Document { open: false }
-                }
+                Some(&(_, (_, ' ' | '\t'))) | None => Document { open: false },
                 _ => {
                     while self.chars.next().is_some() {}
                     Document { open: true }
-                },
+                }
             }
         } else {
             while self.chars.next().is_some() {}
@@ -983,10 +979,14 @@ impl<'a> Tokens<'a> {
         };
         if open {
             while let Some(&(_, (_, ch))) = self.chars.peek() {
-                if expand && ch == '#' && matches!(self.chars.clone().nth(1), Some((_, (_, '{')))) {
-                    break;
-                }
-                self.chars.next();
+                match ch {
+                    '\\' => self.chars.nth(1),
+                    '#' if expand => match self.chars.clone().nth(1) {
+                        Some((_, (_, '{'))) => break,
+                        _ => self.chars.next(),
+                    }
+                    _ => self.chars.next(),
+                };
             }
         } else {
             while self.chars.next().is_some() {}
@@ -997,10 +997,14 @@ impl<'a> Tokens<'a> {
     #[rustfmt::skip]
     fn heredoc_resume(&mut self, label: &'a str, trailing_context: &'a str, indent: bool) -> TokenKind<'a> {
         while let Some(&(_, (_, ch))) = self.chars.peek() {
-            if ch == '#' && matches!(self.chars.clone().nth(1), Some((_, (_, '{')))) {
-                return Heredoc { label, trailing_context, indent, expand: true, open: true };
-            }
-            self.chars.next();
+            match ch {
+                '\\' => self.chars.nth(1),
+                '#' => match self.chars.clone().nth(1) {
+                    Some((_, (_, '{'))) => break,
+                    _ => self.chars.next(),
+                }
+                _ => self.chars.next(),
+            };
         }
         Heredoc { label, trailing_context, indent, expand: true, open: true }
     }
