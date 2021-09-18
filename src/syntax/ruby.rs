@@ -464,25 +464,18 @@ impl<'a> Iterator for Tokens<'a> {
             },
             '1'..='9' => self.number_lit(),
 
+            // embedded document
+            '=' if start == 0 => self.document_begin(),
+
             // operator
             '<' => match self.prev.map(|t| t.kind) {
                 Some(Def | Dot) => self.method(ch),
                 _ => self.heredoc_label(),
             },
-            '!' | '&' | '*' | '+' | '-' | '>' | '^' | '|' | '~' => {
+            '!' | '&' | '*' | '+' | '-' | '=' | '>' | '^' | '|' | '~' => {
                 match self.prev.map(|t| t.kind) {
                     Some(Def | Dot) => self.method(ch),
                     _ => Op,
-                }
-            }
-            '=' => {
-                if start == 0 {
-                    self.document_begin()
-                } else {
-                    match self.prev.map(|t| t.kind) {
-                        Some(Def | Dot) => self.method(ch),
-                        _ => Op,
-                    }
                 }
             }
             '.' => match self.chars.next_if(|&(_, (_, ch))| ch == '.') {
