@@ -127,8 +127,11 @@ impl Ruby {
                 _ => (),
             }
 
-            if prev_token.filter(|t| t.end == 0).is_some() {
+            if let Some(Token { end: 0, .. }) | None = prev_token {
                 match token.kind {
+                    Dot => {
+                        row.indent_level += 1;
+                    }
                     Keyword {
                         close_scope: true, ..
                     } => match context_v[..] {
