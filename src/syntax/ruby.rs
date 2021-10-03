@@ -92,13 +92,13 @@ impl Ruby {
                 CharLit | RegexpLit { .. } | StrLit { .. } => Fg::String,
                 CloseExpansion { .. } | OpenExpansion { .. } => Fg::Variable,
                 Comment | Document { .. } => Fg::Comment,
-                Def | Keyword { .. } => Fg::Keyword,
                 Heredoc { .. } | HeredocLabel { .. } => Fg::String,
                 Ident => match tokens.peek().map(|t| t.kind) {
                     Some(OpenParen { .. }) => Fg::Function,
                     _ => Fg::Default,
                 },
                 Key => Fg::Macro,
+                Keyword { .. } => Fg::Keyword,
                 Method => Fg::Function,
                 MethodOwner => Fg::Variable,
                 PureSymbolLit | SymbolLit { .. } => Fg::Macro,
@@ -113,7 +113,12 @@ impl Ruby {
 
             // Indent
             match token.kind {
-                OpenBrace { lf: true }
+                Keyword {
+                    open_scope: true,
+                    lf: true,
+                    ..
+                }
+                | OpenBrace { lf: true }
                 | OpenBracket { lf: true }
                 | OpenExpansion { lf: true, .. }
                 | OpenParen { lf: true } => {
@@ -124,6 +129,18 @@ impl Ruby {
 
             if prev_token.filter(|t| t.end == 0).is_some() {
                 match token.kind {
+                    Keyword {
+                        close_scope: true, ..
+                    } => match context_v[..] {
+                        [.., Keyword {
+                            open_scope: true,
+                            lf: true,
+                            ..
+                        }] => {
+                            row.indent_level -= 1;
+                        }
+                        _ => (),
+                    },
                     CloseBrace => match context_v[..] {
                         [.., OpenBrace { lf: true }] => {
                             row.indent_level -= 1;
@@ -167,6 +184,25 @@ impl Ruby {
                     if depth > 0 =>
                 {
                     context_v.push(token.kind);
+                }
+                Keyword {
+                    open_scope,
+                    close_scope,
+                    ..
+                } => {
+                    if close_scope {
+                        match context_v[..] {
+                            [.., Keyword {
+                                open_scope: true, ..
+                            }] => {
+                                context_v.pop();
+                            }
+                            _ => (),
+                        }
+                    }
+                    if open_scope {
+                        context_v.push(token.kind);
+                    }
                 }
                 CloseBrace => {
                     for (i, kind) in context_v.iter().enumerate().rev() {
@@ -224,10 +260,11 @@ impl Ruby {
         }
 
         if let Some(
-            OpenBrace { lf }
+            Keyword { lf, .. }
+            | OpenBrace { lf }
             | OpenBracket { lf }
             | OpenExpansion { lf, .. }
-            | OpenParen { lf }
+            | OpenParen { lf },
         ) = context_v.last_mut()
         {
             *lf = true;
@@ -300,6 +337,9 @@ impl Ruby {
                     }
                     string.push_str(trailing_context);
                 }
+                Keyword { lf, .. } => {
+                    string.push_str(if lf { "\0k\n" } else { "\0k" });
+                }
                 OpenBrace { lf } => {
                     string.push_str(if lf { "{\n" } else { "{" });
                 }
@@ -336,14 +376,13 @@ enum TokenKind<'a> {
     CloseParen,
     ColonColon,
     Comment,
-    Def,
     Document { open: bool },
     Dot,
     Heredoc { label: &'a str, trailing_context: &'a str, indent: bool, expand: bool, open: bool },
     HeredocLabel { label: Option<&'a str>, indent: bool, expand: bool },
     Ident,
     Key,
-    Keyword { takes_expr: bool },
+    Keyword { kind: &'a str, open_scope: bool, close_scope: bool, lf: bool },
     Method,
     MethodOwner,
     NumberLit,
@@ -470,9 +509,10 @@ impl<'a> Iterator for Tokens<'a> {
 
             // regexp
             '/' => match self.prev.map(|t| t.kind) {
+                Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 Some(
                     Key
-                    | Keyword { takes_expr: true }
+                    | Keyword { .. }
                     | OpenBrace { .. }
                     | OpenExpansion { .. }
                     | OpenBracket { .. }
@@ -489,15 +529,15 @@ impl<'a> Iterator for Tokens<'a> {
                         },
                     }
                 }
-                Some(Def | Dot) => self.method(ch),
                 _ => Punct,
             },
 
             // percent literal
             '%' => match self.prev.map(|t| t.kind) {
+                Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 Some(
                     Key
-                    | Keyword { takes_expr: true }
+                    | Keyword { .. }
                     | OpenBrace { .. }
                     | OpenExpansion { .. }
                     | OpenBracket { .. }
@@ -511,7 +551,6 @@ impl<'a> Iterator for Tokens<'a> {
                         None => self.percent_lit(),
                     }
                 }
-                Some(Def | Dot) => self.method(ch),
                 _ => Punct,
             },
 
@@ -519,7 +558,7 @@ impl<'a> Iterator for Tokens<'a> {
             '?' => match self.prev.map(|t| t.kind) {
                 Some(
                     Key
-                    | Keyword { takes_expr: true }
+                    | Keyword { .. }
                     | OpenBrace { .. }
                     | OpenExpansion { .. }
                     | OpenBracket { .. }
@@ -559,7 +598,7 @@ impl<'a> Iterator for Tokens<'a> {
                 lf: self.chars.next_if(|&(_, (_, ch))| ch == '\n').is_some(),
             },
             '[' => match self.prev.map(|t| t.kind) {
-                Some(Def | Dot) => self.method(ch),
+                Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 _ => OpenBracket {
                     lf: self.chars.next_if(|&(_, (_, ch))| ch == '\n').is_some(),
                 },
@@ -574,12 +613,12 @@ impl<'a> Iterator for Tokens<'a> {
             ']' => CloseBracket,
             ')' => CloseParen,
             '<' => match self.prev.map(|t| t.kind) {
-                Some(Def | Dot) => self.method(ch),
+                Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 _ => self.heredoc_label(),
             },
             '!' | '&' | '*' | '+' | '-' | '=' | '>' | '^' | '|' | '~' => {
                 match self.prev.map(|t| t.kind) {
-                    Some(Def | Dot) => self.method(ch),
+                    Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                     _ => Punct,
                 }
             }
@@ -596,18 +635,24 @@ impl<'a> Iterator for Tokens<'a> {
             '\0' => match self.chars.next() {
                 Some((_, (_, 'd'))) => self.document(),
                 Some((_, (_, 'h'))) => self.heredoc(),
+                Some((_, (_, 'k'))) => Keyword {
+                    kind: "",
+                    open_scope: true,
+                    close_scope: false,
+                    lf: self.chars.next_if(|&(_, (_, ch))| ch == '\n').is_some(),
+                },
                 _ => Punct,
             },
 
             // identifier
             ch if ch.is_ascii_uppercase() => match self.prev.map(|t| t.kind) {
-                Some(Def) => self.method_owner_or_method(),
                 Some(Dot) => self.method(ch),
+                Some(Keyword { kind: "def", .. }) => self.method_owner_or_method(),
                 _ => self.upper_ident(start),
             },
             _ => match self.prev.map(|t| t.kind) {
-                Some(Def) => self.method_owner_or_method(),
                 Some(Dot) => self.method(ch),
+                Some(Keyword { kind: "def", .. }) => self.method_owner_or_method(),
                 _ => self.ident(start),
             },
         };
@@ -1209,7 +1254,12 @@ impl<'a> Tokens<'a> {
             .peek()
             .map_or(self.text.len(), |&(_, (idx, _))| idx);
         match &self.text[start..end] {
-            "BEGIN" | "END" => Keyword { takes_expr: false },
+            "BEGIN" | "END" => Keyword {
+                kind: &self.text[start..end],
+                open_scope: false,
+                close_scope: false,
+                lf: false,
+            },
             _ => UpperIdent,
         }
     }
@@ -1228,12 +1278,53 @@ impl<'a> Tokens<'a> {
             .peek()
             .map_or(self.text.len(), |&(_, (idx, _))| idx);
         match &self.text[start..end] {
-            "def" => Def,
-            "alias" | "class" | "defined?" | "else" | "ensure" | "for" | "end" | "in"
-            | "module" | "next" | "redo" | "rescue" | "retry" | "super" | "then" | "undef"
-            | "yield" => Keyword { takes_expr: false },
-            "and" | "begin" | "break" | "case" | "do" | "elsif" | "if" | "not" | "or"
-            | "return" | "unless" | "until" | "when" | "while" => Keyword { takes_expr: true },
+            "alias" | "and" | "break" | "defined?" | "in" | "next" | "not" | "or" | "redo"
+            | "retry" | "return" | "super" | "then" | "undef" | "yield" => Keyword {
+                kind: &self.text[start..end],
+                open_scope: false,
+                close_scope: false,
+                lf: false,
+            },
+            "begin" | "case" | "class" | "def" | "do" | "for" | "module" => Keyword {
+                kind: &self.text[start..end],
+                open_scope: true,
+                close_scope: false,
+                lf: false,
+            },
+            "if" | "unless" | "until" | "while" => match self.prev.map(|t| t.kind) {
+                Some(
+                    Keyword { lf: true, .. }
+                    | OpenBrace { .. }
+                    | OpenBracket { .. }
+                    | OpenExpansion { .. }
+                    | OpenParen { .. }
+                    | Punct,
+                )
+                | None => Keyword {
+                    kind: &self.text[start..end],
+                    open_scope: true,
+                    close_scope: false,
+                    lf: false,
+                },
+                _ => Keyword {
+                    kind: &self.text[start..end],
+                    open_scope: false,
+                    close_scope: false,
+                    lf: false,
+                },
+            },
+            "else" | "elsif" | "ensure" | "rescue" | "when" => Keyword {
+                kind: &self.text[start..end],
+                open_scope: true,
+                close_scope: true,
+                lf: false,
+            },
+            "end" => Keyword {
+                kind: &self.text[start..end],
+                open_scope: false,
+                close_scope: true,
+                lf: false,
+            },
             "__callee__" | "__dir__" | "__method__" | "block_given?" | "fail" | "private"
             | "protected" | "public" | "raise" => BuiltinMethod { takes_args: false },
             "alias_method"
