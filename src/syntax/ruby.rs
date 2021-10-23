@@ -317,7 +317,6 @@ impl Ruby {
         if let Some(Op) = prev_token.map(|t| t.kind) {
             context_v.push(StrongOp);
         }
-
         if let Some(
             Keyword { lf, .. }
             | OpenBrace { lf }
@@ -438,6 +437,7 @@ struct Token<'a> {
 enum TokenKind<'a> {
     BuiltinMethod { takes_args: bool },
     CharLit,
+    CloseBar,
     CloseBrace,
     CloseBracket,
     CloseExpansion { kind: ExpansionKind<'a> },
@@ -454,6 +454,7 @@ enum TokenKind<'a> {
     MethodOwner,
     NumberLit,
     Op,
+    OpenBar,
     OpenBrace { lf: bool },
     OpenBracket { lf: bool },
     OpenExpansion { kind: ExpansionKind<'a>, lf: bool },
@@ -690,7 +691,15 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 _ => self.heredoc_label(),
             },
-            '!' | '&' | '*' | '+' | '-' | '=' | '>' | '^' | '|' | '~' => {
+            '|' => match self.prev.map(|t| t.kind) {
+                Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
+                Some(OpenBrace { lf: false } | Keyword { kind: "do", .. }) => OpenBar,
+                _ => match self.braces.last() {
+                    Some(OpenBar) => CloseBar,
+                    _ => Op,
+                }
+            }
+            '!' | '&' | '*' | '+' | '-' | '=' | '>' | '^' | '~' => {
                 match self.prev.map(|t| t.kind) {
                     Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                     _ => Op,
@@ -733,11 +742,12 @@ impl<'a> Iterator for Tokens<'a> {
                 _ => self.ident(start),
             },
         };
+
         match kind {
-            OpenBrace { .. } | OpenExpansion { .. } => {
+            OpenBar | OpenBrace { .. } | OpenExpansion { .. } => {
                 self.braces.push(kind);
             }
-            CloseBrace | CloseExpansion { .. } => {
+            CloseBar | CloseBrace | CloseExpansion { .. } => {
                 self.braces.pop();
             }
             _ => (),
@@ -1376,7 +1386,9 @@ impl<'a> Tokens<'a> {
                     | OpenBracket { .. }
                     | OpenExpansion { .. }
                     | OpenParen { .. }
-                    | Punct,
+                    | Punct
+                    | StrongOp
+                    | WeakOp
                 )
                 | None => Keyword {
                     kind: &self.text[start..end],
