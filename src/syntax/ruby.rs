@@ -198,6 +198,9 @@ impl Ruby {
                 }
                 Op { lf } => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => {
+                        if let Some(DotScope) = context_v.last() {
+                            context_v.pop();
+                        }
                         context_v.push(token.kind);
                     }
                     _ => {
