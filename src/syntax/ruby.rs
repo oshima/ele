@@ -84,9 +84,10 @@ impl Ruby {
             let fg = match token.kind {
                 BuiltinMethod { takes_args: false } => Fg::Macro,
                 BuiltinMethod { takes_args: true } => match tokens.peek().map(|t| t.kind) {
-                    Some(CloseBrace | CloseExpansion { .. } | Comment | Dot | Op { .. } | Punct) | None => {
-                        Fg::Default
-                    }
+                    Some(
+                        CloseBrace | CloseExpansion { .. } | Comment | Dot | Op { .. } | Punct,
+                    )
+                    | None => Fg::Default,
                     _ => Fg::Macro,
                 },
                 CharLit | RegexpLit { .. } | StrLit { .. } => Fg::String,
@@ -113,18 +114,22 @@ impl Ruby {
 
             // Indent
             match token.kind {
-                DotScope
-                | Keyword {
-                    open_scope: true,
-                    lf: true,
-                    ..
-                }
-                | Op { lf: true }
-                | OpenBrace { lf: true }
-                | OpenBracket { lf: true }
-                | OpenExpansion { lf: true, .. }
-                | OpenParen { lf: true } => {
+                Dot => match prev_token {
+                    Some(Token { end: 0, .. }) | None => {
+                        row.indent_level += 1;
+                    }
+                    _ => (),
+                },
+                DotScope | Op { lf: true } => {
                     row.indent_level += 1;
+                }
+                Keyword { lf: true, .. } => match tokens.peek().map(|t| t.kind) {
+                    Some(Keyword {
+                        close_scope: true, ..
+                    }) => (),
+                    _ => {
+                        row.indent_level += 1;
+                    }
                 },
                 OpScope => match tokens.peek().map(|t| t.kind) {
                     Some(
@@ -134,58 +139,37 @@ impl Ruby {
                         | Keyword { lf: true, .. }
                         | OpenBrace { lf: true }
                         | OpenBracket { lf: true }
-                        | OpenParen { lf: true }
+                        | OpenParen { lf: true },
                     ) => {
                         row.indent_level += 1;
                     }
                     _ => (),
-                }
-                _ => (),
-            }
-
-            if let Some(Token { end: 0, .. }) | None = prev_token {
-                match token.kind {
-                    Dot => {
+                },
+                OpenBrace { lf: true } => match tokens.peek().map(|t| t.kind) {
+                    Some(CloseBrace) => (),
+                    _ => {
                         row.indent_level += 1;
                     }
-                    Keyword {
-                        close_scope: true, ..
-                    } => match context_v[..] {
-                        [.., Keyword {
-                            open_scope: true,
-                            lf: true,
-                            ..
-                        }] => {
-                            row.indent_level -= 1;
-                        }
-                        _ => (),
-                    },
-                    CloseBrace => match context_v[..] {
-                        [.., OpenBrace { lf: true }] => {
-                            row.indent_level -= 1;
-                        }
-                        _ => (),
-                    },
-                    CloseBracket => match context_v[..] {
-                        [.., OpenBracket { lf: true }] => {
-                            row.indent_level -= 1;
-                        }
-                        _ => (),
-                    },
-                    CloseExpansion { .. } => match context_v[..] {
-                        [.., OpenExpansion { lf: true, .. }] => {
-                            row.indent_level -= 1;
-                        }
-                        _ => (),
-                    },
-                    CloseParen => match context_v[..] {
-                        [.., OpenParen { lf: true }] => {
-                            row.indent_level -= 1;
-                        }
-                        _ => (),
-                    },
-                    _ => (),
-                }
+                },
+                OpenBracket { lf: true } => match tokens.peek().map(|t| t.kind) {
+                    Some(CloseBracket) => (),
+                    _ => {
+                        row.indent_level += 1;
+                    }
+                },
+                OpenExpansion { lf: true, .. } => match tokens.peek().map(|t| t.kind) {
+                    Some(CloseExpansion { .. }) => (),
+                    _ => {
+                        row.indent_level += 1;
+                    }
+                },
+                OpenParen { lf: true } => match tokens.peek().map(|t| t.kind) {
+                    Some(CloseParen) => (),
+                    _ => {
+                        row.indent_level += 1;
+                    }
+                },
+                _ => (),
             }
 
             // Derive the context of the next row
@@ -200,12 +184,18 @@ impl Ruby {
                 | OpenParen { .. } => {
                     context_v.push(token.kind);
                 }
+                Dot => match prev_token {
+                    Some(Token { end: 0, .. }) | None => {
+                        context_v.push(DotScope);
+                    }
+                    _ => (),
+                },
                 Op { lf: false } => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => {
                         context_v.push(token.kind);
                     }
                     _ => (),
-                }
+                },
                 Op { lf: true } => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => {
                         context_v.push(token.kind);
@@ -213,7 +203,7 @@ impl Ruby {
                     _ => {
                         context_v.push(OpScope);
                     }
-                }
+                },
                 OpScope => match tokens.peek().map(|t| t.kind) {
                     Some(
                         Comment
@@ -223,12 +213,13 @@ impl Ruby {
                         | OpenBrace { lf: true }
                         | OpenBracket { lf: true }
                         | OpenParen { lf: true }
-                        | DotScope
-                    ) | None => {
+                        | DotScope,
+                    )
+                    | None => {
                         context_v.push(token.kind);
                     }
                     _ => (),
-                }
+                },
                 RegexpLit { depth, .. } | StrLit { depth, .. } | SymbolLit { depth, .. }
                     if depth > 0 =>
                 {
@@ -303,15 +294,6 @@ impl Ruby {
                     }
                 }
                 _ => (),
-            }
-
-            if let Some(Token { end: 0, .. }) | None = prev_token {
-                match token.kind {
-                    Dot => {
-                        context_v.push(DotScope);
-                    }
-                    _ => (),
-                }
             }
 
             prev_token = Some(token);
@@ -700,8 +682,8 @@ impl<'a> Iterator for Tokens<'a> {
                 _ => match self.braces.last() {
                     Some(OpenBar) => CloseBar,
                     _ => Op { lf: false },
-                }
-            }
+                },
+            },
             '!' | '&' | '*' | '+' | '-' | '=' | '>' | '^' | '~' => {
                 match self.prev.map(|t| t.kind) {
                     Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
@@ -1390,7 +1372,7 @@ impl<'a> Tokens<'a> {
                     | OpenExpansion { .. }
                     | OpenParen { .. }
                     | Punct
-                    | OpScope
+                    | OpScope,
                 )
                 | None => Keyword {
                     kind: &self.text[start..end],
