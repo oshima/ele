@@ -121,44 +121,65 @@ impl Ruby {
             }
 
             // Indent
-            let indent = match token.kind {
-                Dot => matches!(prev_token, Some(Token { end: 0, .. }) | None),
-                DotScope | Op { lf: true } => true,
-                Keyword { lf: true, .. } => !matches!(
-                    tokens.peek().map(|t| t.kind),
-                    Some(Keyword {
-                        close_scope: true,
-                        ..
-                    })
-                ),
-                OpScope => matches!(
-                    tokens.peek().map(|t| t.kind),
+            match token.kind {
+                Dot => match prev_token {
+                    Some(Token { end: 0, .. }) | None => {
+                        row.indent_level += 1;
+                    }
+                    _ => (),
+                },
+                DotScope
+                | Op { lf: true }
+                | Keyword { lf: true, .. }
+                | OpenBrace { lf: true }
+                | OpenBracket { lf: true }
+                | OpenExpansion { lf: true, .. }
+                | OpenParen { lf: true } => {
+                    row.indent_level += 1;
+                }
+                OpScope => match tokens.peek().map(|t| t.kind) {
                     Some(
-                        Dot | DotScope
-                            | Heredoc { .. }
-                            | Keyword { lf: true, .. }
-                            | OpenBrace { lf: true }
-                            | OpenBracket { lf: true }
-                            | OpenParen { lf: true },
-                    )
-                ),
-                OpenBrace { lf: true } => {
-                    !matches!(tokens.peek().map(|t| t.kind), Some(CloseBrace))
-                }
-                OpenBracket { lf: true } => {
-                    !matches!(tokens.peek().map(|t| t.kind), Some(CloseBracket))
-                }
-                OpenExpansion { lf: true, .. } => {
-                    !matches!(tokens.peek().map(|t| t.kind), Some(CloseExpansion { .. }))
-                }
-                OpenParen { lf: true } => {
-                    !matches!(tokens.peek().map(|t| t.kind), Some(CloseParen))
-                }
-                _ => false,
-            };
+                        Dot
+                        | DotScope
+                        | Heredoc { .. }
+                        | Keyword { lf: true, .. }
+                        | OpenBrace { lf: true }
+                        | OpenBracket { lf: true }
+                        | OpenParen { lf: true },
+                    ) => {
+                        row.indent_level += 1;
+                    }
+                    _ => (),
+                },
+                _ => (),
+            }
 
-            if indent {
-                row.indent_level += 1;
+            if let Some(Token { end: 0, .. }) | None = prev_token {
+                match token.kind {
+                    CloseBrace => match context_v.last() {
+                        Some(OpenBrace { lf: true }) => row.indent_level -= 1,
+                        _ => (),
+                    },
+                    CloseBracket => match context_v.last() {
+                        Some(OpenBracket { lf: true }) => row.indent_level -= 1,
+                        _ => (),
+                    },
+                    CloseExpansion { .. } => match context_v.last() {
+                        Some(OpenExpansion { lf: true, .. }) => row.indent_level -= 1,
+                        _ => (),
+                    },
+                    CloseParen => match context_v.last() {
+                        Some(OpenParen { lf: true }) => row.indent_level -= 1,
+                        _ => (),
+                    },
+                    Keyword {
+                        close_scope: true, ..
+                    } => match context_v.last() {
+                        Some(Keyword { lf: true, .. }) => row.indent_level -= 1,
+                        _ => (),
+                    },
+                    _ => (),
+                }
             }
 
             // Derive the context of the next row
