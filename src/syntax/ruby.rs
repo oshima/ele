@@ -122,8 +122,8 @@ impl Ruby {
 
             // Indent
             match token.kind {
-                Dot => match prev_token {
-                    Some(Token { end: 0, .. }) | None => {
+                Dot => match prev_token.map(|t| t.end) {
+                    Some(0) | None => {
                         row.indent_level += 1;
                     }
                     _ => (),
@@ -151,34 +151,34 @@ impl Ruby {
                     }
                     _ => (),
                 },
-                CloseBrace => match (prev_token, context_v.last()) {
-                    (Some(Token { end: 0, .. }), Some(OpenBrace { lf: true })) => {
+                CloseBrace => match (prev_token.map(|t| t.end), context_v.last()) {
+                    (Some(0), Some(OpenBrace { lf: true })) => {
                         row.indent_level -= 1;
                     }
                     _ => (),
                 },
-                CloseBracket => match (prev_token, context_v.last()) {
-                    (Some(Token { end: 0, .. }), Some(OpenBracket { lf: true })) => {
+                CloseBracket => match (prev_token.map(|t| t.end), context_v.last()) {
+                    (Some(0), Some(OpenBracket { lf: true })) => {
                         row.indent_level -= 1;
                     }
                     _ => (),
                 },
-                CloseExpansion { .. } => match (prev_token, context_v.last()) {
-                    (Some(Token { end: 0, .. }), Some(OpenExpansion { lf: true, .. })) => {
+                CloseExpansion { .. } => match (prev_token.map(|t| t.end), context_v.last()) {
+                    (Some(0), Some(OpenExpansion { lf: true, .. })) => {
                         row.indent_level -= 1;
                     }
                     _ => (),
                 },
-                CloseParen => match (prev_token, context_v.last()) {
-                    (Some(Token { end: 0, .. }), Some(OpenParen { lf: true })) => {
+                CloseParen => match (prev_token.map(|t| t.end), context_v.last()) {
+                    (Some(0), Some(OpenParen { lf: true })) => {
                         row.indent_level -= 1;
                     }
                     _ => (),
                 },
                 Keyword {
                     close_scope: true, ..
-                } => match (prev_token, context_v.last()) {
-                    (Some(Token { end: 0, .. }), Some(Keyword { lf: true, .. })) => {
+                } => match (prev_token.map(|t| t.end), context_v.last()) {
+                    (Some(0), Some(Keyword { lf: true, .. })) => {
                         row.indent_level -= 1;
                     }
                     _ => (),
@@ -198,8 +198,8 @@ impl Ruby {
                 | OpenParen { .. } => {
                     context_v.push(token.kind);
                 }
-                Dot => match prev_token {
-                    Some(Token { end: 0, .. }) | None => {
+                Dot => match prev_token.map(|t| t.end) {
+                    Some(0) | None => {
                         context_v.push(DotScope);
                     }
                     _ => (),
