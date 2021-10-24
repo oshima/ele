@@ -602,7 +602,6 @@ impl Buffer {
 
         self.last_key = Some(key);
 
-        let message = self.rows[self.cursor.y].context.as_deref().unwrap_or("");
         message
     }
 
