@@ -85,7 +85,15 @@ impl Ruby {
                 BuiltinMethod { takes_args: false } => Fg::Macro,
                 BuiltinMethod { takes_args: true } => match tokens.peek().map(|t| t.kind) {
                     Some(
-                        CloseBrace | CloseExpansion { .. } | Comment | Dot | Op { .. } | Punct,
+                        CloseBar
+                        | CloseBrace
+                        | CloseBracket
+                        | CloseExpansion { .. }
+                        | CloseParen
+                        | Comment
+                        | Dot
+                        | Op { .. }
+                        | Punct,
                     )
                     | None => Fg::Default,
                     _ => Fg::Macro,
@@ -113,63 +121,44 @@ impl Ruby {
             }
 
             // Indent
-            match token.kind {
-                Dot => match prev_token {
-                    Some(Token { end: 0, .. }) | None => {
-                        row.indent_level += 1;
-                    }
-                    _ => (),
-                },
-                DotScope | Op { lf: true } => {
-                    row.indent_level += 1;
-                }
-                Keyword { lf: true, .. } => match tokens.peek().map(|t| t.kind) {
+            let indent = match token.kind {
+                Dot => matches!(prev_token, Some(Token { end: 0, .. }) | None),
+                DotScope | Op { lf: true } => true,
+                Keyword { lf: true, .. } => !matches!(
+                    tokens.peek().map(|t| t.kind),
                     Some(Keyword {
-                        close_scope: true, ..
-                    }) => (),
-                    _ => {
-                        row.indent_level += 1;
-                    }
-                },
-                OpScope => match tokens.peek().map(|t| t.kind) {
+                        close_scope: true,
+                        ..
+                    })
+                ),
+                OpScope => matches!(
+                    tokens.peek().map(|t| t.kind),
                     Some(
-                        Dot
-                        | DotScope
-                        | Heredoc { .. }
-                        | Keyword { lf: true, .. }
-                        | OpenBrace { lf: true }
-                        | OpenBracket { lf: true }
-                        | OpenParen { lf: true },
-                    ) => {
-                        row.indent_level += 1;
-                    }
-                    _ => (),
-                },
-                OpenBrace { lf: true } => match tokens.peek().map(|t| t.kind) {
-                    Some(CloseBrace) => (),
-                    _ => {
-                        row.indent_level += 1;
-                    }
-                },
-                OpenBracket { lf: true } => match tokens.peek().map(|t| t.kind) {
-                    Some(CloseBracket) => (),
-                    _ => {
-                        row.indent_level += 1;
-                    }
-                },
-                OpenExpansion { lf: true, .. } => match tokens.peek().map(|t| t.kind) {
-                    Some(CloseExpansion { .. }) => (),
-                    _ => {
-                        row.indent_level += 1;
-                    }
-                },
-                OpenParen { lf: true } => match tokens.peek().map(|t| t.kind) {
-                    Some(CloseParen) => (),
-                    _ => {
-                        row.indent_level += 1;
-                    }
-                },
-                _ => (),
+                        Dot | DotScope
+                            | Heredoc { .. }
+                            | Keyword { lf: true, .. }
+                            | OpenBrace { lf: true }
+                            | OpenBracket { lf: true }
+                            | OpenParen { lf: true },
+                    )
+                ),
+                OpenBrace { lf: true } => {
+                    !matches!(tokens.peek().map(|t| t.kind), Some(CloseBrace))
+                }
+                OpenBracket { lf: true } => {
+                    !matches!(tokens.peek().map(|t| t.kind), Some(CloseBracket))
+                }
+                OpenExpansion { lf: true, .. } => {
+                    !matches!(tokens.peek().map(|t| t.kind), Some(CloseExpansion { .. }))
+                }
+                OpenParen { lf: true } => {
+                    !matches!(tokens.peek().map(|t| t.kind), Some(CloseParen))
+                }
+                _ => false,
+            };
+
+            if indent {
+                row.indent_level += 1;
             }
 
             // Derive the context of the next row
@@ -190,18 +179,31 @@ impl Ruby {
                     }
                     _ => (),
                 },
-                Op { lf: false } => match tokens.peek().map(|t| t.kind) {
-                    Some(Comment) | None => {
+                Keyword {
+                    open_scope,
+                    close_scope,
+                    ..
+                } => {
+                    if close_scope {
+                        if let [.., Keyword {
+                            open_scope: true, ..
+                        }] = context_v[..]
+                        {
+                            context_v.pop();
+                        }
+                    }
+                    if open_scope {
                         context_v.push(token.kind);
                     }
-                    _ => (),
-                },
-                Op { lf: true } => match tokens.peek().map(|t| t.kind) {
+                }
+                Op { lf } => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => {
                         context_v.push(token.kind);
                     }
                     _ => {
-                        context_v.push(OpScope);
+                        if lf {
+                            context_v.push(OpScope);
+                        }
                     }
                 },
                 OpScope => match tokens.peek().map(|t| t.kind) {
@@ -224,25 +226,6 @@ impl Ruby {
                     if depth > 0 =>
                 {
                     context_v.push(token.kind);
-                }
-                Keyword {
-                    open_scope,
-                    close_scope,
-                    ..
-                } => {
-                    if close_scope {
-                        match context_v[..] {
-                            [.., Keyword {
-                                open_scope: true, ..
-                            }] => {
-                                context_v.pop();
-                            }
-                            _ => (),
-                        }
-                    }
-                    if open_scope {
-                        context_v.push(token.kind);
-                    }
                 }
                 CloseBrace => {
                     for (i, kind) in context_v.iter().enumerate().rev() {
@@ -1363,30 +1346,27 @@ impl<'a> Tokens<'a> {
                 close_scope: false,
                 lf: false,
             },
-            "if" | "unless" | "until" | "while" => match self.prev.map(|t| t.kind) {
-                Some(
-                    Keyword { lf: true, .. }
-                    | Op { .. }
-                    | OpenBrace { .. }
-                    | OpenBracket { .. }
-                    | OpenExpansion { .. }
-                    | OpenParen { .. }
-                    | Punct
-                    | OpScope,
-                )
-                | None => Keyword {
+            "if" | "unless" | "until" | "while" => {
+                let open_scope = matches!(
+                    self.prev.map(|t| t.kind),
+                    Some(
+                        Keyword { lf: true, .. }
+                            | Op { .. }
+                            | OpScope
+                            | OpenBrace { .. }
+                            | OpenBracket { .. }
+                            | OpenExpansion { .. }
+                            | OpenParen { .. }
+                            | Punct
+                    ) | None
+                );
+                Keyword {
                     kind: &self.text[start..end],
-                    open_scope: true,
+                    open_scope,
                     close_scope: false,
                     lf: false,
-                },
-                _ => Keyword {
-                    kind: &self.text[start..end],
-                    open_scope: false,
-                    close_scope: false,
-                    lf: false,
-                },
-            },
+                }
+            }
             "else" | "elsif" | "ensure" | "rescue" | "when" => Keyword {
                 kind: &self.text[start..end],
                 open_scope: true,
