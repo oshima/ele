@@ -151,35 +151,39 @@ impl Ruby {
                     }
                     _ => (),
                 },
-                _ => (),
-            }
-
-            if let Some(Token { end: 0, .. }) | None = prev_token {
-                match token.kind {
-                    CloseBrace => match context_v.last() {
-                        Some(OpenBrace { lf: true }) => row.indent_level -= 1,
-                        _ => (),
-                    },
-                    CloseBracket => match context_v.last() {
-                        Some(OpenBracket { lf: true }) => row.indent_level -= 1,
-                        _ => (),
-                    },
-                    CloseExpansion { .. } => match context_v.last() {
-                        Some(OpenExpansion { lf: true, .. }) => row.indent_level -= 1,
-                        _ => (),
-                    },
-                    CloseParen => match context_v.last() {
-                        Some(OpenParen { lf: true }) => row.indent_level -= 1,
-                        _ => (),
-                    },
-                    Keyword {
-                        close_scope: true, ..
-                    } => match context_v.last() {
-                        Some(Keyword { lf: true, .. }) => row.indent_level -= 1,
-                        _ => (),
-                    },
+                CloseBrace => match (prev_token, context_v.last()) {
+                    (Some(Token { end: 0, .. }) | None, Some(OpenBrace { lf: true })) => {
+                        row.indent_level -= 1;
+                    }
                     _ => (),
-                }
+                },
+                CloseBracket => match (prev_token, context_v.last()) {
+                    (Some(Token { end: 0, .. }) | None, Some(OpenBracket { lf: true })) => {
+                        row.indent_level -= 1;
+                    }
+                    _ => (),
+                },
+                CloseExpansion { .. } => match (prev_token, context_v.last()) {
+                    (Some(Token { end: 0, .. }) | None, Some(OpenExpansion { lf: true, .. })) => {
+                        row.indent_level -= 1;
+                    }
+                    _ => (),
+                },
+                CloseParen => match (prev_token, context_v.last()) {
+                    (Some(Token { end: 0, .. }) | None, Some(OpenParen { lf: true })) => {
+                        row.indent_level -= 1;
+                    }
+                    _ => (),
+                },
+                Keyword {
+                    close_scope: true, ..
+                } => match (prev_token, context_v.last()) {
+                    (Some(Token { end: 0, .. }) | None, Some(Keyword { lf: true, .. })) => {
+                        row.indent_level -= 1;
+                    }
+                    _ => (),
+                },
+                _ => (),
             }
 
             // Derive the context of the next row
