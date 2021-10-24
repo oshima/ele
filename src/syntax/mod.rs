@@ -19,10 +19,10 @@ pub trait Syntax {
 impl dyn Syntax {
     pub fn detect(filename: Option<&str>) -> Box<dyn Syntax> {
         if let Some(s) = filename {
-            if s.ends_with(".rs") {
-                Box::new(Rust)
-            } else if s.ends_with(".rb") {
+            if s.ends_with(".rb") {
                 Box::new(Ruby)
+            } else if s.ends_with(".rs") {
+                Box::new(Rust)
             } else {
                 Box::new(Plain)
             }
