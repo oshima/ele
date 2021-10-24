@@ -84,7 +84,7 @@ impl Ruby {
             let fg = match token.kind {
                 BuiltinMethod { takes_args: false } => Fg::Macro,
                 BuiltinMethod { takes_args: true } => match tokens.peek().map(|t| t.kind) {
-                    Some(CloseBrace | CloseExpansion { .. } | Comment | Dot | Op | Punct) | None => {
+                    Some(CloseBrace | CloseExpansion { .. } | Comment | Dot | Op { .. } | Punct) | None => {
                         Fg::Default
                     }
                     _ => Fg::Macro,
@@ -113,27 +113,28 @@ impl Ruby {
 
             // Indent
             match token.kind {
-                Keyword {
+                DotScope
+                | Keyword {
                     open_scope: true,
                     lf: true,
                     ..
                 }
+                | Op { lf: true }
                 | OpenBrace { lf: true }
                 | OpenBracket { lf: true }
                 | OpenExpansion { lf: true, .. }
-                | OpenParen { lf: true }
-                | StrongOp
-                | WeakDot => {
+                | OpenParen { lf: true } => {
                     row.indent_level += 1;
                 },
-                WeakOp => match tokens.peek().map(|t| t.kind) {
+                OpScope => match tokens.peek().map(|t| t.kind) {
                     Some(
                         Dot
+                        | DotScope
+                        | Heredoc { .. }
                         | Keyword { lf: true, .. }
                         | OpenBrace { lf: true }
                         | OpenBracket { lf: true }
                         | OpenParen { lf: true }
-                        | WeakDot
                     ) => {
                         row.indent_level += 1;
                     }
@@ -190,32 +191,39 @@ impl Ruby {
             // Derive the context of the next row
             match token.kind {
                 Document { open: true }
+                | DotScope
                 | Heredoc { .. }
                 | HeredocLabel { label: Some(_), .. }
                 | OpenBrace { .. }
                 | OpenBracket { .. }
                 | OpenExpansion { .. }
-                | OpenParen { .. }
-                | WeakDot => {
+                | OpenParen { .. } => {
                     context_v.push(token.kind);
                 }
-                StrongOp => match tokens.peek().map(|t| t.kind) {
+                Op { lf: false } => match tokens.peek().map(|t| t.kind) {
+                    Some(Comment) | None => {
+                        context_v.push(token.kind);
+                    }
+                    _ => (),
+                }
+                Op { lf: true } => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => {
                         context_v.push(token.kind);
                     }
                     _ => {
-                        context_v.push(WeakOp);
+                        context_v.push(OpScope);
                     }
                 }
-                WeakOp => match tokens.peek().map(|t| t.kind) {
+                OpScope => match tokens.peek().map(|t| t.kind) {
                     Some(
                         Comment
                         | Dot
+                        | Heredoc { .. }
                         | Keyword { lf: true, .. }
                         | OpenBrace { lf: true }
                         | OpenBracket { lf: true }
                         | OpenParen { lf: true }
-                        | WeakDot
+                        | DotScope
                     ) | None => {
                         context_v.push(token.kind);
                     }
@@ -300,25 +308,21 @@ impl Ruby {
             if let Some(Token { end: 0, .. }) | None = prev_token {
                 match token.kind {
                     Dot => {
-                        context_v.push(WeakDot);
+                        context_v.push(DotScope);
                     }
                     _ => (),
                 }
             }
 
-            if !matches!(token.kind, Comment) {
-                prev_token = Some(token);
-            }
+            prev_token = Some(token);
         }
 
-        if let Some(WeakDot) = context_v.last() {
+        if let Some(DotScope) = context_v.last() {
             context_v.pop();
-        }
-        if let Some(Op) = prev_token.map(|t| t.kind) {
-            context_v.push(StrongOp);
         }
         if let Some(
             Keyword { lf, .. }
+            | Op { lf }
             | OpenBrace { lf }
             | OpenBracket { lf }
             | OpenExpansion { lf, .. }
@@ -335,6 +339,54 @@ impl Ruby {
     fn convert_context(&self, slice: &[TokenKind], string: &mut String) {
         for token_kind in slice {
             match *token_kind {
+                Document { .. } => {
+                    string.push_str("\0d");
+                }
+                DotScope => {
+                    string.push_str("\0.");
+                }
+                Heredoc { label, trailing_context, indent, expand, open } => {
+                    if open {
+                        string.push_str("\0h");
+                        if indent {
+                            string.push('-');
+                        }
+                        string.push(if expand { '"' } else { '\'' });
+                        string.push_str(label);
+                        string.push(if expand { '"' } else { '\'' });
+                    }
+                    string.push_str(trailing_context);
+                }
+                HeredocLabel { label: Some(label), indent, expand } => {
+                    string.push_str("\0h");
+                    if indent {
+                        string.push('-');
+                    }
+                    string.push(if expand { '"' } else { '\'' });
+                    string.push_str(label);
+                    string.push(if expand { '"' } else { '\'' });
+                }
+                Keyword { lf, .. } => {
+                    string.push_str(if lf { "\0k\n" } else { "\0k" });
+                }
+                Op { lf: true } => {
+                    string.push_str("\0+");
+                }
+                OpScope => {
+                    string.push_str("\0-");
+                }
+                OpenBrace { lf } => {
+                    string.push_str(if lf { "{\n" } else { "{" });
+                }
+                OpenBracket { lf } => {
+                    string.push_str(if lf { "[\n" } else { "[" });
+                }
+                OpenExpansion { lf, .. } => {
+                    string.push_str(if lf { "#{\n" } else { "#{" });
+                }
+                OpenParen { lf } => {
+                    string.push_str(if lf { "(\n" } else { "(" });
+                }
                 RegexpLit { delim, expand, depth } => match (delim, expand) {
                     ('/', true) => {
                         string.push(delim);
@@ -371,54 +423,6 @@ impl Ruby {
                         }
                     }
                 },
-                Document { .. } => {
-                    string.push_str("\0d");
-                }
-                HeredocLabel { label: Some(label), indent, expand } => {
-                    string.push_str("\0h");
-                    if indent {
-                        string.push('-');
-                    }
-                    string.push(if expand { '"' } else { '\'' });
-                    string.push_str(label);
-                    string.push(if expand { '"' } else { '\'' });
-                }
-                Heredoc { label, trailing_context, indent, expand, open } => {
-                    if open {
-                        string.push_str("\0h");
-                        if indent {
-                            string.push('-');
-                        }
-                        string.push(if expand { '"' } else { '\'' });
-                        string.push_str(label);
-                        string.push(if expand { '"' } else { '\'' });
-                    }
-                    string.push_str(trailing_context);
-                }
-                Keyword { lf, .. } => {
-                    string.push_str(if lf { "\0k\n" } else { "\0k" });
-                }
-                StrongOp => {
-                    string.push_str("\0+");
-                }
-                WeakOp => {
-                    string.push_str("\0-");
-                }
-                WeakDot => {
-                    string.push_str("\0.");
-                }
-                OpenBrace { lf } => {
-                    string.push_str(if lf { "{\n" } else { "{" });
-                }
-                OpenBracket { lf } => {
-                    string.push_str(if lf { "[\n" } else { "[" });
-                }
-                OpenExpansion { lf, .. } => {
-                    string.push_str(if lf { "#{\n" } else { "#{" });
-                }
-                OpenParen { lf } => {
-                    string.push_str(if lf { "(\n" } else { "(" });
-                }
                 _ => (),
             }
         }
@@ -445,6 +449,7 @@ enum TokenKind<'a> {
     Comment,
     Document { open: bool },
     Dot,
+    DotScope,
     Heredoc { label: &'a str, trailing_context: &'a str, indent: bool, expand: bool, open: bool },
     HeredocLabel { label: Option<&'a str>, indent: bool, expand: bool },
     Ident,
@@ -453,7 +458,8 @@ enum TokenKind<'a> {
     Method,
     MethodOwner,
     NumberLit,
-    Op,
+    Op { lf: bool },
+    OpScope,
     OpenBar,
     OpenBrace { lf: bool },
     OpenBracket { lf: bool },
@@ -463,12 +469,9 @@ enum TokenKind<'a> {
     PureSymbolLit,
     RegexpLit { delim: char, depth: usize, expand: bool },
     StrLit { delim: char, depth: usize, expand: bool },
-    StrongOp,
     SymbolLit { delim: char, depth: usize, expand: bool },
     UpperIdent,
     Variable,
-    WeakDot,
-    WeakOp,
 }
 
 #[derive(Clone, Copy)]
@@ -563,10 +566,10 @@ impl<'a> Iterator for Tokens<'a> {
 
             // symbol
             ':' => match self.chars.peek() {
-                Some(&(_, (_, ' ' | '\t'))) | None => Op,
+                Some(&(_, (_, ' ' | '\t'))) | None => Op { lf: false },
                 Some(&(_, (_, ':'))) => {
                     self.chars.next();
-                    Op
+                    Op { lf: false }
                 }
                 Some(&(_, (_, '\''))) => {
                     self.chars.next();
@@ -585,7 +588,7 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(
                     Key
                     | Keyword { .. }
-                    | Op
+                    | Op { .. }
                     | OpenBrace { .. }
                     | OpenExpansion { .. }
                     | OpenBracket { .. }
@@ -595,14 +598,14 @@ impl<'a> Iterator for Tokens<'a> {
                 | None => self.regexp_lit(ch, 1, true),
                 Some(BuiltinMethod { takes_args: true } | Ident | Method) => {
                     match self.prev.filter(|t| t.end == start) {
-                        Some(_) => Op,
+                        Some(_) => Op { lf: false },
                         None => match self.chars.peek() {
-                            Some(&(_, (_, ' ' | '\t'))) | None => Op,
+                            Some(&(_, (_, ' ' | '\t'))) | None => Op { lf: false },
                             _ => self.regexp_lit(ch, 1, true),
                         },
                     }
                 }
-                _ => Op,
+                _ => Op { lf: false },
             },
 
             // percent literal
@@ -611,7 +614,7 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(
                     Key
                     | Keyword { .. }
-                    | Op
+                    | Op { .. }
                     | OpenBrace { .. }
                     | OpenExpansion { .. }
                     | OpenBracket { .. }
@@ -621,11 +624,11 @@ impl<'a> Iterator for Tokens<'a> {
                 | None => self.percent_lit(),
                 Some(BuiltinMethod { takes_args: true } | Ident | Method) => {
                     match self.prev.filter(|t| t.end == start) {
-                        Some(_) => Op,
+                        Some(_) => Op { lf: false },
                         None => self.percent_lit(),
                     }
                 }
-                _ => Op,
+                _ => Op { lf: false },
             },
 
             // char
@@ -633,7 +636,7 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(
                     Key
                     | Keyword { .. }
-                    | Op
+                    | Op { .. }
                     | OpenBrace { .. }
                     | OpenExpansion { .. }
                     | OpenBracket { .. }
@@ -643,11 +646,11 @@ impl<'a> Iterator for Tokens<'a> {
                 | None => self.char_lit(),
                 Some(BuiltinMethod { takes_args: true } | Ident | Method) => {
                     match self.prev.filter(|t| t.end == start) {
-                        Some(_) => Op,
+                        Some(_) => Op { lf: false },
                         None => self.char_lit(),
                     }
                 }
-                _ => Op,
+                _ => Op { lf: false },
             },
 
             // number
@@ -696,19 +699,19 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(OpenBrace { lf: false } | Keyword { kind: "do", .. }) => OpenBar,
                 _ => match self.braces.last() {
                     Some(OpenBar) => CloseBar,
-                    _ => Op,
+                    _ => Op { lf: false },
                 }
             }
             '!' | '&' | '*' | '+' | '-' | '=' | '>' | '^' | '~' => {
                 match self.prev.map(|t| t.kind) {
                     Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
-                    _ => Op,
+                    _ => Op { lf: false },
                 }
             }
             '.' => match self.chars.next_if(|&(_, (_, ch))| ch == '.') {
                 Some(_) => {
                     self.chars.next_if(|&(_, (_, ch))| ch == '.');
-                    Op
+                    Op { lf: false }
                 }
                 _ => Dot,
             },
@@ -724,9 +727,9 @@ impl<'a> Iterator for Tokens<'a> {
                     close_scope: false,
                     lf: self.chars.next_if(|&(_, (_, ch))| ch == '\n').is_some(),
                 },
-                Some((_, (_, '+'))) => StrongOp,
-                Some((_, (_, '-'))) => WeakOp,
-                Some((_, (_, '.'))) => WeakDot,
+                Some((_, (_, '+'))) => Op { lf: true },
+                Some((_, (_, '-'))) => OpScope,
+                Some((_, (_, '.'))) => DotScope,
                 _ => Punct,
             },
 
@@ -839,10 +842,10 @@ impl<'a> Tokens<'a> {
                     while self.chars.next().is_some() {}
                     Document { open: true }
                 }
-                _ => Op,
+                _ => Op { lf: false },
             }
         } else {
-            Op
+            Op { lf: false }
         }
     }
 
@@ -887,7 +890,7 @@ impl<'a> Tokens<'a> {
             self.method(peeked);
             PureSymbolLit
         } else {
-            Op
+            Op { lf: false }
         }
     }
 
@@ -911,37 +914,37 @@ impl<'a> Tokens<'a> {
                     self.chars.nth(1);
                     self.str_lit(ch, 1, false)
                 }
-                _ => Op,
+                _ => Op { lf: false },
             },
             Some(&(_, (_, 'Q' | 'W' | 'x'))) => match self.chars.clone().nth(1) {
                 Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
                     self.chars.nth(1);
                     self.str_lit(ch, 1, true)
                 }
-                _ => Op,
+                _ => Op { lf: false },
             },
             Some(&(_, (_, 'i' | 's'))) => match self.chars.clone().nth(1) {
                 Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
                     self.chars.nth(1);
                     self.symbol_lit(ch, 1, false)
                 }
-                _ => Op,
+                _ => Op { lf: false },
             },
             Some(&(_, (_, 'I'))) => match self.chars.clone().nth(1) {
                 Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
                     self.chars.nth(1);
                     self.symbol_lit(ch, 1, true)
                 }
-                _ => Op,
+                _ => Op { lf: false },
             },
             Some(&(_, (_, 'r'))) => match self.chars.clone().nth(1) {
                 Some((_, (_, ch))) if ch.is_ascii_punctuation() => {
                     self.chars.nth(1);
                     self.regexp_lit(ch, 1, true)
                 }
-                _ => Op,
+                _ => Op { lf: false },
             },
-            _ => Op,
+            _ => Op { lf: false },
         }
     }
 
@@ -990,7 +993,7 @@ impl<'a> Tokens<'a> {
             (Some(ch), _) if !ch.is_ascii_whitespace() => {
                 self.chars.next();
             }
-            _ => return Op,
+            _ => return Op { lf: false },
         }
         CharLit
     }
@@ -1154,11 +1157,11 @@ impl<'a> Tokens<'a> {
                             .map(|(_, (end, _))| &self.text[(start + 1)..end]);
                         HeredocLabel { label, indent: true, expand: d != '\'' }
                     }
-                    _ => Op,
+                    _ => Op { lf: false },
                 },
-                _ => Op,
+                _ => Op { lf: false },
             },
-            _ => Op,
+            _ => Op { lf: false },
         }
     }
 
@@ -1309,7 +1312,7 @@ impl<'a> Tokens<'a> {
                 Some(&(_, (_, '~'))) => {
                     self.chars.next();
                 }
-                _ => return Op,
+                _ => return Op { lf: false },
             },
             '[' => match self.chars.peek() {
                 Some(&(_, (_, ']'))) => {
@@ -1381,14 +1384,13 @@ impl<'a> Tokens<'a> {
             "if" | "unless" | "until" | "while" => match self.prev.map(|t| t.kind) {
                 Some(
                     Keyword { lf: true, .. }
-                    | Op
+                    | Op { .. }
                     | OpenBrace { .. }
                     | OpenBracket { .. }
                     | OpenExpansion { .. }
                     | OpenParen { .. }
                     | Punct
-                    | StrongOp
-                    | WeakOp
+                    | OpScope
                 )
                 | None => Keyword {
                     kind: &self.text[start..end],
