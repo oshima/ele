@@ -152,25 +152,25 @@ impl Ruby {
                     _ => (),
                 },
                 CloseBrace => match (prev_token, context_v.last()) {
-                    (Some(Token { end: 0, .. }) | None, Some(OpenBrace { lf: true })) => {
+                    (Some(Token { end: 0, .. }), Some(OpenBrace { lf: true })) => {
                         row.indent_level -= 1;
                     }
                     _ => (),
                 },
                 CloseBracket => match (prev_token, context_v.last()) {
-                    (Some(Token { end: 0, .. }) | None, Some(OpenBracket { lf: true })) => {
+                    (Some(Token { end: 0, .. }), Some(OpenBracket { lf: true })) => {
                         row.indent_level -= 1;
                     }
                     _ => (),
                 },
                 CloseExpansion { .. } => match (prev_token, context_v.last()) {
-                    (Some(Token { end: 0, .. }) | None, Some(OpenExpansion { lf: true, .. })) => {
+                    (Some(Token { end: 0, .. }), Some(OpenExpansion { lf: true, .. })) => {
                         row.indent_level -= 1;
                     }
                     _ => (),
                 },
                 CloseParen => match (prev_token, context_v.last()) {
-                    (Some(Token { end: 0, .. }) | None, Some(OpenParen { lf: true })) => {
+                    (Some(Token { end: 0, .. }), Some(OpenParen { lf: true })) => {
                         row.indent_level -= 1;
                     }
                     _ => (),
@@ -178,7 +178,7 @@ impl Ruby {
                 Keyword {
                     close_scope: true, ..
                 } => match (prev_token, context_v.last()) {
-                    (Some(Token { end: 0, .. }) | None, Some(Keyword { lf: true, .. })) => {
+                    (Some(Token { end: 0, .. }), Some(Keyword { lf: true, .. })) => {
                         row.indent_level -= 1;
                     }
                     _ => (),
