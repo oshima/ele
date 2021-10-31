@@ -76,20 +76,13 @@ impl Rust {
         while let Some(token) = tokens.next() {
             // Highlight
             let fg = match token.kind {
-                BlockComment { .. } | LineComment => Fg::Comment,
-                CharLit | RawStrLit { .. } | StrLit { .. } => Fg::String,
-                Const | Fn | For | Keyword | Let | Mod | Mut | Static | Where { .. } => Fg::Keyword,
-                Lifetime => Fg::Variable,
-                PrimitiveType => Fg::Type,
-                Question => Fg::Macro,
                 Bang => match prev_token.map(|t| t.kind) {
                     Some(Ident) => Fg::Macro,
                     _ => Fg::Default,
                 },
-                UpperIdent => match prev_token.map(|t| t.kind) {
-                    Some(Const | Static) => Fg::Variable,
-                    _ => Fg::Type,
-                },
+                BlockComment { .. } | LineComment => Fg::Comment,
+                CharLit | RawStrLit { .. } | StrLit { .. } => Fg::String,
+                Const | Fn | For | Keyword | Let | Mod | Mut | Static | Where { .. } => Fg::Keyword,
                 Ident => match prev_token.map(|t| t.kind) {
                     Some(Fn) => Fg::Function,
                     Some(For | Let | Mut) => Fg::Variable,
@@ -102,6 +95,13 @@ impl Rust {
                         _ => Fg::Default,
                     },
                 },
+                Lifetime => Fg::Variable,
+                PrimitiveType => Fg::Type,
+                Question => Fg::Macro,
+                UpperIdent => match prev_token.map(|t| t.kind) {
+                    Some(Const | Static) => Fg::Variable,
+                    _ => Fg::Type,
+                },
                 _ => Fg::Default,
             };
 
@@ -111,11 +111,11 @@ impl Rust {
 
             // Indent
             match token.kind {
-                OpenAttribute { lf: true }
+                Expr { lf: true }
+                | OpenAttribute { lf: true }
                 | OpenBrace { lf: true }
                 | OpenBracket { lf: true }
                 | OpenParen { lf: true }
-                | Expr { lf: true }
                 | Where { lf: true } => {
                     row.indent_level += 1;
                 }
@@ -124,21 +124,6 @@ impl Rust {
 
             if let Some(0) = prev_token.map(|t| t.end) {
                 match token.kind {
-                    OpenBrace { lf: false } => match context_v[..] {
-                        [.., Where { lf }, Expr { lf: true }] => {
-                            row.indent_level -= if lf { 2 } else { 1 };
-                        }
-                        [.., Expr { lf: true } | Where { lf: true }] => {
-                            row.indent_level -= 1;
-                        }
-                        _ => (),
-                    },
-                    Where { lf: false } => match context_v[..] {
-                        [.., Expr { lf: true }] => {
-                            row.indent_level -= 1;
-                        }
-                        _ => (),
-                    },
                     CloseBrace => match context_v[..] {
                         [.., OpenBrace { lf }, Expr { lf: true }] => {
                             row.indent_level -= if lf { 2 } else { 1 };
@@ -172,7 +157,22 @@ impl Rust {
                         }
                         _ => (),
                     },
+                    OpenBrace { lf: false } => match context_v[..] {
+                        [.., Where { lf }, Expr { lf: true }] => {
+                            row.indent_level -= if lf { 2 } else { 1 };
+                        }
+                        [.., Expr { lf: true } | Where { lf: true }] => {
+                            row.indent_level -= 1;
+                        }
+                        _ => (),
+                    },
                     Or => match context_v[..] {
+                        [.., Expr { lf: true }] => {
+                            row.indent_level -= 1;
+                        }
+                        _ => (),
+                    },
+                    Where { lf: false } => match context_v[..] {
                         [.., Expr { lf: true }] => {
                             row.indent_level -= 1;
                         }
@@ -184,13 +184,13 @@ impl Rust {
 
             // Derive the context of the next row
             match token.kind {
-                OpenAttribute { .. }
+                BlockComment { open: true, .. }
+                | Expr { .. }
+                | OpenAttribute { .. }
                 | OpenBracket { .. }
                 | OpenParen { .. }
-                | Expr { .. }
-                | BlockComment { open: true, .. }
-                | StrLit { open: true }
-                | RawStrLit { open: true, .. } => {
+                | RawStrLit { open: true, .. }
+                | StrLit { open: true } => {
                     context_v.push(token.kind);
                 }
                 OpenBrace { .. } => match context_v[..] {
@@ -290,11 +290,11 @@ impl Rust {
         }
 
         if let Some(
-            OpenAttribute { lf }
+            Expr { lf }
+            | OpenAttribute { lf }
             | OpenBrace { lf }
             | OpenBracket { lf }
             | OpenParen { lf }
-            | Expr { lf }
             | Where { lf },
         ) = context_v.last_mut()
         {
@@ -308,6 +308,14 @@ impl Rust {
     fn convert_context(&self, slice: &[TokenKind], string: &mut String) {
         for token_kind in slice {
             match *token_kind {
+                BlockComment { open: true, depth } => {
+                    for _ in 0..depth {
+                        string.push_str("/*");
+                    }
+                }
+                Expr { lf } => {
+                    string.push_str(if lf { "\0e\n" } else { "\0e" });
+                }
                 OpenAttribute { lf } => {
                     string.push_str(if lf { "#[\n" } else { "#[" });
                 }
@@ -320,26 +328,18 @@ impl Rust {
                 OpenParen { lf } => {
                     string.push_str(if lf { "(\n" } else { "(" });
                 }
-                Expr { lf } => {
-                    string.push_str(if lf { "\0e\n" } else { "\0e" });
-                }
-                Where { lf } => {
-                    string.push_str(if lf { "\0w\n" } else { "\0w" });
-                }
-                BlockComment { open: true, depth } => {
-                    for _ in 0..depth {
-                        string.push_str("/*");
-                    }
-                }
-                StrLit { open: true } => {
-                    string.push('"');
-                }
                 RawStrLit { open: true, n_hashes } => {
                     string.push('r');
                     for _ in 0..n_hashes {
                         string.push('#');
                     }
                     string.push('"');
+                }
+                StrLit { open: true } => {
+                    string.push('"');
+                }
+                Where { lf } => {
+                    string.push_str(if lf { "\0w\n" } else { "\0w" });
                 }
                 _ => (),
             }
@@ -444,7 +444,7 @@ impl<'a> Iterator for Tokens<'a> {
                     Some((_, ch)) if !is_delim(ch) => self.raw_ident(),
                     _ => self.raw_str_lit(),
                 },
-                _ => self.ident_or_keyword(start),
+                _ => self.ident(start),
             },
 
             // byte, byte string or raw byte string
@@ -461,10 +461,10 @@ impl<'a> Iterator for Tokens<'a> {
                     self.chars.next();
                     match self.chars.peek() {
                         Some((_, '"' | '#')) => self.raw_str_lit(),
-                        _ => self.ident_or_keyword(start),
+                        _ => self.ident(start),
                     }
                 }
-                _ => self.ident_or_keyword(start),
+                _ => self.ident(start),
             },
 
             // punctuation
@@ -517,9 +517,9 @@ impl<'a> Iterator for Tokens<'a> {
                 _ => Punct,
             },
 
-            // identifier or keyword
+            // identifier
             ch if ch.is_ascii_uppercase() => self.upper_ident(),
-            _ => self.ident_or_keyword(start),
+            _ => self.ident(start),
         };
 
         let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
@@ -638,7 +638,7 @@ impl<'a> Tokens<'a> {
         UpperIdent
     }
 
-    fn ident_or_keyword(&mut self, start: usize) -> TokenKind {
+    fn ident(&mut self, start: usize) -> TokenKind {
         while self.chars.next_if(|&(_, ch)| !is_delim(ch)).is_some() {}
         let end = self.chars.peek().map_or(self.text.len(), |&(idx, _)| idx);
         match &self.text[start..end] {

@@ -129,8 +129,8 @@ impl Ruby {
                     _ => (),
                 },
                 DotScope
-                | Op { lf: true }
                 | Keyword { lf: true, .. }
+                | Op { lf: true }
                 | OpenBrace { lf: true }
                 | OpenBracket { lf: true }
                 | OpenExpansion { lf: true, .. }
@@ -210,9 +210,9 @@ impl Ruby {
                     ..
                 } => {
                     if close_scope {
-                        if let [.., Keyword {
+                        if let Some(Keyword {
                             open_scope: true, ..
-                        }] = context_v[..]
+                        }) = context_v.last()
                         {
                             context_v.pop();
                         }
@@ -710,7 +710,7 @@ impl<'a> Iterator for Tokens<'a> {
             },
             ch if is_delim(ch) => Punct,
 
-            // embedded document or heredoc
+            // appears only in the context
             '\0' => match self.chars.next() {
                 Some((_, (_, 'd'))) => self.document(),
                 Some((_, (_, 'h'))) => self.heredoc(),
