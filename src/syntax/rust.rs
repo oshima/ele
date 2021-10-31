@@ -94,7 +94,6 @@ impl Rust {
                     Some(Fn) => Fg::Function,
                     Some(For | Let | Mut) => Fg::Variable,
                     Some(Mod) => Fg::Module,
-                    Some(OpenAttribute { .. }) => Fg::Macro,
                     _ => match tokens.peek().map(|t| t.kind) {
                         Some(Bang) => Fg::Macro,
                         Some(Colon) => Fg::Variable,
@@ -123,7 +122,7 @@ impl Rust {
                 _ => (),
             }
 
-            if prev_token.filter(|t| t.end == 0).is_some() {
+            if let Some(0) = prev_token.map(|t| t.end) {
                 match token.kind {
                     OpenBrace { lf: false } => match context_v[..] {
                         [.., Where { lf }, Expr { lf: true }] => {
