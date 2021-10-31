@@ -651,7 +651,7 @@ impl<'a> Tokens<'a> {
             "mut" => Mut,
             "static" => Static,
             "where" => Where { lf: false },
-            "as" | "async" | "await" | "break" | "continue" | "crate" | "else" | "enum"
+            "as" | "async" | "await" | "break" | "continue" | "crate" | "dyn" | "else" | "enum"
             | "extern" | "false" | "if" | "impl" | "in" | "loop" | "match" | "move" | "pub"
             | "ref" | "return" | "self" | "struct" | "super" | "trait" | "true" | "type"
             | "unsafe" | "use" | "while" => Keyword,
