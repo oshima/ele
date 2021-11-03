@@ -1174,16 +1174,14 @@ impl<'a> Tokens<'a> {
         let label = &self.context[start..end];
 
         // read trailing context
+        let mut another_heredoc = false;
         while let Some(&(true, (idx, ch))) = self.chars.peek() {
             match ch {
                 '\0' => match self.chars.nth(1) {
-                    Some((_, (_, 'h'))) => {
-                        while self.chars.next_if(|&(in_context, _)| in_context).is_some() {}
-                        break;
-                    }
+                    Some((_, (_, 'h'))) => another_heredoc = true,
                     _ => (),
                 }
-                '#' => {
+                '#' if !another_heredoc => {
                     let trailing_context = &self.context[(end + 1)..idx];
                     return Heredoc { label, trailing_context, indent, expand, open: true };
                 }
