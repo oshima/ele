@@ -1172,10 +1172,24 @@ impl<'a> Tokens<'a> {
             .unwrap();
         let label = &self.context[start..end];
 
-        if let Some(&(true, (_, '#'))) = self.chars.peek() {
-            return Heredoc { label, trailing_context: "", indent, expand, open: true };
+        while let Some(&(true, (idx, ch))) = self.chars.peek() {
+            match ch {
+                '\0' => match self.chars.nth(1) {
+                    Some((_, (_, 'h'))) => {
+                        while self.chars.next_if(|&(in_context, _)| in_context).is_some() {}
+                        break;
+                    }
+                    _ => (),
+                }
+                '#' => {
+                    let trailing_context = &self.context[(end + 1)..idx];
+                    return Heredoc { label, trailing_context, indent, expand, open: true };
+                }
+                _ => {
+                    self.chars.next();
+                }
+            }
         }
-        while self.chars.next_if(|&(in_context, _)| in_context).is_some() {}
         let trailing_context = &self.context[(end + 1)..];
 
         let open = if indent {
