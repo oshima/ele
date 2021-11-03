@@ -1164,6 +1164,7 @@ impl<'a> Tokens<'a> {
         let delim = self.chars.next().map(|(_, (_, ch))| ch).unwrap();
         let expand = delim == '"';
 
+        // read label
         let start = self.chars.peek().map(|&(_, (idx, _))| idx).unwrap();
         let end = self
             .chars
@@ -1172,6 +1173,7 @@ impl<'a> Tokens<'a> {
             .unwrap();
         let label = &self.context[start..end];
 
+        // read trailing context
         while let Some(&(true, (idx, ch))) = self.chars.peek() {
             match ch {
                 '\0' => match self.chars.nth(1) {
@@ -1192,6 +1194,7 @@ impl<'a> Tokens<'a> {
         }
         let trailing_context = &self.context[(end + 1)..];
 
+        // check if heredoc is closed
         let open = if indent {
             self.text.find(label).map_or(true, |i| {
                 self.text[..i].trim() != "" || self.text.len() > i + label.len()
@@ -1199,6 +1202,8 @@ impl<'a> Tokens<'a> {
         } else {
             self.text != label
         };
+
+        // consume content
         if open {
             while let Some(&(_, (_, ch))) = self.chars.peek() {
                 match ch {
