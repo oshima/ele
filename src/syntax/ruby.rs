@@ -762,17 +762,17 @@ impl<'a> Iterator for Tokens<'a> {
 }
 
 impl<'a> Tokens<'a> {
+    #[rustfmt::skip]
     fn after_expansion(&mut self, kind: ExpansionKind<'a>) -> Token<'a> {
         let start = self
             .chars
             .peek()
             .map_or(self.text.len(), |&(_, (idx, _))| idx);
         let kind = match kind {
-            InHeredoc {
-                label,
-                trailing_context,
-                indent,
-            } => self.heredoc_resume(label, trailing_context, indent),
+            InHeredoc { label, trailing_context, indent } => {
+                self.consume_heredoc_content(true);
+                Heredoc { label, trailing_context, indent, expand: true, open: true }
+            },
             InRegexp { delim, depth } => self.regexp_lit(delim, depth, true),
             InStr { delim, depth } => self.str_lit(delim, depth, true),
             InSymbol { delim, depth } => self.symbol_lit(delim, depth, true),
@@ -821,6 +821,19 @@ impl<'a> Tokens<'a> {
             }
         }
         depth
+    }
+
+    fn consume_heredoc_content(&mut self, expand: bool) {
+        while let Some(&(_, (_, ch))) = self.chars.peek() {
+            match ch {
+                '\\' => self.chars.nth(1),
+                '#' if expand => match self.chars.clone().nth(1) {
+                    Some((_, (_, '{'))) => break,
+                    _ => self.chars.next(),
+                },
+                _ => self.chars.next(),
+            };
+        }
     }
 
     fn comment(&mut self) -> TokenKind<'a> {
@@ -1203,35 +1216,11 @@ impl<'a> Tokens<'a> {
 
         // consume content
         if open {
-            while let Some(&(_, (_, ch))) = self.chars.peek() {
-                match ch {
-                    '\\' => self.chars.nth(1),
-                    '#' if expand => match self.chars.clone().nth(1) {
-                        Some((_, (_, '{'))) => break,
-                        _ => self.chars.next(),
-                    }
-                    _ => self.chars.next(),
-                };
-            }
+            self.consume_heredoc_content(expand);
         } else {
             while self.chars.next().is_some() {}
         }
         Heredoc { label, trailing_context, indent, expand, open }
-    }
-
-    #[rustfmt::skip]
-    fn heredoc_resume(&mut self, label: &'a str, trailing_context: &'a str, indent: bool) -> TokenKind<'a> {
-        while let Some(&(_, (_, ch))) = self.chars.peek() {
-            match ch {
-                '\\' => self.chars.nth(1),
-                '#' => match self.chars.clone().nth(1) {
-                    Some((_, (_, '{'))) => break,
-                    _ => self.chars.next(),
-                }
-                _ => self.chars.next(),
-            };
-        }
-        Heredoc { label, trailing_context, indent, expand: true, open: true }
     }
 
     fn instance_variable(&mut self) -> TokenKind<'a> {
