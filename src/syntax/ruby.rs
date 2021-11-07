@@ -803,29 +803,20 @@ impl<'a> Tokens<'a> {
         let mut depth = depth;
         while let Some(&(_, (_, ch))) = self.chars.peek() {
             match ch {
-                ch if ch == close_delim => {
-                    self.chars.next();
-                    depth -= 1;
-                    if depth == 0 {
-                        return depth;
-                    }
-                }
-                ch if ch == delim => {
-                    self.chars.next();
-                    depth += 1;
-                }
+                ch if ch == close_delim => depth -= 1,
+                ch if ch == delim => depth += 1,
                 '\\' => {
-                    self.chars.nth(1);
+                    self.chars.next();
                 }
                 '#' if expand => match self.chars.clone().nth(1) {
-                    Some((_, (_, '{'))) => return depth,
-                    _ => {
-                        self.chars.next();
-                    }
+                    Some((_, (_, '{'))) => break,
+                    _ => (),
                 },
-                _ => {
-                    self.chars.next();
-                }
+                _ => (),
+            }
+            self.chars.next();
+            if depth == 0 {
+                break;
             }
         }
         depth
@@ -834,13 +825,16 @@ impl<'a> Tokens<'a> {
     fn consume_heredoc_content(&mut self, expand: bool) {
         while let Some(&(_, (_, ch))) = self.chars.peek() {
             match ch {
-                '\\' => self.chars.nth(1),
+                '\\' => {
+                    self.chars.next();
+                }
                 '#' if expand => match self.chars.clone().nth(1) {
                     Some((_, (_, '{'))) => break,
-                    _ => self.chars.next(),
+                    _ => (),
                 },
-                _ => self.chars.next(),
-            };
+                _ => (),
+            }
+            self.chars.next();
         }
     }
 
