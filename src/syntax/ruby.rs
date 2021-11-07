@@ -221,29 +221,37 @@ impl Ruby {
                         context_v.push(token.kind);
                     }
                 }
-                Op { lf } => match tokens.peek().map(|t| t.kind) {
-                    Some(Comment) | None => {
-                        if let Some(DotScope) = context_v.last() {
+                Op { lf: false } => match tokens.peek().map(|t| t.kind) {
+                    Some(Comment) | None => match context_v.last() {
+                        Some(DotScope) => {
                             context_v.pop();
+                            context_v.push(token.kind);
                         }
-                        context_v.push(token.kind);
-                    }
-                    _ => {
-                        if lf {
-                            context_v.push(OpScope);
-                        }
-                    }
+                        Some(
+                            Keyword { lf: false, .. }
+                            | OpenBrace { lf: false }
+                            | OpenBracket { lf: false }
+                            | OpenExpansion { lf: false, .. }
+                            | OpenParen { lf: false },
+                        ) => (),
+                        _ => context_v.push(token.kind),
+                    },
+                    _ => (),
+                },
+                Op { lf: true } => match tokens.peek().map(|t| t.kind) {
+                    Some(Comment) | None => context_v.push(token.kind),
+                    _ => context_v.push(OpScope),
                 },
                 OpScope => match tokens.peek().map(|t| t.kind) {
                     Some(
                         Comment
                         | Dot
+                        | DotScope
                         | Heredoc { .. }
                         | Keyword { lf: true, .. }
                         | OpenBrace { lf: true }
                         | OpenBracket { lf: true }
-                        | OpenParen { lf: true }
-                        | DotScope,
+                        | OpenParen { lf: true },
                     )
                     | None => {
                         context_v.push(token.kind);
