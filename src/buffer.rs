@@ -96,34 +96,6 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn save(&mut self) -> io::Result<()> {
-        if let Some(filename) = self.filename.as_deref() {
-            let file = File::create(filename)?;
-            let mut writer = BufWriter::new(file);
-            let len = self.rows.len();
-
-            for (i, row) in self.rows.iter_mut().enumerate() {
-                writer.write(row.string.as_bytes())?;
-                if i < len - 1 {
-                    writer.write(b"\n")?;
-                }
-                row.context = None;
-            }
-
-            self.syntax = <dyn Syntax>::detect(Some(filename));
-            self.anchor = None;
-            self.last_key = None;
-            self.syntax_update(0);
-
-            self.saved_eid = self.undo_list.last().map(|e| e.id());
-        }
-        Ok(())
-    }
-
-    pub fn modified(&self) -> bool {
-        self.saved_eid != self.undo_list.last().map(|e| e.id())
-    }
-
     pub fn resize(&mut self, pos: Pos, size: Size) {
         self.pos = pos;
         self.size = size;
@@ -605,6 +577,53 @@ impl Buffer {
         message
     }
 
+    fn syntax_update(&mut self, y: usize) {
+        let len = self.syntax.update_rows(&mut self.rows[y..]);
+        self.draw_range.expand(y, y + len);
+    }
+
+    fn scroll(&mut self) {
+        if self.cursor.x < self.offset.x {
+            self.offset.x = self.cursor.x;
+            self.draw_range.full_expand();
+        }
+        if self.cursor.x >= self.offset.x + self.size.w {
+            self.offset.x = self.cursor.x - self.size.w + 1;
+            self.draw_range.full_expand();
+        }
+        if self.cursor.y < self.offset.y {
+            self.offset.y = self.cursor.y;
+            self.draw_range.full_expand();
+        }
+        if self.cursor.y >= self.offset.y + self.size.h {
+            self.offset.y = self.cursor.y - self.size.h + 1;
+            self.draw_range.full_expand();
+        }
+    }
+
+    fn scroll_center(&mut self) {
+        if self.cursor.x < self.offset.x || self.cursor.x >= self.offset.x + self.size.w {
+            self.offset.x = self.cursor.x.saturating_sub(self.size.w / 2);
+            self.draw_range.full_expand();
+        }
+        if self.cursor.y < self.offset.y || self.cursor.y >= self.offset.y + self.size.h {
+            self.offset.y = self.cursor.y.saturating_sub(self.size.h / 2);
+            self.draw_range.full_expand();
+        }
+    }
+}
+
+impl Buffer {
+    pub fn modified(&self) -> bool {
+        self.saved_eid != self.undo_list.last().map(|e| e.id())
+    }
+
+    fn eid(&mut self) -> usize {
+        let eid = self.next_eid;
+        self.next_eid += 1;
+        eid
+    }
+
     fn process_event(&mut self, event: Event) -> Event {
         match event {
             Event::Insert(id, pos1, string, mv) => {
@@ -655,47 +674,6 @@ impl Buffer {
         let last_event = self.undo_list.pop().unwrap();
         let event = last_event.merge(event);
         self.undo_list.push(event);
-    }
-
-    fn eid(&mut self) -> usize {
-        let eid = self.next_eid;
-        self.next_eid += 1;
-        eid
-    }
-
-    fn syntax_update(&mut self, y: usize) {
-        let len = self.syntax.update_rows(&mut self.rows[y..]);
-        self.draw_range.expand(y, y + len);
-    }
-
-    fn scroll(&mut self) {
-        if self.cursor.x < self.offset.x {
-            self.offset.x = self.cursor.x;
-            self.draw_range.full_expand();
-        }
-        if self.cursor.x >= self.offset.x + self.size.w {
-            self.offset.x = self.cursor.x - self.size.w + 1;
-            self.draw_range.full_expand();
-        }
-        if self.cursor.y < self.offset.y {
-            self.offset.y = self.cursor.y;
-            self.draw_range.full_expand();
-        }
-        if self.cursor.y >= self.offset.y + self.size.h {
-            self.offset.y = self.cursor.y - self.size.h + 1;
-            self.draw_range.full_expand();
-        }
-    }
-
-    fn scroll_center(&mut self) {
-        if self.cursor.x < self.offset.x || self.cursor.x >= self.offset.x + self.size.w {
-            self.offset.x = self.cursor.x.saturating_sub(self.size.w / 2);
-            self.draw_range.full_expand();
-        }
-        if self.cursor.y < self.offset.y || self.cursor.y >= self.offset.y + self.size.h {
-            self.offset.y = self.cursor.y.saturating_sub(self.size.h / 2);
-            self.draw_range.full_expand();
-        }
     }
 }
 
@@ -893,5 +871,31 @@ impl Buffer {
         self.cursor = Pos::new(0, y);
         self.saved_x = 0;
         self.scroll_center();
+    }
+}
+
+impl Buffer {
+    pub fn save(&mut self) -> io::Result<()> {
+        if let Some(filename) = self.filename.as_deref() {
+            let file = File::create(filename)?;
+            let mut writer = BufWriter::new(file);
+            let len = self.rows.len();
+
+            for (i, row) in self.rows.iter_mut().enumerate() {
+                writer.write(row.string.as_bytes())?;
+                if i < len - 1 {
+                    writer.write(b"\n")?;
+                }
+                row.context = None;
+            }
+
+            self.syntax = <dyn Syntax>::detect(Some(filename));
+            self.anchor = None;
+            self.last_key = None;
+            self.syntax_update(0);
+
+            self.saved_eid = self.undo_list.last().map(|e| e.id());
+        }
+        Ok(())
     }
 }
