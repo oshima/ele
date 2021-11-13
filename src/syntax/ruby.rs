@@ -1415,8 +1415,10 @@ impl<'a> Tokens<'a> {
                 close_scope: true,
                 lf: false,
             },
-            "__callee__" | "__dir__" | "__method__" | "block_given?" | "fail" | "private"
-            | "protected" | "public" | "raise" => BuiltinMethod { takes_args: false },
+            "__callee__" | "__dir__" | "__method__" | "block_given?" | "fail"
+            | "module_function" | "private" | "protected" | "public" | "raise" => {
+                BuiltinMethod { takes_args: false }
+            }
             "alias_method"
             | "attr"
             | "attr_accessor"
@@ -1428,7 +1430,6 @@ impl<'a> Tokens<'a> {
             | "include"
             | "lambda"
             | "loop"
-            | "module_function"
             | "p"
             | "prepend"
             | "private_class_method"
