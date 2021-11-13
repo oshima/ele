@@ -12,19 +12,6 @@ use crate::rows::{Rows, RowsMethods};
 use crate::syntax::Syntax;
 use crate::util::DrawRange;
 
-#[derive(Default)]
-struct Search {
-    matches: Vec<Match>,
-    match_idx: usize,
-    orig_offset: Pos,
-    orig_cursor: Pos,
-}
-
-struct Match {
-    pos: Pos,
-    faces: Vec<(Fg, Bg)>,
-}
-
 pub struct Buffer {
     syntax: Box<dyn Syntax>,
     pub filename: Option<String>,
@@ -43,6 +30,19 @@ pub struct Buffer {
     saved_eid: Option<usize>,
     last_key: Option<Key>,
     search: Search,
+}
+
+#[derive(Default)]
+struct Search {
+    matches: Vec<Match>,
+    match_idx: usize,
+    orig_offset: Pos,
+    orig_cursor: Pos,
+}
+
+struct Match {
+    pos: Pos,
+    faces: Vec<(Fg, Bg)>,
 }
 
 impl Buffer {
@@ -276,11 +276,11 @@ impl Buffer {
                     self.anchor = None;
                 } else if let Some(pos) = self.rows.prev_pos(self.cursor) {
                     let event = Event::Remove(self.eid(), pos, self.cursor, true);
-                    let revent = self.process_event(event);
+                    let event = self.process_event(event);
                     if let Some(Key::Backspace | Key::Ctrl(b'H')) = self.last_key {
-                        self.merge_event(revent);
+                        self.merge_event(event);
                     } else {
-                        self.push_event(revent);
+                        self.push_event(event);
                     }
                     self.scroll();
                 }
@@ -292,11 +292,11 @@ impl Buffer {
                     self.anchor = None;
                 } else if let Some(pos) = self.rows.next_pos(self.cursor) {
                     let event = Event::Remove(self.eid(), self.cursor, pos, false);
-                    let revent = self.process_event(event);
+                    let event = self.process_event(event);
                     if let Some(Key::Delete | Key::Ctrl(b'D')) = self.last_key {
-                        self.merge_event(revent);
+                        self.merge_event(event);
                     } else {
-                        self.push_event(revent);
+                        self.push_event(event);
                     }
                 }
                 ""
@@ -325,8 +325,8 @@ impl Buffer {
                         let string = unit.repeat(self.rows[self.cursor.y].indent_level);
                         if self.rows[self.cursor.y].indent_part() != string {
                             let event = Event::Indent(self.eid(), self.cursor, string);
-                            let revent = self.process_event(event);
-                            self.push_event(revent);
+                            let event = self.process_event(event);
+                            self.push_event(event);
                         } else {
                             let x = self.rows[self.cursor.y].indent_width();
                             if self.cursor.x < x {
@@ -341,11 +341,11 @@ impl Buffer {
                         self.anchor = None;
                     }
                     let event = Event::Insert(self.eid(), self.cursor, "\t".into(), true);
-                    let revent = self.process_event(event);
+                    let event = self.process_event(event);
                     if let Some(Key::Ctrl(b'I')) = self.last_key {
-                        self.merge_event(revent);
+                        self.merge_event(event);
                     } else {
-                        self.push_event(revent);
+                        self.push_event(event);
                     }
                 }
                 self.scroll();
@@ -365,23 +365,23 @@ impl Buffer {
 
                 let event = Event::Insert(eid, self.cursor, "\n".into(), true);
                 let cursor1 = self.cursor;
-                let revent = self.process_event(event);
+                let event = self.process_event(event);
                 let cursor2 = self.cursor;
-                self.push_event(revent);
+                self.push_event(event);
 
                 self.cursor = cursor1;
                 if self.rows[self.cursor.y].is_whitespace() {
                     if !self.rows[self.cursor.y].is_empty() {
                         let event = Event::Indent(eid, self.cursor, "".into());
-                        let revent = self.process_event(event);
-                        self.push_event(revent);
+                        let event = self.process_event(event);
+                        self.push_event(event);
                     }
                 } else if let Some(unit) = self.syntax.indent_unit() {
                     let string = unit.repeat(self.rows[self.cursor.y].indent_level);
                     if self.rows[self.cursor.y].indent_part() != string {
                         let event = Event::Indent(eid, self.cursor, string);
-                        let revent = self.process_event(event);
-                        self.push_event(revent);
+                        let event = self.process_event(event);
+                        self.push_event(event);
                     }
                 }
 
@@ -390,8 +390,8 @@ impl Buffer {
                     let string = unit.repeat(self.rows[self.cursor.y].indent_level);
                     if self.rows[self.cursor.y].indent_part() != string {
                         let event = Event::Indent(eid, self.cursor, string);
-                        let revent = self.process_event(event);
-                        self.push_event(revent);
+                        let event = self.process_event(event);
+                        self.push_event(event);
                     }
                 }
                 self.scroll();
@@ -406,8 +406,8 @@ impl Buffer {
                 clipboard.clear();
                 clipboard.push_str(&self.rows.read_str(self.cursor, pos));
                 let event = Event::Remove(self.eid(), self.cursor, pos, false);
-                let revent = self.process_event(event);
-                self.push_event(revent);
+                let event = self.process_event(event);
+                self.push_event(event);
                 ""
             }
             Key::Ctrl(b'U') => {
@@ -419,8 +419,8 @@ impl Buffer {
                 clipboard.clear();
                 clipboard.push_str(&self.rows.read_str(pos, self.cursor));
                 let event = Event::Remove(self.eid(), pos, self.cursor, true);
-                let revent = self.process_event(event);
-                self.push_event(revent);
+                let event = self.process_event(event);
+                self.push_event(event);
                 self.scroll();
                 ""
             }
@@ -439,8 +439,8 @@ impl Buffer {
                     self.anchor = None;
                 }
                 let event = Event::Insert(self.eid(), self.cursor, clipboard.clone(), true);
-                let revent = self.process_event(event);
-                self.push_event(revent);
+                let event = self.process_event(event);
+                self.push_event(event);
                 self.scroll();
                 ""
             }
@@ -456,8 +456,8 @@ impl Buffer {
                     if let Some(eid) = self.undo_list.last().map(|e| e.id()) {
                         while self.undo_list.last().map_or(false, |e| e.id() == eid) {
                             let event = self.undo_list.pop().unwrap();
-                            let revent = self.process_event(event);
-                            self.redo_list.push(revent);
+                            let event = self.process_event(event);
+                            self.redo_list.push(event);
                         }
                         self.scroll_center();
                         "Undo"
@@ -468,8 +468,8 @@ impl Buffer {
                     if let Some(eid) = self.redo_list.last().map(|e| e.id()) {
                         while self.redo_list.last().map_or(false, |e| e.id() == eid) {
                             let event = self.redo_list.pop().unwrap();
-                            let revent = self.process_event(event);
-                            self.undo_list.push(revent);
+                            let event = self.process_event(event);
+                            self.undo_list.push(event);
                         }
                         self.scroll_center();
                         "Redo"
@@ -516,8 +516,8 @@ impl Buffer {
                 }
                 if let Some(pos) = self.rows.next_word_pos(self.cursor) {
                     let event = Event::Remove(self.eid(), self.cursor, pos, false);
-                    let revent = self.process_event(event);
-                    self.push_event(revent);
+                    let event = self.process_event(event);
+                    self.push_event(event);
                 }
                 ""
             }
@@ -539,8 +539,8 @@ impl Buffer {
                 }
                 if let Some(pos) = self.rows.prev_word_pos(self.cursor) {
                     let event = Event::Remove(self.eid(), pos, self.cursor, true);
-                    let revent = self.process_event(event);
-                    self.push_event(revent);
+                    let event = self.process_event(event);
+                    self.push_event(event);
                     self.scroll();
                 }
                 ""
@@ -560,11 +560,11 @@ impl Buffer {
                     self.anchor = None;
                 }
                 let event = Event::Insert(self.eid(), self.cursor, ch.into(), true);
-                let revent = self.process_event(event);
+                let event = self.process_event(event);
                 if let Some(Key::Char(_)) = self.last_key {
-                    self.merge_event(revent);
+                    self.merge_event(event);
                 } else {
-                    self.push_event(revent);
+                    self.push_event(event);
                 }
                 self.scroll();
                 ""
@@ -738,13 +738,13 @@ impl Buffer {
             if self.rows[y].is_whitespace() {
                 if !self.rows[y].is_empty() {
                     let event = Event::Indent(eid, Pos::new(0, y), "".into());
-                    let revent = self.process_event(event);
-                    self.push_event(revent);
+                    let event = self.process_event(event);
+                    self.push_event(event);
                 }
             } else if self.rows[y].indent_part() != string {
                 let event = Event::Indent(eid, Pos::new(0, y), string);
-                let revent = self.process_event(event);
-                self.push_event(revent);
+                let event = self.process_event(event);
+                self.push_event(event);
             }
         }
     }
@@ -753,8 +753,8 @@ impl Buffer {
         let pos1 = self.cursor.min(anchor);
         let pos2 = self.cursor.max(anchor);
         let event = Event::Remove(self.eid(), pos1, pos2, self.cursor > anchor);
-        let revent = self.process_event(event);
-        self.push_event(revent);
+        let event = self.process_event(event);
+        self.push_event(event);
         self.scroll();
         self.rows[pos1.y].trailing_bg = Bg::Default;
     }
