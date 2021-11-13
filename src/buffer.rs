@@ -885,3 +885,13 @@ impl Buffer {
         }
     }
 }
+
+impl Buffer {
+    pub fn go_to_line(&mut self, num: usize) {
+        let y = num.saturating_sub(1);
+        let y = y.min(self.rows.last_pos().y);
+        self.cursor = Pos::new(0, y);
+        self.saved_x = 0;
+        self.scroll_center();
+    }
+}

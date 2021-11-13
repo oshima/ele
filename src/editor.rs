@@ -15,6 +15,7 @@ enum State {
     Default,
     Search { backward: bool },
     CtrlX,
+    GoToLine,
     Save,
     Quit,
     Quitted,
@@ -112,7 +113,7 @@ impl Editor {
             State::Default | State::CtrlX => {
                 self.buffer.draw_cursor(&mut self.canvas)?;
             }
-            State::Search { .. } | State::Save | State::Quit => {
+            State::Search { .. } | State::GoToLine | State::Save | State::Quit => {
                 self.minibuffer.draw_cursor(&mut self.canvas)?;
             }
             State::Quitted => unreachable!(),
@@ -199,6 +200,10 @@ impl Editor {
                     self.minibuffer.set_message("C-x [C-s: save] [C-c: quit]");
                     self.state = State::CtrlX;
                 }
+                Key::Alt(b'g') => {
+                    self.minibuffer.set_prompt("Goto line: ");
+                    self.state = State::GoToLine;
+                }
                 _ => {
                     let message = self.buffer.process_key(key, &mut self.clipboard);
                     self.minibuffer.set_message(message);
@@ -255,6 +260,21 @@ impl Editor {
                     self.minibuffer.set_message("");
                     self.state = State::Default;
                 }
+            },
+            State::GoToLine => match key {
+                Key::Ctrl(b'G') => {
+                    self.minibuffer.set_message("");
+                    self.state = State::Default;
+                }
+                Key::Ctrl(b'J' | b'M') => {
+                    let input = self.minibuffer.get_input();
+                    if let Ok(num) = input.parse::<usize>() {
+                        self.buffer.go_to_line(num);
+                        self.minibuffer.set_message("");
+                        self.state = State::Default;
+                    }
+                }
+                _ => self.minibuffer.process_key(key),
             },
             State::Save => match key {
                 Key::Ctrl(b'G') => {
