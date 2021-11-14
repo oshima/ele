@@ -151,30 +151,14 @@ impl Ruby {
                     }
                     _ => (),
                 },
-                CloseBrace => match (prev_token.map(|t| t.end), context_v.last()) {
-                    (Some(0), Some(OpenBrace { lf: true })) => {
-                        row.indent_level -= 1;
+                CloseBrace | CloseBracket | CloseExpansion { .. } | CloseParen => {
+                    match (prev_token.map(|t| t.end), context_v.last()) {
+                        (Some(0), Some(kind)) if kind.is_pair(&token.kind) => {
+                            row.indent_level -= 1;
+                        }
+                        _ => (),
                     }
-                    _ => (),
-                },
-                CloseBracket => match (prev_token.map(|t| t.end), context_v.last()) {
-                    (Some(0), Some(OpenBracket { lf: true })) => {
-                        row.indent_level -= 1;
-                    }
-                    _ => (),
-                },
-                CloseExpansion { .. } => match (prev_token.map(|t| t.end), context_v.last()) {
-                    (Some(0), Some(OpenExpansion { lf: true, .. })) => {
-                        row.indent_level -= 1;
-                    }
-                    _ => (),
-                },
-                CloseParen => match (prev_token.map(|t| t.end), context_v.last()) {
-                    (Some(0), Some(OpenParen { lf: true })) => {
-                        row.indent_level -= 1;
-                    }
-                    _ => (),
-                },
+                }
                 Keyword {
                     close_scope: true, ..
                 } => match (prev_token.map(|t| t.end), context_v.last()) {
@@ -190,7 +174,7 @@ impl Ruby {
             match token.kind {
                 Document { open: true }
                 | DotScope
-                | Heredoc { .. }
+                | Heredoc { open: false, .. }
                 | HeredocLabel { label: Some(_), .. }
                 | OpenBrace { .. }
                 | OpenBracket { .. }
@@ -199,10 +183,15 @@ impl Ruby {
                     context_v.push(token.kind);
                 }
                 Dot => match prev_token.map(|t| t.end) {
-                    Some(0) | None => {
-                        context_v.push(DotScope);
-                    }
+                    Some(0) | None => context_v.push(DotScope),
                     _ => (),
+                },
+                Heredoc { open: true, .. }
+                | RegexpLit { depth: 1.., .. }
+                | StrLit { depth: 1.., .. }
+                | SymbolLit { depth: 1.., .. } => match tokens.peek().map(|t| t.kind) {
+                    Some(OpenExpansion { .. }) => (),
+                    _ => context_v.push(token.kind),
                 },
                 Keyword {
                     open_scope,
@@ -253,58 +242,14 @@ impl Ruby {
                         | OpenBracket { lf: true }
                         | OpenParen { lf: true },
                     )
-                    | None => {
-                        context_v.push(token.kind);
-                    }
+                    | None => context_v.push(token.kind),
                     _ => (),
                 },
-                RegexpLit { depth, .. } | StrLit { depth, .. } | SymbolLit { depth, .. }
-                    if depth > 0 =>
-                {
-                    context_v.push(token.kind);
-                }
-                CloseBrace => {
+                CloseBrace | CloseBracket | CloseExpansion { .. } | CloseParen => {
                     for (i, kind) in context_v.iter().enumerate().rev() {
                         match kind {
                             HeredocLabel { .. } => (),
-                            OpenBrace { .. } => {
-                                context_v.remove(i);
-                                break;
-                            }
-                            _ => break,
-                        }
-                    }
-                }
-                CloseBracket => {
-                    for (i, kind) in context_v.iter().enumerate().rev() {
-                        match kind {
-                            HeredocLabel { .. } => (),
-                            OpenBracket { .. } => {
-                                context_v.remove(i);
-                                break;
-                            }
-                            _ => break,
-                        }
-                    }
-                }
-                CloseExpansion { .. } => {
-                    for (i, kind) in context_v.iter().enumerate().rev() {
-                        match kind {
-                            HeredocLabel { .. } => (),
-                            OpenExpansion { .. } => {
-                                context_v.remove(i - 1);
-                                context_v.remove(i - 1);
-                                break;
-                            }
-                            _ => break,
-                        }
-                    }
-                }
-                CloseParen => {
-                    for (i, kind) in context_v.iter().enumerate().rev() {
-                        match kind {
-                            HeredocLabel { .. } => (),
-                            OpenParen { .. } => {
+                            kind if kind.is_pair(&token.kind) => {
                                 context_v.remove(i);
                                 break;
                             }
@@ -347,16 +292,7 @@ impl Ruby {
                     string.push_str("\0.");
                 }
                 Heredoc { label, trailing_context, indent, expand, open } => {
-                    if open {
-                        string.push_str("\0h");
-                        if indent {
-                            string.push('-');
-                        }
-                        string.push(if expand { '"' } else { '\'' });
-                        string.push_str(label);
-                        string.push(if expand { '"' } else { '\'' });
-                    }
-                    string.push_str(trailing_context);
+                    self.convert_heredoc(label, trailing_context, indent, expand, open, string);
                 }
                 HeredocLabel { label: Some(label), indent, expand } => {
                     string.push_str("\0h");
@@ -382,49 +318,102 @@ impl Ruby {
                 OpenBracket { lf } => {
                     string.push_str(if lf { "[\n" } else { "[" });
                 }
-                OpenExpansion { lf, .. } => {
+                OpenExpansion { kind, lf } => {
+                    match kind {
+                        InHeredoc { label, trailing_context, indent } => {
+                            self.convert_heredoc(label, trailing_context, indent, true, true, string);
+                        },
+                        InRegexp { delim, depth } => {
+                            self.convert_regexp(delim, true, depth, string);
+                        },
+                        InStr { delim, depth } => {
+                            self.convert_string(delim, true, depth, string);
+                        },
+                        InSymbol { delim, depth } => {
+                            self.convert_symbol(delim, true, depth, string);
+                        },
+                    }
                     string.push_str(if lf { "#{\n" } else { "#{" });
                 }
                 OpenParen { lf } => {
                     string.push_str(if lf { "(\n" } else { "(" });
                 }
-                RegexpLit { delim, expand, depth } => match (delim, expand) {
-                    ('/', true) => {
-                        string.push(delim);
-                    }
-                    _ => {
-                        string.push_str("%r");
-                        for _ in 0..depth {
-                            string.push(delim);
-                        }
-                    }
+                RegexpLit { delim, expand, depth } => {
+                    self.convert_regexp(delim, expand, depth, string);
                 },
-                StrLit { delim, expand, depth } => match (delim, expand) {
-                    ('\'', false) | ('"' | '`', true) => {
-                        string.push(delim);
-                    }
-                    _ => {
-                        string.push('%');
-                        string.push(if expand { 'Q' } else { 'q' });
-                        for _ in 0..depth {
-                            string.push(delim);
-                        }
-                    }
+                StrLit { delim, expand, depth } => {
+                    self.convert_string(delim, expand, depth, string);
                 },
-                SymbolLit { delim, expand, depth } => match (delim, expand) {
-                    ('\'', false) | ('"', true) => {
-                        string.push(':');
-                        string.push(delim);
-                    }
-                    _ => {
-                        string.push('%');
-                        string.push(if expand { 'I' } else { 'i' });
-                        for _ in 0..depth {
-                            string.push(delim);
-                        }
-                    }
+                SymbolLit { delim, expand, depth } => {
+                    self.convert_symbol(delim, expand, depth, string);
                 },
                 _ => (),
+            }
+        }
+    }
+
+    fn convert_heredoc(
+        &self,
+        label: &str,
+        trailing_context: &str,
+        indent: bool,
+        expand: bool,
+        open: bool,
+        string: &mut String,
+    ) {
+        if open {
+            string.push_str("\0h");
+            if indent {
+                string.push('-');
+            }
+            string.push(if expand { '"' } else { '\'' });
+            string.push_str(label);
+            string.push(if expand { '"' } else { '\'' });
+        }
+        string.push_str(trailing_context);
+    }
+
+    fn convert_regexp(&self, delim: char, expand: bool, depth: usize, string: &mut String) {
+        match (delim, expand) {
+            ('/', true) => {
+                string.push(delim);
+            }
+            _ => {
+                string.push_str("%r");
+                for _ in 0..depth {
+                    string.push(delim);
+                }
+            }
+        }
+    }
+
+    fn convert_string(&self, delim: char, expand: bool, depth: usize, string: &mut String) {
+        match (delim, expand) {
+            ('\'', false) | ('"' | '`', true) => {
+                string.push(delim);
+            }
+            _ => {
+                string.push('%');
+                string.push(if expand { 'Q' } else { 'q' });
+                for _ in 0..depth {
+                    string.push(delim);
+                }
+            }
+        }
+    }
+
+    fn convert_symbol(&self, delim: char, expand: bool, depth: usize, string: &mut String) {
+        match (delim, expand) {
+            ('\'', false) | ('"', true) => {
+                string.push(':');
+                string.push(delim);
+            }
+            _ => {
+                string.push('%');
+                string.push(if expand { 'I' } else { 'i' });
+                for _ in 0..depth {
+                    string.push(delim);
+                }
             }
         }
     }
@@ -473,6 +462,18 @@ enum TokenKind<'a> {
     SymbolLit { delim: char, depth: usize, expand: bool },
     UpperIdent,
     Variable,
+}
+
+impl<'a> TokenKind<'a> {
+    fn is_pair(&self, other: &Self) -> bool {
+        match (self, other) {
+            (OpenBrace { .. }, CloseBrace)
+            | (OpenBracket { .. }, CloseBracket)
+            | (OpenExpansion { .. }, CloseExpansion { .. })
+            | (OpenParen { .. }, CloseParen) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
