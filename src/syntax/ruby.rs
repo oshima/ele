@@ -283,7 +283,7 @@ impl Ruby {
 
     #[rustfmt::skip]
     fn convert_context(&self, slice: &[TokenKind], string: &mut String) {
-        for token_kind in slice {
+        for (i, token_kind) in slice.iter().enumerate() {
             match *token_kind {
                 Document { .. } => {
                     string.push_str("\0d");
@@ -302,6 +302,10 @@ impl Ruby {
                     string.push(if expand { '"' } else { '\'' });
                     string.push_str(label);
                     string.push(if expand { '"' } else { '\'' });
+                    string.push('<');
+                    self.convert_context(&slice[(i + 1)..], string);
+                    string.push('>');
+                    break;
                 }
                 Keyword { lf, .. } => {
                     string.push_str(if lf { "\0k\n" } else { "\0k" });
@@ -369,8 +373,12 @@ impl Ruby {
             string.push(if expand { '"' } else { '\'' });
             string.push_str(label);
             string.push(if expand { '"' } else { '\'' });
+            string.push('<');
+            string.push_str(trailing_context);
+            string.push('>');
+        } else {
+            string.push_str(trailing_context);
         }
-        string.push_str(trailing_context);
     }
 
     fn convert_regexp(&self, delim: char, expand: bool, depth: usize, string: &mut String) {
@@ -1177,10 +1185,10 @@ impl<'a> Tokens<'a> {
     #[rustfmt::skip]
     fn heredoc(&mut self) -> TokenKind<'a> {
         let indent = self.chars.next_if(|&(_, (_, ch))| ch == '-').is_some();
-        let delim = self.chars.next().map(|(_, (_, ch))| ch).unwrap();
-        let expand = delim == '"';
 
         // read label
+        let delim = self.chars.next().map(|(_, (_, ch))| ch).unwrap();
+        let expand = delim == '"';
         let start = self.chars.peek().map(|&(_, (idx, _))| idx).unwrap();
         let end = self
             .chars
@@ -1190,32 +1198,31 @@ impl<'a> Tokens<'a> {
         let label = &self.context[start..end];
 
         // read trailing context
-        let mut another_heredoc = false;
-        while let Some(&(true, (idx, ch))) = self.chars.peek() {
+        let start = end + 2;
+        let mut end = start;
+        let mut depth = 0;
+        while let Some((_, (idx, ch))) = self.chars.next() {
             match ch {
-                '\0' => match self.chars.nth(1) {
-                    Some((_, (_, 'h'))) => another_heredoc = true,
-                    _ => (),
-                }
-                '#' if !another_heredoc => {
-                    let trailing_context = &self.context[(end + 1)..idx];
-                    return Heredoc { label, trailing_context, indent, expand, open: true };
-                }
-                _ => {
-                    self.chars.next();
-                }
+                '<' => depth += 1,
+                '>' => depth -= 1,
+                _ => (),
+            }
+            if depth == 0 {
+                end = idx;
+                break;
             }
         }
-        let trailing_context = &self.context[(end + 1)..];
+        let trailing_context = &self.context[start..end];
 
         // check if heredoc is closed
-        let open = if indent {
-            self.text.find(label).map_or(true, |i| {
-                self.text[..i].trim() != "" || self.text.len() > i + label.len()
-            })
-        } else {
-            self.text != label
-        };
+        let open = !self.context[(end + 1)..].is_empty()
+            || if indent {
+                self.text.find(label).map_or(true, |i| {
+                    !self.text[..i].trim().is_empty() || !self.text[(i + label.len())..].is_empty()
+                })
+            } else {
+                self.text != label
+            };
 
         // consume content
         if open {
