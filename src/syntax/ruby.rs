@@ -599,6 +599,7 @@ impl<'a> Iterator for Tokens<'a> {
                     Key
                     | Keyword { .. }
                     | Op { .. }
+                    | OpScope
                     | OpenBrace { .. }
                     | OpenExpansion { .. }
                     | OpenBracket { .. }
@@ -625,6 +626,7 @@ impl<'a> Iterator for Tokens<'a> {
                     Key
                     | Keyword { .. }
                     | Op { .. }
+                    | OpScope
                     | OpenBrace { .. }
                     | OpenExpansion { .. }
                     | OpenBracket { .. }
@@ -647,6 +649,7 @@ impl<'a> Iterator for Tokens<'a> {
                     Key
                     | Keyword { .. }
                     | Op { .. }
+                    | OpScope
                     | OpenBrace { .. }
                     | OpenExpansion { .. }
                     | OpenBracket { .. }
