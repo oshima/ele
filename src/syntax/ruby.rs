@@ -123,9 +123,7 @@ impl Ruby {
             // Indent
             match token.kind {
                 Dot => match prev_token.map(|t| t.end) {
-                    Some(0) | None => {
-                        row.indent_level += 1;
-                    }
+                    Some(0) | None => row.indent_level += 1,
                     _ => (),
                 },
                 DotScope
@@ -146,9 +144,7 @@ impl Ruby {
                         | OpenBrace { lf: true }
                         | OpenBracket { lf: true }
                         | OpenParen { lf: true },
-                    ) => {
-                        row.indent_level += 1;
-                    }
+                    ) => row.indent_level += 1,
                     _ => (),
                 },
                 CloseBrace | CloseBracket | CloseExpansion { .. } | CloseParen => {
@@ -1282,11 +1278,11 @@ impl<'a> Tokens<'a> {
     fn method_owner_or_method(&mut self) -> TokenKind<'a> {
         while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
         match self.chars.peek() {
+            Some(&(_, (_, '.'))) => MethodOwner,
             Some(&(_, (_, '!' | '?' | '='))) => {
                 self.chars.next();
                 Method
             }
-            Some(&(_, (_, '.'))) => MethodOwner,
             _ => Method,
         }
     }
