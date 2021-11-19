@@ -170,7 +170,6 @@ impl Ruby {
             match token.kind {
                 Document { open: true }
                 | DotScope
-                | Heredoc { open: false, .. }
                 | HeredocLabel { label: Some(_), .. }
                 | OpenBrace { .. }
                 | OpenBracket { .. }
@@ -182,6 +181,13 @@ impl Ruby {
                     Some(0) | None => context_v.push(DotScope),
                     _ => (),
                 },
+                Heredoc {
+                    open: false,
+                    trailing_context,
+                    ..
+                } if !trailing_context.is_empty() => {
+                    context_v.push(token.kind);
+                }
                 Heredoc { open: true, .. }
                 | RegexpLit { depth: 1.., .. }
                 | StrLit { depth: 1.., .. }
