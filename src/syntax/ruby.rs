@@ -709,6 +709,13 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 _ => self.heredoc_label(),
             },
+            '&' => match self.prev.map(|t| t.kind) {
+                Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
+                _ => match self.chars.next_if(|&(_, (_, ch))| ch == '.') {
+                    Some(_) => Dot,
+                    _ => Op { lf: false },
+                },
+            },
             '|' => match self.prev.map(|t| t.kind) {
                 Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 Some(OpenBrace { lf: false } | Keyword { kind: "do", .. }) => OpenBar,
@@ -717,12 +724,10 @@ impl<'a> Iterator for Tokens<'a> {
                     _ => Op { lf: false },
                 },
             },
-            '!' | '&' | '*' | '+' | '-' | '=' | '>' | '^' | '~' => {
-                match self.prev.map(|t| t.kind) {
-                    Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
-                    _ => Op { lf: false },
-                }
-            }
+            '!' | '*' | '+' | '-' | '=' | '>' | '^' | '~' => match self.prev.map(|t| t.kind) {
+                Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
+                _ => Op { lf: false },
+            },
             '.' => match self.chars.next_if(|&(_, (_, ch))| ch == '.') {
                 Some(_) => {
                     self.chars.next_if(|&(_, (_, ch))| ch == '.');
