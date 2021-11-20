@@ -126,7 +126,7 @@ impl Ruby {
                     Some(0) | None => row.indent_level += 1,
                     _ => (),
                 },
-                DotScope
+                DotGhost
                 | Keyword { lf: true, .. }
                 | Op { lf: true }
                 | OpenBrace { lf: true }
@@ -135,10 +135,10 @@ impl Ruby {
                 | OpenParen { lf: true } => {
                     row.indent_level += 1;
                 }
-                OpScope => match tokens.peek().map(|t| t.kind) {
+                OpGhost => match tokens.peek().map(|t| t.kind) {
                     Some(
                         Dot
-                        | DotScope
+                        | DotGhost
                         | Heredoc { .. }
                         | Keyword { lf: true, .. }
                         | OpenBrace { lf: true }
@@ -169,7 +169,7 @@ impl Ruby {
             // Derive the context of the next row
             match token.kind {
                 Document { open: true }
-                | DotScope
+                | DotGhost
                 | HeredocLabel { label: Some(_), .. }
                 | OpenBrace { .. }
                 | OpenBracket { .. }
@@ -178,7 +178,7 @@ impl Ruby {
                     context_v.push(token.kind);
                 }
                 Dot => match prev_token.map(|t| t.end) {
-                    Some(0) | None => context_v.push(DotScope),
+                    Some(0) | None => context_v.push(DotGhost),
                     _ => (),
                 },
                 Heredoc {
@@ -214,7 +214,7 @@ impl Ruby {
                 }
                 Op { lf: false } => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => match context_v.last() {
-                        Some(DotScope) => {
+                        Some(DotGhost) => {
                             context_v.pop();
                             context_v.push(token.kind);
                         }
@@ -231,13 +231,13 @@ impl Ruby {
                 },
                 Op { lf: true } => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => context_v.push(token.kind),
-                    _ => context_v.push(OpScope),
+                    _ => context_v.push(OpGhost),
                 },
-                OpScope => match tokens.peek().map(|t| t.kind) {
+                OpGhost => match tokens.peek().map(|t| t.kind) {
                     Some(
                         Comment
                         | Dot
-                        | DotScope
+                        | DotGhost
                         | Heredoc { .. }
                         | Keyword { lf: true, .. }
                         | OpenBrace { lf: true }
@@ -265,7 +265,7 @@ impl Ruby {
             prev_token = Some(token);
         }
 
-        if let Some(DotScope) = context_v.last() {
+        if let Some(DotGhost) = context_v.last() {
             context_v.pop();
         }
         if let Some(
@@ -290,7 +290,7 @@ impl Ruby {
                 Document { .. } => {
                     string.push_str("\0d");
                 }
-                DotScope => {
+                DotGhost => {
                     string.push_str("\0.");
                 }
                 Heredoc { label, trailing_context, indent, expand, open } => {
@@ -315,7 +315,7 @@ impl Ruby {
                 Op { lf: true } => {
                     string.push_str("\0+");
                 }
-                OpScope => {
+                OpGhost => {
                     string.push_str("\0-");
                 }
                 OpenBrace { lf } => {
@@ -449,7 +449,7 @@ enum TokenKind<'a> {
     Comment,
     Document { open: bool },
     Dot,
-    DotScope,
+    DotGhost,
     Heredoc { label: &'a str, trailing_context: &'a str, indent: bool, expand: bool, open: bool },
     HeredocLabel { label: Option<&'a str>, indent: bool, expand: bool },
     Ident,
@@ -459,7 +459,7 @@ enum TokenKind<'a> {
     MethodOwner,
     NumberLit,
     Op { lf: bool },
-    OpScope,
+    OpGhost,
     OpenBar,
     OpenBrace { lf: bool },
     OpenBracket { lf: bool },
@@ -601,7 +601,7 @@ impl<'a> Iterator for Tokens<'a> {
                     Key
                     | Keyword { .. }
                     | Op { .. }
-                    | OpScope
+                    | OpGhost
                     | OpenBrace { .. }
                     | OpenExpansion { .. }
                     | OpenBracket { .. }
@@ -628,7 +628,7 @@ impl<'a> Iterator for Tokens<'a> {
                     Key
                     | Keyword { .. }
                     | Op { .. }
-                    | OpScope
+                    | OpGhost
                     | OpenBrace { .. }
                     | OpenExpansion { .. }
                     | OpenBracket { .. }
@@ -651,7 +651,7 @@ impl<'a> Iterator for Tokens<'a> {
                     Key
                     | Keyword { .. }
                     | Op { .. }
-                    | OpScope
+                    | OpGhost
                     | OpenBrace { .. }
                     | OpenExpansion { .. }
                     | OpenBracket { .. }
@@ -743,8 +743,8 @@ impl<'a> Iterator for Tokens<'a> {
                     lf: self.chars.next_if(|&(_, (_, ch))| ch == '\n').is_some(),
                 },
                 Some((_, (_, '+'))) => Op { lf: true },
-                Some((_, (_, '-'))) => OpScope,
-                Some((_, (_, '.'))) => DotScope,
+                Some((_, (_, '-'))) => OpGhost,
+                Some((_, (_, '.'))) => DotGhost,
                 _ => Punct,
             },
 
@@ -1401,7 +1401,7 @@ impl<'a> Tokens<'a> {
                     Some(
                         Keyword { lf: true, .. }
                             | Op { .. }
-                            | OpScope
+                            | OpGhost
                             | OpenBrace { .. }
                             | OpenBracket { .. }
                             | OpenExpansion { .. }
