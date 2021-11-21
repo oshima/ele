@@ -1404,7 +1404,7 @@ impl<'a> Tokens<'a> {
                 let open_scope = matches!(
                     self.prev.map(|t| t.kind),
                     Some(
-                        Keyword { lf: true, .. }
+                        Key | Keyword { lf: true, .. }
                             | Op { .. }
                             | OpGhost
                             | OpenBrace { .. }
