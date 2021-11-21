@@ -143,7 +143,10 @@ impl Ruby {
                         | Keyword { lf: true, .. }
                         | OpenBrace { lf: true }
                         | OpenBracket { lf: true }
-                        | OpenParen { lf: true },
+                        | OpenParen { lf: true }
+                        | RegexpLit { .. }
+                        | StrLit { .. }
+                        | SymbolLit { .. },
                     ) => row.indent_level += 1,
                     _ => (),
                 },
@@ -242,7 +245,10 @@ impl Ruby {
                         | Keyword { lf: true, .. }
                         | OpenBrace { lf: true }
                         | OpenBracket { lf: true }
-                        | OpenParen { lf: true },
+                        | OpenParen { lf: true }
+                        | RegexpLit { .. }
+                        | StrLit { .. }
+                        | SymbolLit { .. },
                     )
                     | None => context_v.push(token.kind),
                     _ => (),
