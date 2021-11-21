@@ -1270,11 +1270,28 @@ impl<'a> Tokens<'a> {
 
     fn global_variable(&mut self) -> TokenKind<'a> {
         match self.chars.peek() {
-            Some(&(_, (_, '~' | '&' | '`' | '\'' | '+'))) => {
+            Some(&(
+                _,
+                (
+                    _,
+                    '0' | '!' | '"' | '$' | '&' | '\'' | '*' | '+' | ',' | '.' | '/' | ':' | ';'
+                    | '<' | '=' | '>' | '?' | '@' | '\\' | '_' | '`' | '~',
+                ),
+            )) => {
                 self.chars.next();
                 Variable
             }
-            Some(&(_, (_, ch))) if ch.is_ascii_digit() => {
+            Some(&(_, (_, '-'))) => match self.chars.clone().nth(1) {
+                Some((
+                    _,
+                    (_, '0' | 'F' | 'I' | 'K' | 'W' | 'a' | 'd' | 'i' | 'l' | 'p' | 'v' | 'w'),
+                )) => {
+                    self.chars.nth(1);
+                    Variable
+                }
+                _ => Punct,
+            },
+            Some(&(_, (_, '1'..='9'))) => {
                 self.chars.next();
                 while self
                     .chars
