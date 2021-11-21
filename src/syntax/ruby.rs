@@ -911,20 +911,35 @@ impl<'a> Tokens<'a> {
     }
 
     fn pure_symbol_lit(&mut self, peeked: char) -> TokenKind<'a> {
-        let valid = match peeked {
-            '!' | '%' | '&' | '*' | '+' | '-' | '/' | '<' | '>' | '^' | '|' | '~' => true,
-            '=' => matches!(self.chars.clone().nth(1), Some((_, (_, '=' | '~')))),
-            '[' => matches!(self.chars.clone().nth(1), Some((_, (_, ']')))),
-            ch if !is_delim(ch) && !ch.is_ascii_digit() => true,
-            _ => false,
-        };
-        if valid {
-            self.chars.next();
-            self.method(peeked);
-            PureSymbolLit
-        } else {
-            Op { lf: false }
+        let clone = self.chars.clone();
+        match peeked {
+            '@' => {
+                self.chars.next();
+                if let Variable = self.instance_variable() {
+                    return PureSymbolLit;
+                }
+            }
+            '$' => {
+                self.chars.next();
+                if let Variable = self.global_variable() {
+                    return PureSymbolLit;
+                }
+            }
+            '!' | '%' | '&' | '*' | '+' | '-' | '/' | '<' | '=' | '>' | '[' | '^' | '|' | '~' => {
+                self.chars.next();
+                if let Method = self.method(peeked) {
+                    return PureSymbolLit;
+                }
+            }
+            ch if !is_delim(ch) && !ch.is_ascii_digit() => {
+                self.chars.next();
+                self.method(peeked);
+                return PureSymbolLit;
+            }
+            _ => (),
         }
+        self.chars = clone;
+        Op { lf: false }
     }
 
     #[rustfmt::skip]
