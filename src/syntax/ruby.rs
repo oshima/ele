@@ -195,6 +195,23 @@ impl Ruby {
                     Some(OpenExpansion { .. }) => (),
                     _ => context_v.push(token.kind),
                 },
+                Key | Op { lf: false } => match tokens.peek().map(|t| t.kind) {
+                    Some(Comment) | None => match context_v.last() {
+                        Some(DotGhost) => {
+                            context_v.pop();
+                            context_v.push(Op { lf: false });
+                        }
+                        Some(
+                            Keyword { lf: false, .. }
+                            | OpenBrace { lf: false }
+                            | OpenBracket { lf: false }
+                            | OpenExpansion { lf: false, .. }
+                            | OpenParen { lf: false },
+                        ) => (),
+                        _ => context_v.push(Op { lf: false }),
+                    },
+                    _ => (),
+                },
                 Keyword {
                     open_scope,
                     close_scope,
@@ -212,23 +229,6 @@ impl Ruby {
                         context_v.push(token.kind);
                     }
                 }
-                Op { lf: false } => match tokens.peek().map(|t| t.kind) {
-                    Some(Comment) | None => match context_v.last() {
-                        Some(DotGhost) => {
-                            context_v.pop();
-                            context_v.push(token.kind);
-                        }
-                        Some(
-                            Keyword { lf: false, .. }
-                            | OpenBrace { lf: false }
-                            | OpenBracket { lf: false }
-                            | OpenExpansion { lf: false, .. }
-                            | OpenParen { lf: false },
-                        ) => (),
-                        _ => context_v.push(token.kind),
-                    },
-                    _ => (),
-                },
                 Op { lf: true } => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => context_v.push(token.kind),
                     _ => context_v.push(OpGhost),
