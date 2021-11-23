@@ -106,11 +106,10 @@ impl Ruby {
                     Some(OpenParen { .. }) => Fg::Function,
                     _ => Fg::Default,
                 },
-                Key => Fg::Macro,
+                Key | PureSymbolLit | SymbolLit { .. } => Fg::Macro,
                 Keyword { .. } => Fg::Keyword,
                 Method => Fg::Function,
                 MethodOwner => Fg::Variable,
-                PureSymbolLit | SymbolLit { .. } => Fg::Macro,
                 UpperIdent => Fg::Type,
                 Variable => Fg::Variable,
                 _ => Fg::Default,
@@ -480,6 +479,15 @@ enum TokenKind<'a> {
     Variable,
 }
 
+#[derive(Clone, Copy)]
+#[rustfmt::skip]
+enum ExpansionKind<'a> {
+    InHeredoc { label: &'a str, trailing_context: &'a str, indent: bool },
+    InRegexp { delim: char, depth: usize },
+    InStr { delim: char, depth: usize },
+    InSymbol { delim: char, depth: usize },
+}
+
 impl<'a> TokenKind<'a> {
     fn is_pair(&self, other: &Self) -> bool {
         match (self, other) {
@@ -490,15 +498,21 @@ impl<'a> TokenKind<'a> {
             _ => false,
         }
     }
-}
 
-#[derive(Clone, Copy)]
-#[rustfmt::skip]
-enum ExpansionKind<'a> {
-    InHeredoc { label: &'a str, trailing_context: &'a str, indent: bool },
-    InRegexp { delim: char, depth: usize },
-    InStr { delim: char, depth: usize },
-    InSymbol { delim: char, depth: usize },
+    fn followed_by_expr(&self) -> bool {
+        match self {
+            Key
+            | Keyword { .. }
+            | Op { .. }
+            | OpGhost
+            | OpenBrace { .. }
+            | OpenBracket { .. }
+            | OpenExpansion { .. }
+            | OpenParen { .. }
+            | Punct => true,
+            _ => false,
+        }
+    }
 }
 
 struct Tokens<'a> {
@@ -603,18 +617,6 @@ impl<'a> Iterator for Tokens<'a> {
             // regexp
             '/' => match self.prev.map(|t| t.kind) {
                 Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
-                Some(
-                    Key
-                    | Keyword { .. }
-                    | Op { .. }
-                    | OpGhost
-                    | OpenBrace { .. }
-                    | OpenExpansion { .. }
-                    | OpenBracket { .. }
-                    | OpenParen { .. }
-                    | Punct,
-                )
-                | None => self.regexp_lit(ch, 1, true),
                 Some(BuiltinMethod { takes_args: true } | Ident | Method) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op { lf: false },
@@ -624,53 +626,35 @@ impl<'a> Iterator for Tokens<'a> {
                         },
                     }
                 }
+                Some(kind) if kind.followed_by_expr() => self.regexp_lit(ch, 1, true),
+                None => self.regexp_lit(ch, 1, true),
                 _ => Op { lf: false },
             },
 
             // percent literal
             '%' => match self.prev.map(|t| t.kind) {
                 Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
-                Some(
-                    Key
-                    | Keyword { .. }
-                    | Op { .. }
-                    | OpGhost
-                    | OpenBrace { .. }
-                    | OpenExpansion { .. }
-                    | OpenBracket { .. }
-                    | OpenParen { .. }
-                    | Punct,
-                )
-                | None => self.percent_lit(),
                 Some(BuiltinMethod { takes_args: true } | Ident | Method) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op { lf: false },
                         None => self.percent_lit(),
                     }
                 }
+                Some(kind) if kind.followed_by_expr() => self.percent_lit(),
+                None => self.percent_lit(),
                 _ => Op { lf: false },
             },
 
             // char
             '?' => match self.prev.map(|t| t.kind) {
-                Some(
-                    Key
-                    | Keyword { .. }
-                    | Op { .. }
-                    | OpGhost
-                    | OpenBrace { .. }
-                    | OpenExpansion { .. }
-                    | OpenBracket { .. }
-                    | OpenParen { .. }
-                    | Punct,
-                )
-                | None => self.char_lit(),
                 Some(BuiltinMethod { takes_args: true } | Ident | Method) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op { lf: false },
                         None => self.char_lit(),
                     }
                 }
+                Some(kind) if kind.followed_by_expr() => self.char_lit(),
+                None => self.char_lit(),
                 _ => Op { lf: false },
             },
 
@@ -1439,19 +1423,15 @@ impl<'a> Tokens<'a> {
                 lf: false,
             },
             "if" | "unless" | "until" | "while" => {
-                let open_scope = matches!(
-                    self.prev.map(|t| t.kind),
-                    Some(
-                        Key | Keyword { lf: true, .. }
-                            | Op { .. }
-                            | OpGhost
-                            | OpenBrace { .. }
-                            | OpenBracket { .. }
-                            | OpenExpansion { .. }
-                            | OpenParen { .. }
-                            | Punct
-                    ) | None
-                );
+                let open_scope = match self.prev.map(|t| t.kind) {
+                    Some(Keyword {
+                        kind: "break" | "next" | "redo" | "retry" | "return",
+                        ..
+                    }) => false,
+                    Some(kind) if kind.followed_by_expr() => true,
+                    None => true,
+                    _ => false,
+                };
                 Keyword {
                     kind: &self.text[start..end],
                     open_scope,
