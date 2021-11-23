@@ -1420,7 +1420,7 @@ impl<'a> Tokens<'a> {
             "if" | "unless" | "until" | "while" => {
                 let open_scope = match self.prev.map(|t| t.kind) {
                     Some(Keyword {
-                        kind: "break" | "next" | "redo" | "retry" | "return",
+                        kind: "break" | "next" | "redo" | "retry" | "return" | "super" | "yield",
                         ..
                     }) => false,
                     Some(kind) if kind.followed_by_expr() => true,
