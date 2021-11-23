@@ -670,8 +670,8 @@ impl<'a> Iterator for Tokens<'a> {
             '1'..='9' => self.number_lit(),
 
             // variable
-            '@' => self.instance_variable(),
             '$' => self.global_variable(),
+            '@' => self.instance_variable(),
 
             // embedded document
             '=' if start == 0 => self.document_begin(),
@@ -895,35 +895,30 @@ impl<'a> Tokens<'a> {
     }
 
     fn pure_symbol_lit(&mut self, peeked: char) -> TokenKind<'a> {
-        let clone = self.chars.clone();
         match peeked {
-            '@' => {
+            '!' | '$' | '%' | '&' | '*' | '+' | '-' | '/' | '<' | '=' | '>' | '@' | '[' | '^'
+            | '|' | '~' => {
+                let clone = self.chars.clone();
                 self.chars.next();
-                if let Variable = self.instance_variable() {
-                    return PureSymbolLit;
-                }
-            }
-            '$' => {
-                self.chars.next();
-                if let Variable = self.global_variable() {
-                    return PureSymbolLit;
-                }
-            }
-            '!' | '%' | '&' | '*' | '+' | '-' | '/' | '<' | '=' | '>' | '[' | '^' | '|' | '~' => {
-                self.chars.next();
-                if let Method = self.method(peeked) {
-                    return PureSymbolLit;
+                let valid = match peeked {
+                    '$' => matches!(self.global_variable(), Variable),
+                    '@' => matches!(self.instance_variable(), Variable),
+                    _ => matches!(self.method(peeked), Method),
+                };
+                if valid {
+                    PureSymbolLit
+                } else {
+                    self.chars = clone;
+                    Op { lf: false }
                 }
             }
             ch if !is_delim(ch) && !ch.is_ascii_digit() => {
                 self.chars.next();
                 self.method(peeked);
-                return PureSymbolLit;
+                PureSymbolLit
             }
-            _ => (),
+            _ => Op { lf: false },
         }
-        self.chars = clone;
-        Op { lf: false }
     }
 
     #[rustfmt::skip]
@@ -1248,25 +1243,6 @@ impl<'a> Tokens<'a> {
         Heredoc { label, trailing_context, indent, expand, open }
     }
 
-    fn instance_variable(&mut self) -> TokenKind<'a> {
-        match self.chars.peek() {
-            Some(&(_, (_, ch))) if !is_delim(ch) && !ch.is_ascii_digit() => {
-                self.chars.next();
-                while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
-                Variable
-            }
-            Some(&(_, (_, '@'))) => match self.chars.clone().nth(1) {
-                Some((_, (_, ch))) if !is_delim(ch) && !ch.is_ascii_digit() => {
-                    self.chars.nth(1);
-                    while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
-                    Variable
-                }
-                _ => Punct,
-            },
-            _ => Punct,
-        }
-    }
-
     fn global_variable(&mut self) -> TokenKind<'a> {
         match self.chars.peek() {
             Some(&(
@@ -1304,6 +1280,25 @@ impl<'a> Tokens<'a> {
                 while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
                 Variable
             }
+            _ => Punct,
+        }
+    }
+
+    fn instance_variable(&mut self) -> TokenKind<'a> {
+        match self.chars.peek() {
+            Some(&(_, (_, ch))) if !is_delim(ch) && !ch.is_ascii_digit() => {
+                self.chars.next();
+                while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
+                Variable
+            }
+            Some(&(_, (_, '@'))) => match self.chars.clone().nth(1) {
+                Some((_, (_, ch))) if !is_delim(ch) && !ch.is_ascii_digit() => {
+                    self.chars.nth(1);
+                    while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
+                    Variable
+                }
+                _ => Punct,
+            },
             _ => Punct,
         }
     }
