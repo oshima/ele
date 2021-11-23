@@ -151,7 +151,7 @@ impl Ruby {
                 },
                 CloseBrace | CloseBracket | CloseExpansion { .. } | CloseParen => {
                     match (prev_token.map(|t| t.end), context_v.last()) {
-                        (Some(0), Some(kind)) if kind.is_pair(&token.kind) => {
+                        (Some(0), Some(kind)) if kind.pair_with(&token.kind) => {
                             row.indent_level -= 1;
                         }
                         _ => (),
@@ -256,7 +256,7 @@ impl Ruby {
                     for (i, kind) in context_v.iter().enumerate().rev() {
                         match kind {
                             HeredocLabel { .. } => (),
-                            kind if kind.is_pair(&token.kind) => {
+                            kind if kind.pair_with(&token.kind) => {
                                 context_v.remove(i);
                                 break;
                             }
@@ -489,7 +489,7 @@ enum ExpansionKind<'a> {
 }
 
 impl<'a> TokenKind<'a> {
-    fn is_pair(&self, other: &Self) -> bool {
+    fn pair_with(&self, other: &Self) -> bool {
         match (self, other) {
             (OpenBrace { .. }, CloseBrace)
             | (OpenBracket { .. }, CloseBracket)
