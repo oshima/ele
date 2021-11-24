@@ -490,8 +490,11 @@ impl<'a> TokenKind<'a> {
 
     fn followed_by_expr(&self) -> bool {
         match self {
-            Key
+            BuiltinMethod { takes_args: true }
+            | Ident
+            | Key
             | Keyword { .. }
+            | Method
             | Op { .. }
             | OpGhost
             | OpenBrace { .. }
@@ -620,7 +623,6 @@ impl<'a> Iterator for Tokens<'a> {
 
             // regexp
             '/' => match self.prev.map(|t| t.kind) {
-                Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 Some(BuiltinMethod { takes_args: true } | Ident | Method) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op { lf: false },
@@ -630,6 +632,7 @@ impl<'a> Iterator for Tokens<'a> {
                         },
                     }
                 }
+                Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 Some(kind) if kind.followed_by_expr() => self.regexp_lit(ch, 1, true),
                 None => self.regexp_lit(ch, 1, true),
                 _ => Op { lf: false },
@@ -637,13 +640,13 @@ impl<'a> Iterator for Tokens<'a> {
 
             // percent literal
             '%' => match self.prev.map(|t| t.kind) {
-                Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 Some(BuiltinMethod { takes_args: true } | Ident | Method) => {
                     match self.prev.filter(|t| t.end == start) {
                         Some(_) => Op { lf: false },
                         None => self.percent_lit(),
                     }
                 }
+                Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 Some(kind) if kind.followed_by_expr() => self.percent_lit(),
                 None => self.percent_lit(),
                 _ => Op { lf: false },
@@ -1423,6 +1426,7 @@ impl<'a> Tokens<'a> {
             },
             "if" | "unless" | "until" | "while" => {
                 let open_scope = match self.prev.map(|t| t.kind) {
+                    Some(BuiltinMethod { takes_args: true } | Ident | Method) => false,
                     Some(Keyword {
                         kind: "break" | "next" | "redo" | "retry" | "return" | "super" | "yield",
                         ..
