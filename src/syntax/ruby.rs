@@ -84,19 +84,8 @@ impl Ruby {
             let fg = match token.kind {
                 BuiltinMethod { takes_args: false } => Fg::Macro,
                 BuiltinMethod { takes_args: true } => match tokens.peek().map(|t| t.kind) {
-                    Some(
-                        CloseBar
-                        | CloseBrace
-                        | CloseBracket
-                        | CloseExpansion { .. }
-                        | CloseParen
-                        | Comment
-                        | Dot
-                        | Op { .. }
-                        | Punct,
-                    )
-                    | None => Fg::Default,
-                    _ => Fg::Macro,
+                    Some(kind) if kind.start_of_expr() => Fg::Macro,
+                    _ => Fg::Default,
                 },
                 CharLit | RegexpLit { .. } | StrLit { .. } => Fg::String,
                 CloseExpansion { .. } | OpenExpansion { .. } => Fg::Variable,
@@ -511,6 +500,21 @@ impl<'a> TokenKind<'a> {
             | OpenParen { .. }
             | Punct => true,
             _ => false,
+        }
+    }
+
+    fn start_of_expr(&self) -> bool {
+        match self {
+            CloseBar
+            | CloseBrace
+            | CloseBracket
+            | CloseExpansion { .. }
+            | CloseParen
+            | Comment
+            | Dot
+            | Op { .. }
+            | Punct => false,
+            _ => true,
         }
     }
 }
