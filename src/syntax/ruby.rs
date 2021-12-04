@@ -98,9 +98,8 @@ impl Ruby {
                 Key | PureSymbolLit | SymbolLit { .. } => Fg::Macro,
                 Keyword { .. } => Fg::Keyword,
                 Method => Fg::Function,
-                MethodOwner => Fg::Variable,
+                MethodOwner | Variable => Fg::Variable,
                 UpperIdent => Fg::Type,
-                Variable => Fg::Variable,
                 _ => Fg::Default,
             };
 
