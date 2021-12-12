@@ -131,9 +131,9 @@ impl Ruby {
                         | OpenBrace { lf: true }
                         | OpenBracket { lf: true }
                         | OpenParen { lf: true }
-                        | RegexpLit { .. }
-                        | StrLit { .. }
-                        | SymbolLit { .. },
+                        | RegexpLit { lf: true, .. }
+                        | StrLit { lf: true, .. }
+                        | SymbolLit { lf: true, .. },
                     ) => row.indent_level += 1,
                     _ => (),
                 },
@@ -233,9 +233,9 @@ impl Ruby {
                         | OpenBrace { lf: true }
                         | OpenBracket { lf: true }
                         | OpenParen { lf: true }
-                        | RegexpLit { .. }
-                        | StrLit { .. }
-                        | SymbolLit { .. },
+                        | RegexpLit { lf: true, .. }
+                        | StrLit { lf: true, .. }
+                        | SymbolLit { lf: true, .. },
                     )
                     | None => context_v.push(token.kind),
                     _ => (),
@@ -337,13 +337,13 @@ impl Ruby {
                 OpenParen { lf } => {
                     string.push_str(if lf { "(\n" } else { "(" });
                 }
-                RegexpLit { delim, expand, depth } => {
+                RegexpLit { delim, expand, depth, .. } => {
                     self.convert_regexp(delim, expand, depth, string);
                 },
-                StrLit { delim, expand, depth } => {
+                StrLit { delim, expand, depth, .. } => {
                     self.convert_string(delim, expand, depth, string);
                 },
-                SymbolLit { delim, expand, depth } => {
+                SymbolLit { delim, expand, depth, .. } => {
                     self.convert_symbol(delim, expand, depth, string);
                 },
                 _ => (),
@@ -388,6 +388,7 @@ impl Ruby {
                 }
             }
         }
+        string.push('\n');
     }
 
     fn convert_string(&self, delim: char, expand: bool, depth: usize, string: &mut String) {
@@ -403,6 +404,7 @@ impl Ruby {
                 }
             }
         }
+        string.push('\n');
     }
 
     fn convert_symbol(&self, delim: char, expand: bool, depth: usize, string: &mut String) {
@@ -419,6 +421,7 @@ impl Ruby {
                 }
             }
         }
+        string.push('\n');
     }
 }
 
@@ -460,9 +463,9 @@ enum TokenKind<'a> {
     OpenParen { lf: bool },
     Punct,
     PureSymbolLit,
-    RegexpLit { delim: char, depth: usize, expand: bool },
-    StrLit { delim: char, depth: usize, expand: bool },
-    SymbolLit { delim: char, depth: usize, expand: bool },
+    RegexpLit { delim: char, depth: usize, expand: bool, lf: bool },
+    StrLit { delim: char, depth: usize, expand: bool, lf: bool },
+    SymbolLit { delim: char, depth: usize, expand: bool, lf: bool },
     UpperIdent,
     Variable,
 }
@@ -807,7 +810,7 @@ impl<'a> Tokens<'a> {
         Token { kind, start, end }
     }
 
-    fn consume_content(&mut self, delim: char, depth: usize, expand: bool) -> usize {
+    fn consume_content(&mut self, delim: char, depth: usize, expand: bool) -> (usize, bool) {
         let close_delim = match delim {
             '(' => ')',
             '<' => '>',
@@ -816,10 +819,12 @@ impl<'a> Tokens<'a> {
             _ => delim,
         };
         let mut depth = depth;
+        let mut lf = false;
         while let Some(&(_, (_, ch))) = self.chars.peek() {
             match ch {
                 ch if ch == close_delim => depth -= 1,
                 ch if ch == delim => depth += 1,
+                '\n' => lf = true,
                 '\\' => {
                     self.chars.next();
                 }
@@ -834,7 +839,7 @@ impl<'a> Tokens<'a> {
                 break;
             }
         }
-        depth
+        (depth, lf)
     }
 
     fn consume_heredoc_content(&mut self, expand: bool) {
@@ -890,14 +895,14 @@ impl<'a> Tokens<'a> {
 
     #[rustfmt::skip]
     fn str_lit(&mut self, delim: char, depth: usize, expand: bool) -> TokenKind<'a> {
-        let depth = self.consume_content(delim, depth, expand);
-        StrLit { delim, depth, expand }
+        let (depth, lf) = self.consume_content(delim, depth, expand);
+        StrLit { delim, depth, expand, lf }
     }
 
     #[rustfmt::skip]
     fn symbol_lit(&mut self, delim: char, depth: usize, expand: bool) -> TokenKind<'a> {
-        let depth = self.consume_content(delim, depth, expand);
-        SymbolLit { delim, depth, expand }
+        let (depth, lf) = self.consume_content(delim, depth, expand);
+        SymbolLit { delim, depth, expand, lf }
     }
 
     fn pure_symbol_lit(&mut self, peeked: char) -> TokenKind<'a> {
@@ -929,11 +934,11 @@ impl<'a> Tokens<'a> {
 
     #[rustfmt::skip]
     fn regexp_lit(&mut self, delim: char, depth: usize, expand: bool) -> TokenKind<'a> {
-        let depth = self.consume_content(delim, depth, expand);
+        let (depth, lf) = self.consume_content(delim, depth, expand);
         while let Some(&(_, (_, 'i' | 'm' | 'o' | 'x'))) = self.chars.peek() {
             self.chars.next();
         }
-        RegexpLit { delim, depth, expand }
+        RegexpLit { delim, depth, expand, lf }
     }
 
     fn percent_lit(&mut self) -> TokenKind<'a> {
