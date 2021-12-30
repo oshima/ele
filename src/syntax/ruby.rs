@@ -109,11 +109,8 @@ impl Ruby {
 
             // Indent
             match token.kind {
-                Dot => match prev_token.map(|t| t.end) {
-                    Some(0) | None => row.indent_level += 1,
-                    _ => (),
-                },
-                DotGhost
+                Comma { lf: true }
+                | DotGhost
                 | Keyword { lf: true, .. }
                 | Op { lf: true }
                 | OpenBrace { lf: true }
@@ -122,7 +119,7 @@ impl Ruby {
                 | OpenParen { lf: true } => {
                     row.indent_level += 1;
                 }
-                OpGhost => match tokens.peek().map(|t| t.kind) {
+                CommaGhost | OpGhost => match tokens.peek().map(|t| t.kind) {
                     Some(
                         Dot
                         | DotGhost
@@ -135,6 +132,10 @@ impl Ruby {
                         | StrLit { lf: true, .. }
                         | SymbolLit { lf: true, .. },
                     ) => row.indent_level += 1,
+                    _ => (),
+                },
+                Dot => match prev_token.map(|t| t.end) {
+                    Some(0) | None => row.indent_level += 1,
                     _ => (),
                 },
                 CloseBrace | CloseBracket | CloseExpansion { .. } | CloseParen => {
@@ -167,6 +168,64 @@ impl Ruby {
                 | OpenParen { .. } => {
                     context_v.push(token.kind);
                 }
+                Comma { lf: false } => match tokens.peek().map(|t| t.kind) {
+                    Some(Comment) | None => match context_v.last() {
+                        Some(DotGhost) => {
+                            context_v.pop();
+                            context_v.push(token.kind);
+                        }
+                        Some(
+                            OpenBrace { .. }
+                            | OpenBracket { .. }
+                            | OpenExpansion { .. }
+                            | OpenParen { .. },
+                        ) => (),
+                        _ => context_v.push(token.kind),
+                    }
+                    _ => (),
+                }
+                Comma { lf: true } => match tokens.peek().map(|t| t.kind) {
+                    Some(Comment) | None => context_v.push(token.kind),
+                    _ => context_v.push(CommaGhost),
+                },
+                Op { lf: false } | Key => match tokens.peek().map(|t| t.kind) {
+                    Some(Comment) | None => match context_v.last() {
+                        Some(DotGhost) => {
+                            context_v.pop();
+                            context_v.push(Op { lf: false });
+                        }
+                        Some(
+                            Keyword { lf: false, .. }
+                            | OpenBrace { lf: false }
+                            | OpenBracket { lf: false }
+                            | OpenExpansion { lf: false, .. }
+                            | OpenParen { lf: false },
+                        ) => (),
+                        _ => context_v.push(Op { lf: false }),
+                    },
+                    _ => (),
+                },
+                Op { lf: true } => match tokens.peek().map(|t| t.kind) {
+                    Some(Comment) | None => context_v.push(token.kind),
+                    _ => context_v.push(OpGhost),
+                },
+                CommaGhost | OpGhost => match tokens.peek().map(|t| t.kind) {
+                    Some(
+                        Comment
+                        | Dot
+                        | DotGhost
+                        | Heredoc { .. }
+                        | Keyword { lf: true, .. }
+                        | OpenBrace { lf: true }
+                        | OpenBracket { lf: true }
+                        | OpenParen { lf: true }
+                        | RegexpLit { lf: true, .. }
+                        | StrLit { lf: true, .. }
+                        | SymbolLit { lf: true, .. },
+                    )
+                    | None => context_v.push(token.kind),
+                    _ => (),
+                },
                 Dot => match prev_token.map(|t| t.end) {
                     Some(0) | None => context_v.push(DotGhost),
                     _ => (),
@@ -185,23 +244,6 @@ impl Ruby {
                     Some(OpenExpansion { .. }) => (),
                     _ => context_v.push(token.kind),
                 },
-                Key | Op { lf: false } => match tokens.peek().map(|t| t.kind) {
-                    Some(Comment) | None => match context_v.last() {
-                        Some(DotGhost) => {
-                            context_v.pop();
-                            context_v.push(Op { lf: false });
-                        }
-                        Some(
-                            Keyword { lf: false, .. }
-                            | OpenBrace { lf: false }
-                            | OpenBracket { lf: false }
-                            | OpenExpansion { lf: false, .. }
-                            | OpenParen { lf: false },
-                        ) => (),
-                        _ => context_v.push(Op { lf: false }),
-                    },
-                    _ => (),
-                },
                 Keyword {
                     open_scope,
                     close_scope,
@@ -219,27 +261,6 @@ impl Ruby {
                         context_v.push(token.kind);
                     }
                 }
-                Op { lf: true } => match tokens.peek().map(|t| t.kind) {
-                    Some(Comment) | None => context_v.push(token.kind),
-                    _ => context_v.push(OpGhost),
-                },
-                OpGhost => match tokens.peek().map(|t| t.kind) {
-                    Some(
-                        Comment
-                        | Dot
-                        | DotGhost
-                        | Heredoc { .. }
-                        | Keyword { lf: true, .. }
-                        | OpenBrace { lf: true }
-                        | OpenBracket { lf: true }
-                        | OpenParen { lf: true }
-                        | RegexpLit { lf: true, .. }
-                        | StrLit { lf: true, .. }
-                        | SymbolLit { lf: true, .. },
-                    )
-                    | None => context_v.push(token.kind),
-                    _ => (),
-                },
                 CloseBrace | CloseBracket | CloseExpansion { .. } | CloseParen => {
                     for (i, kind) in context_v.iter().enumerate().rev() {
                         match kind {
@@ -262,7 +283,8 @@ impl Ruby {
             context_v.pop();
         }
         if let Some(
-            Keyword { lf, .. }
+            Comma { lf }
+            | Keyword { lf, .. }
             | Op { lf }
             | OpenBrace { lf }
             | OpenBracket { lf }
@@ -280,6 +302,12 @@ impl Ruby {
     fn convert_context(&self, slice: &[TokenKind], string: &mut String) {
         for (i, token_kind) in slice.iter().enumerate() {
             match *token_kind {
+                Comma { lf: true } => {
+                    string.push_str(",\n");
+                }
+                CommaGhost => {
+                    string.push_str("\0,");
+                }
                 Document { .. } => {
                     string.push_str("\0d");
                 }
@@ -442,6 +470,8 @@ enum TokenKind<'a> {
     CloseBracket,
     CloseExpansion { kind: ExpansionKind<'a> },
     CloseParen,
+    Comma { lf: bool },
+    CommaGhost,
     Comment,
     Document { open: bool },
     Dot,
@@ -493,6 +523,8 @@ impl<'a> TokenKind<'a> {
     fn followed_by_expr(&self) -> bool {
         match self {
             BuiltinMethod { takes_args: true }
+            | Comma { .. }
+            | CommaGhost
             | Ident
             | Key
             | Keyword { .. }
@@ -515,6 +547,7 @@ impl<'a> TokenKind<'a> {
             | CloseBracket
             | CloseExpansion { .. }
             | CloseParen
+            | Comma { ..}
             | Comment
             | Dot
             | Op { .. }
@@ -727,6 +760,9 @@ impl<'a> Iterator for Tokens<'a> {
                 Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 _ => Op { lf: false },
             },
+            ',' => Comma {
+                lf: self.chars.next_if(|&(_, (_, ch))| ch == '\n').is_some(),
+            },
             '.' => match self.chars.next_if(|&(_, (_, ch))| ch == '.') {
                 Some(_) => {
                     self.chars.next_if(|&(_, (_, ch))| ch == '.');
@@ -748,6 +784,7 @@ impl<'a> Iterator for Tokens<'a> {
                 },
                 Some((_, (_, '+'))) => Op { lf: true },
                 Some((_, (_, '-'))) => OpGhost,
+                Some((_, (_, ','))) => CommaGhost,
                 Some((_, (_, '.'))) => DotGhost,
                 _ => Punct,
             },
