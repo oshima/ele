@@ -181,9 +181,9 @@ impl Ruby {
                             | OpenParen { .. },
                         ) => (),
                         _ => context_v.push(token.kind),
-                    }
+                    },
                     _ => (),
-                }
+                },
                 Comma { lf: true } => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => context_v.push(token.kind),
                     _ => context_v.push(CommaGhost),
@@ -334,10 +334,10 @@ impl Ruby {
                     string.push_str(if lf { "\0k\n" } else { "\0k" });
                 }
                 Op { lf: true } => {
-                    string.push_str("\0+");
+                    string.push_str("+\n");
                 }
                 OpGhost => {
-                    string.push_str("\0-");
+                    string.push_str("\0+");
                 }
                 OpenBrace { lf } => {
                     string.push_str(if lf { "{\n" } else { "{" });
@@ -547,7 +547,7 @@ impl<'a> TokenKind<'a> {
             | CloseBracket
             | CloseExpansion { .. }
             | CloseParen
-            | Comma { ..}
+            | Comma { .. }
             | Comment
             | Dot
             | Op { .. }
@@ -756,7 +756,13 @@ impl<'a> Iterator for Tokens<'a> {
                     _ => Op { lf: false },
                 },
             },
-            '!' | '*' | '+' | '-' | '=' | '>' | '^' | '~' => match self.prev.map(|t| t.kind) {
+            '+' => match self.prev.map(|t| t.kind) {
+                Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
+                _ => Op {
+                    lf: self.chars.next_if(|&(_, (_, ch))| ch == '\n').is_some(),
+                },
+            },
+            '!' | '*' | '-' | '=' | '>' | '^' | '~' => match self.prev.map(|t| t.kind) {
                 Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
                 _ => Op { lf: false },
             },
@@ -782,10 +788,9 @@ impl<'a> Iterator for Tokens<'a> {
                     close_scope: false,
                     lf: self.chars.next_if(|&(_, (_, ch))| ch == '\n').is_some(),
                 },
-                Some((_, (_, '+'))) => Op { lf: true },
-                Some((_, (_, '-'))) => OpGhost,
                 Some((_, (_, ','))) => CommaGhost,
                 Some((_, (_, '.'))) => DotGhost,
+                Some((_, (_, '+'))) => OpGhost,
                 _ => Punct,
             },
 
