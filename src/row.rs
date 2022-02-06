@@ -199,8 +199,13 @@ impl Row {
         &self.string[..len]
     }
 
-    pub fn read_str(&self, x1: usize, x2: usize) -> &str {
-        &self.string[self.x_to_idx(x1)..self.x_to_idx(x2)]
+    pub fn indent(&mut self, string: &str) -> String {
+        let code_part = self.string.split_off(self.indent_part().len());
+        let indent_part = self.string.split_off(0);
+        self.string.push_str(string);
+        self.string.push_str(&code_part);
+        self.update_mappings();
+        indent_part
     }
 
     pub fn clear(&mut self) {
@@ -210,13 +215,8 @@ impl Row {
         }
     }
 
-    pub fn indent(&mut self, string: &str) -> String {
-        let code_part = self.string.split_off(self.indent_part().len());
-        let indent_part = self.string.split_off(0);
-        self.string.push_str(string);
-        self.string.push_str(&code_part);
-        self.update_mappings();
-        indent_part
+    pub fn read_str(&self, x1: usize, x2: usize) -> &str {
+        &self.string[self.x_to_idx(x1)..self.x_to_idx(x2)]
     }
 
     pub fn push_str(&mut self, string: &str) {
