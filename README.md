@@ -1,6 +1,14 @@
-# [WIP] ele: emacs-like editor
+# ele: emacs-like editor
 
-A Rust implementation of [Build Your Own Text Editor](https://viewsourcecode.org/snaptoken/kilo/)
-that supports UTF-8, syntax highlighting and emacs-like key bindings.
+A text editor with the features:
+
+- Emacs-like key bindings
+- UTF-8 support
+- Syntax highlighting
+- Auto-indentation
 
 ![screenshot](https://raw.githubusercontent.com/oshima/ele/images/screenshot.png)
+
+## References
+
+- [Build Your Own Text Editor](https://viewsourcecode.org/snaptoken/kilo/)
