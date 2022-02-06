@@ -410,6 +410,21 @@ impl Buffer {
                 self.push_event(event);
                 ""
             }
+            Key::Ctrl(b'L') => {
+                self.offset.y = if matches!(self.last_key, Some(Key::Ctrl(b'L'))) {
+                    if self.offset.y == self.cursor.y.saturating_sub(self.size.h / 2) {
+                        self.cursor.y
+                    } else if self.offset.y == self.cursor.y {
+                        self.cursor.y.saturating_sub(self.size.h - 1)
+                    } else {
+                        self.cursor.y.saturating_sub(self.size.h / 2)
+                    }
+                } else {
+                    self.cursor.y.saturating_sub(self.size.h / 2)
+                };
+                self.draw_range.full_expand();
+                ""
+            }
             Key::Ctrl(b'U') => {
                 if let Some(anchor) = self.anchor {
                     self.unhighlight_region(anchor);
