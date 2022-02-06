@@ -199,8 +199,8 @@ impl Row {
         &self.string[..len]
     }
 
-    pub fn read(&self, x1: usize, x2: usize) -> String {
-        self.string[self.x_to_idx(x1)..self.x_to_idx(x2)].to_string()
+    pub fn read_str(&self, x1: usize, x2: usize) -> &str {
+        &self.string[self.x_to_idx(x1)..self.x_to_idx(x2)]
     }
 
     pub fn clear(&mut self) {

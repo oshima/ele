@@ -82,7 +82,7 @@ impl RowsMethods for Rows {
             let row = &self[y];
             let x1 = if y == pos1.y { pos1.x } else { 0 };
             let x2 = if y == pos2.y { pos2.x } else { row.last_x() };
-            strings.push(row.read(x1, x2));
+            strings.push(row.read_str(x1, x2));
         }
         strings.join("\n")
     }
