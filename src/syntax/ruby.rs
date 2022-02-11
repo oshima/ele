@@ -511,49 +511,49 @@ enum ExpansionKind<'a> {
 
 impl<'a> TokenKind<'a> {
     fn pair_with(&self, other: &Self) -> bool {
-        match (self, other) {
+        matches!(
+            (self, other),
             (OpenBrace { .. }, CloseBrace)
-            | (OpenBracket { .. }, CloseBracket)
-            | (OpenExpansion { .. }, CloseExpansion { .. })
-            | (OpenParen { .. }, CloseParen) => true,
-            _ => false,
-        }
+                | (OpenBracket { .. }, CloseBracket)
+                | (OpenExpansion { .. }, CloseExpansion { .. })
+                | (OpenParen { .. }, CloseParen)
+        )
     }
 
     fn followed_by_expr(&self) -> bool {
-        match self {
+        matches!(
+            self,
             BuiltinMethod { takes_args: true }
-            | Comma { .. }
-            | CommaGhost
-            | Ident
-            | Key
-            | Keyword { .. }
-            | Method
-            | Op { .. }
-            | OpGhost
-            | OpenBrace { .. }
-            | OpenBracket { .. }
-            | OpenExpansion { .. }
-            | OpenParen { .. }
-            | Punct => true,
-            _ => false,
-        }
+                | Comma { .. }
+                | CommaGhost
+                | Ident
+                | Key
+                | Keyword { .. }
+                | Method
+                | Op { .. }
+                | OpGhost
+                | OpenBrace { .. }
+                | OpenBracket { .. }
+                | OpenExpansion { .. }
+                | OpenParen { .. }
+                | Punct
+        )
     }
 
     fn start_of_expr(&self) -> bool {
-        match self {
+        !matches!(
+            self,
             CloseBar
-            | CloseBrace
-            | CloseBracket
-            | CloseExpansion { .. }
-            | CloseParen
-            | Comma { .. }
-            | Comment
-            | Dot
-            | Op { .. }
-            | Punct => false,
-            _ => true,
-        }
+                | CloseBrace
+                | CloseBracket
+                | CloseExpansion { .. }
+                | CloseParen
+                | Comma { .. }
+                | Comment
+                | Dot
+                | Op { .. }
+                | Punct
+        )
     }
 }
 
@@ -870,10 +870,11 @@ impl<'a> Tokens<'a> {
                 '\\' => {
                     self.chars.next();
                 }
-                '#' if expand => match self.chars.clone().nth(1) {
-                    Some((_, (_, '{'))) => break,
-                    _ => (),
-                },
+                '#' if expand => {
+                    if let Some((_, (_, '{'))) = self.chars.clone().nth(1) {
+                        break;
+                    }
+                }
                 _ => (),
             }
             self.chars.next();
@@ -890,10 +891,11 @@ impl<'a> Tokens<'a> {
                 '\\' => {
                     self.chars.next();
                 }
-                '#' if expand => match self.chars.clone().nth(1) {
-                    Some((_, (_, '{'))) => break,
-                    _ => (),
-                },
+                '#' if expand => {
+                    if let Some((_, (_, '{'))) = self.chars.clone().nth(1) {
+                        break;
+                    }
+                }
                 _ => (),
             }
             self.chars.next();
@@ -1171,7 +1173,7 @@ impl<'a> Tokens<'a> {
     fn n_ary_lit(&mut self, radix: u32, explicit: bool) -> TokenKind<'a> {
         if explicit {
             match self.chars.clone().nth(1) {
-                Some((_, (_, ch))) if ch.to_digit(radix).is_some() => {
+                Some((_, (_, ch))) if ch.is_digit(radix) => {
                     self.chars.nth(1);
                 }
                 _ => return NumberLit,
@@ -1179,11 +1181,11 @@ impl<'a> Tokens<'a> {
         }
         while let Some(&(_, (_, ch))) = self.chars.peek() {
             match ch {
-                ch if ch.to_digit(radix).is_some() => {
+                ch if ch.is_digit(radix) => {
                     self.chars.next();
                 }
                 '_' => match self.chars.clone().nth(1) {
-                    Some((_, (_, ch))) if ch.to_digit(radix).is_some() => {
+                    Some((_, (_, ch))) if ch.is_digit(radix) => {
                         self.chars.nth(1);
                     }
                     _ => return NumberLit,

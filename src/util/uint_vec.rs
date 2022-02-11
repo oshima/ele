@@ -1,4 +1,4 @@
-#![allow(clippy::box_vec)]
+#![allow(clippy::box_collection)]
 
 pub struct UintVec {
     u8_vec: Vec<u8>,
