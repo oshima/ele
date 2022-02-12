@@ -96,6 +96,7 @@ impl Rust {
                     },
                 },
                 Lifetime => Fg::Variable,
+                NumberLit => Fg::Number,
                 PrimitiveType => Fg::Type,
                 Question => Fg::Macro,
                 UpperIdent => match prev_token.map(|t| t.kind) {
@@ -376,6 +377,7 @@ enum TokenKind {
     LineComment,
     Mod,
     Mut,
+    NumberLit,
     OpenAttribute { lf: bool },
     OpenBrace { lf: bool },
     OpenBracket { lf: bool },
@@ -466,6 +468,15 @@ impl<'a> Iterator for Tokens<'a> {
                 }
                 _ => self.ident(start),
             },
+
+            // number
+            '0' => match self.chars.peek() {
+                Some(&(_, 'b')) => self.n_ary_lit(2),
+                Some(&(_, 'o')) => self.n_ary_lit(8),
+                Some(&(_, 'x')) => self.n_ary_lit(16),
+                _ => self.number_lit(),
+            },
+            '1'..='9' => self.number_lit(),
 
             // punctuation
             ',' => Comma,
@@ -625,6 +636,54 @@ impl<'a> Tokens<'a> {
             }
         }
         RawStrLit { open: true, n_hashes }
+    }
+
+    fn number_lit(&mut self) -> TokenKind {
+        while let Some(&(_, '0'..='9' | '_')) = self.chars.peek() {
+            self.chars.next();
+        }
+        if let Some(&(_, '.')) = self.chars.peek() {
+            match self.chars.clone().nth(1) {
+                Some((_, '0'..='9')) => {
+                    self.chars.nth(1);
+                    while let Some(&(_, '0'..='9' | '_')) = self.chars.peek() {
+                        self.chars.next();
+                    }
+                }
+                Some((_, '.')) => return NumberLit,
+                Some((_, ch)) if !is_delim(ch) => return NumberLit,
+                _ => {
+                    self.chars.next();
+                    return NumberLit;
+                }
+            }
+        }
+        if let Some(&(_, 'e' | 'E')) = self.chars.peek() {
+            self.chars.next();
+            self.chars.next_if(|&(_, ch)| ch == '+' || ch == '-');
+            while let Some(&(_, '0'..='9' | '_')) = self.chars.peek() {
+                self.chars.next();
+            }
+        }
+        if let Some(&(idx, 'f' | 'i' | 'u')) = self.chars.peek() {
+            self.chars.next();
+            self.ident(idx);
+        }
+        NumberLit
+    }
+
+    fn n_ary_lit(&mut self, radix: u32) -> TokenKind {
+        self.chars.next();
+        while self
+            .chars
+            .next_if(|&(_, ch)| ch.is_digit(radix) || ch == '_')
+            .is_some()
+        {}
+        if let Some(&(idx, 'f' | 'i' | 'u')) = self.chars.peek() {
+            self.chars.next();
+            self.ident(idx);
+        }
+        NumberLit
     }
 
     fn raw_ident(&mut self) -> TokenKind {

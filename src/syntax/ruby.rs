@@ -99,6 +99,7 @@ impl Ruby {
                 Keyword { .. } => Fg::Keyword,
                 Method => Fg::Function,
                 MethodOwner | Variable => Fg::Variable,
+                NumberLit => Fg::Number,
                 UpperIdent => Fg::Type,
                 _ => Fg::Default,
             };

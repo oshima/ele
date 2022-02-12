@@ -8,6 +8,7 @@ pub enum Fg {
     Function,
     Macro,
     String,
+    Number,
     Comment,
     Prompt,
     Match,

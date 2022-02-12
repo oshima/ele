@@ -220,11 +220,11 @@ impl Editor {
                     self.minibuffer.set_message("");
                     self.state = State::Default;
                 }
-                Key::Ctrl(b'R') => {
-                    self.buffer.next_match(true);
-                }
-                Key::Ctrl(b'S') => {
+                Key::Ctrl(b'N' | b'S') => {
                     self.buffer.next_match(false);
+                }
+                Key::Ctrl(b'P' | b'R') => {
+                    self.buffer.next_match(true);
                 }
                 _ => {
                     let prev_input = self.minibuffer.get_input();
