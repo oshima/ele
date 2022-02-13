@@ -740,7 +740,10 @@ impl<'a> Iterator for Tokens<'a> {
             ')' => CloseParen,
             '<' => match self.prev.map(|t| t.kind) {
                 Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
-                _ => self.heredoc_label(),
+                _ => match self.chars.next_if(|&(_, (_, ch))| ch == '<') {
+                    Some(_) => self.heredoc_label(),
+                    _ => Op { lf: false },
+                }
             },
             '&' => match self.prev.map(|t| t.kind) {
                 Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
@@ -1032,48 +1035,22 @@ impl<'a> Tokens<'a> {
     }
 
     fn char_lit(&mut self) -> TokenKind<'a> {
-        let mut clone = self.chars.clone();
-        let peek1 = clone.next().map(|(_, (_, ch))| ch);
-        let peek2 = clone.next().map(|(_, (_, ch))| ch);
-        match (peek1, peek2) {
-            (Some('\\'), Some('u')) => {
-                self.chars.nth(1);
-                for _ in 0..4 {
-                    self.chars.next_if(|&(_, (_, ch))| ch.is_ascii_hexdigit());
-                }
-            }
-            (Some('\\'), Some(ch)) if ch == 'C' || ch == 'M' => {
-                self.chars.nth(1);
-                if self.chars.next_if(|&(_, (_, ch))| ch == '-').is_none() {
-                    return CharLit;
-                }
-                let mut clone = self.chars.clone();
-                let peek1 = clone.next().map(|(_, (_, ch))| ch);
-                let peek2 = clone.next().map(|(_, (_, ch))| ch);
-                let c_or_m = if ch == 'C' { 'M' } else { 'C' };
-                match (peek1, peek2) {
-                    (Some('\\'), Some(ch)) if ch == c_or_m => {
-                        self.chars.nth(1);
-                        if self.chars.next_if(|&(_, (_, ch))| ch == '-').is_none() {
-                            return CharLit;
-                        }
-                        self.chars.next_if(|&(_, (_, ch))| ch == '\\');
-                        self.chars
-                            .next_if(|&(_, (_, ch))| ch.is_ascii() && !ch.is_ascii_control());
+        match self.chars.peek() {
+            Some(&(_, (_, '\\'))) => match self.chars.nth(1) {
+                Some((_, (_, 'u'))) => {
+                    for _ in 0..4 {
+                        self.chars.next_if(|&(_, (_, ch))| ch.is_ascii_hexdigit());
                     }
-                    (Some('\\'), Some(ch)) if ch.is_ascii() && !ch.is_ascii_control() => {
-                        self.chars.nth(1);
-                    }
-                    (Some(ch), _) if ch.is_ascii() && !ch.is_ascii_control() => {
-                        self.chars.next();
-                    }
-                    _ => (),
                 }
+                Some((_, (_, 'C' | 'M'))) => {
+                    if self.chars.next_if(|&(_, (_, ch))| ch == '-').is_none() {
+                        return CharLit;
+                    }
+                    self.char_lit();
+                }
+                _ => (),
             }
-            (Some('\\'), _) => {
-                self.chars.nth(1);
-            }
-            (Some(ch), _) if !ch.is_ascii_whitespace() => {
+            Some(&(_, (_, ch))) if !ch.is_ascii_whitespace() => {
                 self.chars.next();
             }
             _ => return Op { lf: false },
@@ -1082,118 +1059,43 @@ impl<'a> Tokens<'a> {
     }
 
     fn number_lit(&mut self) -> TokenKind<'a> {
-        let mut fractional = false;
-        let mut exponential = false;
-        while let Some(&(_, (_, ch))) = self.chars.peek() {
-            match ch {
-                '0'..='9' => {
-                    self.chars.next();
-                }
-                '_' => match self.chars.clone().nth(1) {
-                    Some((_, (_, '0'..='9'))) => {
-                        self.chars.nth(1);
-                    }
-                    _ => return NumberLit,
-                },
-                '.' => match self.chars.clone().nth(1) {
-                    Some((_, (_, '0'..='9'))) => {
-                        self.chars.nth(1);
-                        fractional = true;
-                        break;
-                    }
-                    _ => return NumberLit,
-                },
-                'e' | 'E' => match (self.chars.clone().nth(1), self.chars.clone().nth(2)) {
-                    (Some((_, (_, '0'..='9'))), _) => {
-                        self.chars.nth(1);
-                        exponential = true;
-                        break;
-                    }
-                    (Some((_, (_, '+' | '-'))), Some((_, (_, '0'..='9')))) => {
-                        self.chars.nth(2);
-                        exponential = true;
-                        break;
-                    }
-                    _ => return NumberLit,
-                },
-                _ => break,
-            }
+        while let Some(&(_, (_, '0'..='9' | '_'))) = self.chars.peek() {
+            self.chars.next();
         }
-        if fractional {
-            while let Some(&(_, (_, ch))) = self.chars.peek() {
-                match ch {
-                    '0'..='9' => {
+        if let Some(&(_, (_, '.'))) = self.chars.peek() {
+            match self.chars.clone().nth(1) {
+                Some((_, (_, '0'..='9'))) => {
+                    self.chars.nth(1);
+                    while let Some(&(_, (_, '0'..='9' | '_'))) = self.chars.peek() {
                         self.chars.next();
                     }
-                    '_' => match self.chars.clone().nth(1) {
-                        Some((_, (_, '0'..='9'))) => {
-                            self.chars.nth(1);
-                        }
-                        _ => return NumberLit,
-                    },
-                    'e' | 'E' => match (self.chars.clone().nth(1), self.chars.clone().nth(2)) {
-                        (Some((_, (_, '0'..='9'))), _) => {
-                            self.chars.nth(1);
-                            exponential = true;
-                            break;
-                        }
-                        (Some((_, (_, '+' | '-'))), Some((_, (_, '0'..='9')))) => {
-                            self.chars.nth(2);
-                            exponential = true;
-                            break;
-                        }
-                        _ => return NumberLit,
-                    },
-                    _ => break,
                 }
+                _ => return NumberLit,
             }
         }
-        if exponential {
-            while let Some(&(_, (_, ch))) = self.chars.peek() {
-                match ch {
-                    '0'..='9' => {
-                        self.chars.next();
-                    }
-                    '_' => match self.chars.clone().nth(1) {
-                        Some((_, (_, '0'..='9'))) => {
-                            self.chars.nth(1);
-                        }
-                        _ => return NumberLit,
-                    },
-                    _ => break,
-                }
+        if let Some(&(_, (_, 'e' | 'E'))) = self.chars.peek() {
+            self.chars.next();
+            self.chars.next_if(|&(_, (_, ch))| ch == '+' || ch == '-');
+            while let Some(&(_, (_, '0'..='9' | '_'))) = self.chars.peek() {
+                self.chars.next();
             }
-        }
-        if !exponential {
+            self.chars.next_if(|&(_, (_, ch))| ch == 'i');
+        } else {
             self.chars.next_if(|&(_, (_, ch))| ch == 'r');
+            self.chars.next_if(|&(_, (_, ch))| ch == 'i');
         }
-        self.chars.next_if(|&(_, (_, ch))| ch == 'i');
         NumberLit
     }
 
     fn n_ary_lit(&mut self, radix: u32, explicit: bool) -> TokenKind<'a> {
         if explicit {
-            match self.chars.clone().nth(1) {
-                Some((_, (_, ch))) if ch.is_digit(radix) => {
-                    self.chars.nth(1);
-                }
-                _ => return NumberLit,
-            }
+            self.chars.next();
         }
-        while let Some(&(_, (_, ch))) = self.chars.peek() {
-            match ch {
-                ch if ch.is_digit(radix) => {
-                    self.chars.next();
-                }
-                '_' => match self.chars.clone().nth(1) {
-                    Some((_, (_, ch))) if ch.is_digit(radix) => {
-                        self.chars.nth(1);
-                    }
-                    _ => return NumberLit,
-                },
-                _ => break,
-            }
-        }
+        while self
+            .chars
+            .next_if(|&(_, (_, ch))| ch.is_digit(radix) || ch == '_')
+            .is_some()
+        {}
         self.chars.next_if(|&(_, (_, ch))| ch == 'r');
         self.chars.next_if(|&(_, (_, ch))| ch == 'i');
         NumberLit
@@ -1202,47 +1104,33 @@ impl<'a> Tokens<'a> {
     #[rustfmt::skip]
     fn heredoc_label(&mut self) -> TokenKind<'a> {
         match self.chars.peek() {
-            Some(&(_, (_, '<'))) => match self.chars.clone().nth(1) {
-                Some((_, (start, ch))) if !is_delim(ch) => {
-                    self.chars.nth(1);
-                    while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
-                    let end = self
-                        .chars
-                        .peek()
-                        .map_or(self.text.len(), |&(_, (idx, _))| idx);
-                    let label = Some(&self.text[start..end]);
-                    HeredocLabel { label, indent: false, expand: true }
+            Some(&(_, (start, ch))) if !is_delim(ch) => {
+                self.chars.next();
+                while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
+                let end = self
+                    .chars
+                    .peek()
+                    .map_or(self.text.len(), |&(_, (idx, _))| idx);
+                let label = Some(&self.text[start..end]);
+                HeredocLabel { label, indent: false, expand: true }
+            }
+            Some(&(_, (start, d @ '\'' | d @ '"' | d @ '`'))) => {
+                self.chars.next();
+                let label = self
+                    .chars
+                    .find(|&(_, (_, ch))| ch == d)
+                    .map(|(_, (end, _))| &self.text[(start + 1)..end]);
+                HeredocLabel { label, indent: false, expand: d != '\'' }
+            }
+            Some(&(_, (_, '-' | '~'))) => {
+                let clone = self.chars.clone();
+                self.chars.next();
+                if let HeredocLabel { label, expand, .. } = self.heredoc_label() {
+                    HeredocLabel { label, indent: true, expand }
+                } else {
+                    self.chars = clone;
+                    Op { lf: false }
                 }
-                Some((_, (start, d @ '\'' | d @ '"' | d @ '`'))) => {
-                    self.chars.nth(1);
-                    let label = self
-                        .chars
-                        .find(|&(_, (_, ch))| ch == d)
-                        .map(|(_, (end, _))| &self.text[(start + 1)..end]);
-                    HeredocLabel { label, indent: false, expand: d != '\'' }
-                }
-                Some((_, (_, '-' | '~'))) => match self.chars.clone().nth(2) {
-                    Some((_, (start, ch))) if !is_delim(ch) => {
-                        self.chars.nth(2);
-                        while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
-                        let end = self
-                            .chars
-                            .peek()
-                            .map_or(self.text.len(), |&(_, (idx, _))| idx);
-                        let label = Some(&self.text[start..end]);
-                        HeredocLabel { label, indent: true, expand: true }
-                    }
-                    Some((_, (start, d @ '\'' | d @ '"' | d @ '`'))) => {
-                        self.chars.nth(2);
-                        let label = self
-                            .chars
-                            .find(|&(_, (_, ch))| ch == d)
-                            .map(|(_, (end, _))| &self.text[(start + 1)..end]);
-                        HeredocLabel { label, indent: true, expand: d != '\'' }
-                    }
-                    _ => Op { lf: false },
-                },
-                _ => Op { lf: false },
             },
             _ => Op { lf: false },
         }
