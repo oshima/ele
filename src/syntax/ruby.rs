@@ -743,7 +743,7 @@ impl<'a> Iterator for Tokens<'a> {
                 _ => match self.chars.next_if(|&(_, (_, ch))| ch == '<') {
                     Some(_) => self.heredoc_label(),
                     _ => Op { lf: false },
-                }
+                },
             },
             '&' => match self.prev.map(|t| t.kind) {
                 Some(Dot | Keyword { kind: "def", .. }) => self.method(ch),
@@ -1049,7 +1049,7 @@ impl<'a> Tokens<'a> {
                     self.char_lit();
                 }
                 _ => (),
-            }
+            },
             Some(&(_, (_, ch))) if !ch.is_ascii_whitespace() => {
                 self.chars.next();
             }
@@ -1257,59 +1257,29 @@ impl<'a> Tokens<'a> {
     }
 
     fn method(&mut self, ch: char) -> TokenKind<'a> {
-        match ch {
-            '|' | '^' | '&' | '/' | '%' | '~' | '`' => (),
-            '+' | '-' => {
-                self.chars.next_if(|&(_, (_, ch))| ch == '@');
+        if is_delim(ch) {
+            while let Some(&(
+                _,
+                (
+                    _,
+                    '!' | '%' | '&' | '*' | '+' | '-' | '/' | '<' | '=' | '>' | '@' | '[' | ']'
+                    | '^' | '`' | '|' | '~',
+                ),
+            )) = self.chars.peek()
+            {
+                self.chars.next();
             }
-            '*' => {
-                self.chars.next_if(|&(_, (_, ch))| ch == '*');
-            }
-            '<' => match self.chars.peek() {
-                Some(&(_, (_, '<'))) => {
-                    self.chars.next();
-                }
-                Some(&(_, (_, '='))) => {
-                    self.chars.next();
-                    self.chars.next_if(|&(_, (_, ch))| ch == '>');
-                }
-                _ => (),
-            },
-            '>' => {
-                self.chars.next_if(|&(_, (_, ch))| ch == '>' || ch == '=');
-            }
-            '!' => {
-                self.chars.next_if(|&(_, (_, ch))| ch == '=' || ch == '~');
-            }
-            '=' => match self.chars.peek() {
-                Some(&(_, (_, '='))) => {
-                    self.chars.next();
-                    self.chars.next_if(|&(_, (_, ch))| ch == '=');
-                }
-                Some(&(_, (_, '~'))) => {
-                    self.chars.next();
-                }
-                _ => return Op { lf: false },
-            },
-            '[' => match self.chars.peek() {
-                Some(&(_, (_, ']'))) => {
-                    self.chars.next();
-                    self.chars.next_if(|&(_, (_, ch))| ch == '=');
-                }
-                _ => return OpenBracket { lf: false },
-            },
-            _ => {
-                while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
-                self.chars
-                    .next_if(|&(_, (_, ch))| ch == '!' || ch == '?' || ch == '=');
-            }
+        } else {
+            while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
+            self.chars
+                .next_if(|&(_, (_, ch))| matches!(ch, '!' | '?' | '='));
         }
         Method
     }
 
     fn upper_ident(&mut self, start: usize) -> TokenKind<'a> {
         while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
-        self.chars.next_if(|&(_, (_, ch))| ch == '!' || ch == '?');
+        self.chars.next_if(|&(_, (_, ch))| matches!(ch, '!' | '?'));
         if let Some(&(_, (_, ':'))) = self.chars.peek() {
             if !matches!(self.chars.clone().nth(1), Some((_, (_, ':')))) {
                 self.chars.next();
@@ -1333,7 +1303,7 @@ impl<'a> Tokens<'a> {
 
     fn ident(&mut self, start: usize) -> TokenKind<'a> {
         while self.chars.next_if(|&(_, (_, ch))| !is_delim(ch)).is_some() {}
-        self.chars.next_if(|&(_, (_, ch))| ch == '!' || ch == '?');
+        self.chars.next_if(|&(_, (_, ch))| matches!(ch, '!' | '?'));
         if let Some(&(_, (_, ':'))) = self.chars.peek() {
             if !matches!(self.chars.clone().nth(1), Some((_, (_, ':')))) {
                 self.chars.next();
