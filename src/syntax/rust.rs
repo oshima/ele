@@ -135,16 +135,16 @@ impl Rust {
                         _ => (),
                     },
                     CloseBracket => match context_v[..] {
-                        [.., OpenBracket { lf }, Expr { lf: true }] => {
-                            row.indent_level -= if lf { 2 } else { 1 };
-                        }
-                        [.., OpenBracket { lf: true }] => {
-                            row.indent_level -= 1;
-                        }
                         [.., OpenAttribute { lf }, Expr { lf: true }] => {
                             row.indent_level -= if lf { 2 } else { 1 };
                         }
                         [.., OpenAttribute { lf: true }] => {
+                            row.indent_level -= 1;
+                        }
+                        [.., OpenBracket { lf }, Expr { lf: true }] => {
+                            row.indent_level -= if lf { 2 } else { 1 };
+                        }
+                        [.., OpenBracket { lf: true }] => {
                             row.indent_level -= 1;
                         }
                         _ => (),
@@ -224,6 +224,13 @@ impl Rust {
                     _ => (),
                 },
                 CloseBracket => match context_v[..] {
+                    [.., OpenAttribute { .. }, Expr { .. }] => {
+                        context_v.pop();
+                        context_v.pop();
+                    }
+                    [.., OpenAttribute { .. }] => {
+                        context_v.pop();
+                    }
                     [.., OpenBracket { .. }, Expr { .. }] => {
                         context_v.pop();
                         context_v.pop();
@@ -236,13 +243,6 @@ impl Rust {
                         if !matches!(context_v[..], [.., Expr { .. }]) {
                             context_v.push(Expr { lf: false });
                         }
-                    }
-                    [.., OpenAttribute { .. }, Expr { .. }] => {
-                        context_v.pop();
-                        context_v.pop();
-                    }
-                    [.., OpenAttribute { .. }] => {
-                        context_v.pop();
                     }
                     _ => (),
                 },
@@ -281,9 +281,7 @@ impl Rust {
                 LineComment | BlockComment { open: false, .. } => (),
                 _ => match context_v[..] {
                     [.., Expr { .. }] => (),
-                    _ => {
-                        context_v.push(Expr { lf: false });
-                    }
+                    _ => context_v.push(Expr { lf: false }),
                 },
             }
 
