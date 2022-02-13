@@ -1201,10 +1201,7 @@ impl<'a> Tokens<'a> {
                 Variable
             }
             Some(&(_, (_, '-'))) => match self.chars.clone().nth(1) {
-                Some((
-                    _,
-                    (_, '0' | 'F' | 'I' | 'K' | 'W' | 'a' | 'd' | 'i' | 'l' | 'p' | 'v' | 'w'),
-                )) => {
+                Some((_, (_, ch))) if !is_delim(ch) => {
                     self.chars.nth(1);
                     Variable
                 }
