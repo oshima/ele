@@ -110,16 +110,20 @@ impl Ruby {
 
             // Indent
             match token.kind {
-                Comma { lf: true }
-                | DotGhost
-                | Keyword { lf: true, .. }
+                DotGhost
+                | Comma { lf: true }
                 | Op { lf: true }
                 | OpenBrace { lf: true }
                 | OpenBracket { lf: true }
                 | OpenExpansion { lf: true, .. }
-                | OpenParen { lf: true } => {
+                | OpenParen { lf: true }
+                | Keyword { lf: true, .. } => {
                     row.indent_level += 1;
                 }
+                Dot => match prev_token.map(|t| t.end) {
+                    Some(0) | None => row.indent_level += 1,
+                    _ => (),
+                },
                 CommaGhost | OpGhost => match tokens.peek().map(|t| t.kind) {
                     Some(
                         Dot
@@ -133,10 +137,6 @@ impl Ruby {
                         | StrLit { lf: true, .. }
                         | SymbolLit { lf: true, .. },
                     ) => row.indent_level += 1,
-                    _ => (),
-                },
-                Dot => match prev_token.map(|t| t.end) {
-                    Some(0) | None => row.indent_level += 1,
                     _ => (),
                 },
                 CloseBrace | CloseBracket | CloseExpansion { .. } | CloseParen => {
@@ -160,25 +160,43 @@ impl Ruby {
 
             // Derive the context of the next row
             match token.kind {
-                Document { open: true }
-                | DotGhost
-                | HeredocLabel { label: Some(_), .. }
-                | OpenBrace { .. }
+                OpenBrace { .. }
                 | OpenBracket { .. }
                 | OpenExpansion { .. }
-                | OpenParen { .. } => {
+                | OpenParen { .. }
+                | Document { open: true }
+                | HeredocLabel { label: Some(_), .. }
+                | DotGhost => {
                     context_v.push(token.kind);
                 }
+                Heredoc { open: true, .. }
+                | RegexpLit { depth: 1.., .. }
+                | StrLit { depth: 1.., .. }
+                | SymbolLit { depth: 1.., .. } => match tokens.peek().map(|t| t.kind) {
+                    Some(OpenExpansion { .. }) => (),
+                    _ => context_v.push(token.kind),
+                },
+                Heredoc {
+                    open: false,
+                    trailing_context,
+                    ..
+                } if !trailing_context.is_empty() => {
+                    context_v.push(token.kind);
+                }
+                Dot => match prev_token.map(|t| t.end) {
+                    Some(0) | None => context_v.push(DotGhost),
+                    _ => (),
+                },
                 Comma { lf: false } => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => match &context_v[..] {
                         [.., OpenBrace { .. }]
                         | [.., OpenBracket { .. }]
                         | [.., OpenExpansion { .. }]
                         | [.., OpenParen { .. }]
-                        | [.., OpenBrace { lf: true }, DotGhost]
-                        | [.., OpenBracket { lf: true }, DotGhost]
-                        | [.., OpenExpansion { lf: true, .. }, DotGhost]
-                        | [.., OpenParen { lf: true }, DotGhost] => (),
+                        | [.., OpenBrace { lf: true }, DotGhost | OpGhost]
+                        | [.., OpenBracket { lf: true }, DotGhost | OpGhost]
+                        | [.., OpenExpansion { lf: true, .. }, DotGhost | OpGhost]
+                        | [.., OpenParen { lf: true }, DotGhost | OpGhost] => (),
                         [.., DotGhost] => {
                             context_v.pop();
                             context_v.push(token.kind);
@@ -187,26 +205,24 @@ impl Ruby {
                     },
                     _ => (),
                 },
-                Comma { lf: true } => match tokens.peek().map(|t| t.kind) {
-                    Some(Comment) | None => context_v.push(token.kind),
-                    _ => context_v.push(CommaGhost),
-                },
                 Op { lf: false } | Key => match tokens.peek().map(|t| t.kind) {
-                    Some(Comment) | None => match context_v.last() {
-                        Some(DotGhost) => {
+                    Some(Comment) | None => match &context_v[..] {
+                        [.., Keyword { lf: false, .. }]
+                        | [.., OpenBrace { lf: false }]
+                        | [.., OpenBracket { lf: false }]
+                        | [.., OpenExpansion { lf: false, .. }]
+                        | [.., OpenParen { lf: false }] => (),
+                        [.., DotGhost] => {
                             context_v.pop();
                             context_v.push(Op { lf: false });
                         }
-                        Some(
-                            Keyword { lf: false, .. }
-                            | OpenBrace { lf: false }
-                            | OpenBracket { lf: false }
-                            | OpenExpansion { lf: false, .. }
-                            | OpenParen { lf: false },
-                        ) => (),
                         _ => context_v.push(Op { lf: false }),
                     },
                     _ => (),
+                },
+                Comma { lf: true } => match tokens.peek().map(|t| t.kind) {
+                    Some(Comment) | None => context_v.push(token.kind),
+                    _ => context_v.push(CommaGhost),
                 },
                 Op { lf: true } => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => context_v.push(token.kind),
@@ -229,41 +245,6 @@ impl Ruby {
                     | None => context_v.push(token.kind),
                     _ => (),
                 },
-                Dot => match prev_token.map(|t| t.end) {
-                    Some(0) | None => context_v.push(DotGhost),
-                    _ => (),
-                },
-                Heredoc {
-                    open: false,
-                    trailing_context,
-                    ..
-                } if !trailing_context.is_empty() => {
-                    context_v.push(token.kind);
-                }
-                Heredoc { open: true, .. }
-                | RegexpLit { depth: 1.., .. }
-                | StrLit { depth: 1.., .. }
-                | SymbolLit { depth: 1.., .. } => match tokens.peek().map(|t| t.kind) {
-                    Some(OpenExpansion { .. }) => (),
-                    _ => context_v.push(token.kind),
-                },
-                Keyword {
-                    open_scope,
-                    close_scope,
-                    ..
-                } => {
-                    if close_scope {
-                        if let Some(Keyword {
-                            open_scope: true, ..
-                        }) = context_v.last()
-                        {
-                            context_v.pop();
-                        }
-                    }
-                    if open_scope {
-                        context_v.push(token.kind);
-                    }
-                }
                 CloseBrace | CloseBracket | CloseExpansion { .. } | CloseParen => {
                     for (i, kind) in context_v.iter().enumerate().rev() {
                         match kind {
@@ -274,6 +255,20 @@ impl Ruby {
                             }
                             _ => break,
                         }
+                    }
+                }
+                #[rustfmt::skip]
+                Keyword { open_scope, close_scope, .. } => {
+                    if close_scope {
+                        match &context_v[..] {
+                            [.., Keyword { open_scope: true, .. }] => {
+                                context_v.pop();
+                            }
+                            _ => (),
+                        }
+                    }
+                    if open_scope {
+                        context_v.push(token.kind);
                     }
                 }
                 _ => (),
