@@ -170,17 +170,19 @@ impl Ruby {
                     context_v.push(token.kind);
                 }
                 Comma { lf: false } => match tokens.peek().map(|t| t.kind) {
-                    Some(Comment) | None => match context_v.last() {
-                        Some(DotGhost) => {
+                    Some(Comment) | None => match &context_v[..] {
+                        [.., OpenBrace { .. }]
+                        | [.., OpenBracket { .. }]
+                        | [.., OpenExpansion { .. }]
+                        | [.., OpenParen { .. }]
+                        | [.., OpenBrace { lf: true }, DotGhost]
+                        | [.., OpenBracket { lf: true }, DotGhost]
+                        | [.., OpenExpansion { lf: true, .. }, DotGhost]
+                        | [.., OpenParen { lf: true }, DotGhost] => (),
+                        [.., DotGhost] => {
                             context_v.pop();
                             context_v.push(token.kind);
                         }
-                        Some(
-                            OpenBrace { .. }
-                            | OpenBracket { .. }
-                            | OpenExpansion { .. }
-                            | OpenParen { .. },
-                        ) => (),
                         _ => context_v.push(token.kind),
                     },
                     _ => (),
