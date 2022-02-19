@@ -120,10 +120,6 @@ impl Ruby {
                 | DotGhost => {
                     row.indent_level += 1;
                 }
-                Dot => match prev_token.map(|t| t.end) {
-                    Some(0) | None => row.indent_level += 1,
-                    _ => (),
-                },
                 CommaGhost | OpGhost => match tokens.peek().map(|t| t.kind) {
                     Some(
                         OpenParen { lf: true }
@@ -139,31 +135,40 @@ impl Ruby {
                     ) => row.indent_level += 1,
                     _ => (),
                 },
-                CloseParen | CloseBracket | CloseBrace | CloseExpansion { .. } => {
-                    match (prev_token.map(|t| t.end), context_v.last()) {
-                        (Some(0), Some(kind)) if kind.pair_with(&token.kind) => {
+                _ => (),
+            }
+
+            if let Some(0) | None = prev_token.map(|t| t.end) {
+                match token.kind {
+                    Dot => {
+                        row.indent_level += 1;
+                    }
+                    CloseParen | CloseBracket | CloseBrace | CloseExpansion { .. } => {
+                        match &context_v[..] {
+                            [.., kind] if kind.pair_with(&token.kind) => {
+                                row.indent_level -= 1;
+                            }
+                            _ => (),
+                        }
+                    }
+                    Keyword {
+                        close_scope: true, ..
+                    } => match &context_v[..] {
+                        [.., Keyword { lf: true, .. }] => {
                             row.indent_level -= 1;
                         }
                         _ => (),
-                    }
-                }
-                Keyword {
-                    close_scope: true, ..
-                } => match (prev_token.map(|t| t.end), context_v.last()) {
-                    (Some(0), Some(Keyword { lf: true, .. })) => {
-                        row.indent_level -= 1;
-                    }
+                    },
                     _ => (),
-                },
-                _ => (),
+                }
             }
 
             // Derive the context of the next row
             match token.kind {
-                OpenBrace { .. }
+                OpenParen { .. }
                 | OpenBracket { .. }
+                | OpenBrace { .. }
                 | OpenExpansion { .. }
-                | OpenParen { .. }
                 | Document { open: true }
                 | HeredocLabel { label: Some(_), .. }
                 | DotGhost => {
@@ -226,22 +231,22 @@ impl Ruby {
                 },
                 CommaGhost | OpGhost => match tokens.peek().map(|t| t.kind) {
                     Some(
-                        Comment
+                        OpenParen { lf: true }
+                        | OpenBracket { lf: true }
+                        | OpenBrace { lf: true }
+                        | Keyword { lf: true, .. }
+                        | StrLit { lf: true, .. }
+                        | SymbolLit { lf: true, .. }
+                        | RegexpLit { lf: true, .. }
+                        | Heredoc { .. }
                         | Dot
                         | DotGhost
-                        | Heredoc { .. }
-                        | Keyword { lf: true, .. }
-                        | OpenBrace { lf: true }
-                        | OpenBracket { lf: true }
-                        | OpenParen { lf: true }
-                        | RegexpLit { lf: true, .. }
-                        | StrLit { lf: true, .. }
-                        | SymbolLit { lf: true, .. },
+                        | Comment,
                     )
                     | None => context_v.push(token.kind),
                     _ => (),
                 },
-                CloseBrace | CloseBracket | CloseExpansion { .. } | CloseParen => {
+                CloseParen | CloseBracket | CloseBrace | CloseExpansion { .. } => {
                     for (i, kind) in context_v.iter().enumerate().rev() {
                         match kind {
                             HeredocLabel { .. } => (),
