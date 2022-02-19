@@ -189,14 +189,10 @@ impl Ruby {
                 },
                 Comma { lf: false } => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => match &context_v[..] {
-                        [.., OpenBrace { .. }]
-                        | [.., OpenBracket { .. }]
-                        | [.., OpenExpansion { .. }]
-                        | [.., OpenParen { .. }]
-                        | [.., OpenBrace { lf: true }, DotGhost | OpGhost]
-                        | [.., OpenBracket { lf: true }, DotGhost | OpGhost]
-                        | [.., OpenExpansion { lf: true, .. }, DotGhost | OpGhost]
-                        | [.., OpenParen { lf: true }, DotGhost | OpGhost] => (),
+                        [.., OpenBrace { .. } | OpenBracket { .. } | OpenParen { .. }] => (),
+                        [.., OpenBrace { lf: true }
+                        | OpenBracket { lf: true }
+                        | OpenParen { lf: true }, DotGhost | OpGhost] => (),
                         [.., DotGhost] => {
                             context_v.pop();
                             context_v.push(token.kind);
@@ -207,11 +203,11 @@ impl Ruby {
                 },
                 Op { lf: false } | Key => match tokens.peek().map(|t| t.kind) {
                     Some(Comment) | None => match &context_v[..] {
-                        [.., Keyword { lf: false, .. }]
-                        | [.., OpenBrace { lf: false }]
-                        | [.., OpenBracket { lf: false }]
-                        | [.., OpenExpansion { lf: false, .. }]
-                        | [.., OpenParen { lf: false }] => (),
+                        [.., OpenBrace { lf: false }
+                        | OpenBracket { lf: false }
+                        | OpenExpansion { lf: false, .. }
+                        | OpenParen { lf: false }
+                        | Keyword { lf: false, .. }] => (),
                         [.., DotGhost] => {
                             context_v.pop();
                             context_v.push(Op { lf: false });
