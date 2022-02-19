@@ -110,14 +110,14 @@ impl Ruby {
 
             // Indent
             match token.kind {
-                DotGhost
+                OpenParen { lf: true }
+                | OpenBracket { lf: true }
+                | OpenBrace { lf: true }
+                | OpenExpansion { lf: true, .. }
+                | Keyword { lf: true, .. }
                 | Comma { lf: true }
                 | Op { lf: true }
-                | OpenBrace { lf: true }
-                | OpenBracket { lf: true }
-                | OpenExpansion { lf: true, .. }
-                | OpenParen { lf: true }
-                | Keyword { lf: true, .. } => {
+                | DotGhost => {
                     row.indent_level += 1;
                 }
                 Dot => match prev_token.map(|t| t.end) {
@@ -126,20 +126,20 @@ impl Ruby {
                 },
                 CommaGhost | OpGhost => match tokens.peek().map(|t| t.kind) {
                     Some(
-                        Dot
-                        | DotGhost
-                        | Heredoc { .. }
-                        | Keyword { lf: true, .. }
-                        | OpenBrace { lf: true }
+                        OpenParen { lf: true }
                         | OpenBracket { lf: true }
-                        | OpenParen { lf: true }
-                        | RegexpLit { lf: true, .. }
+                        | OpenBrace { lf: true }
+                        | Keyword { lf: true, .. }
                         | StrLit { lf: true, .. }
-                        | SymbolLit { lf: true, .. },
+                        | SymbolLit { lf: true, .. }
+                        | RegexpLit { lf: true, .. }
+                        | Heredoc { .. }
+                        | Dot
+                        | DotGhost,
                     ) => row.indent_level += 1,
                     _ => (),
                 },
-                CloseBrace | CloseBracket | CloseExpansion { .. } | CloseParen => {
+                CloseParen | CloseBracket | CloseBrace | CloseExpansion { .. } => {
                     match (prev_token.map(|t| t.end), context_v.last()) {
                         (Some(0), Some(kind)) if kind.pair_with(&token.kind) => {
                             row.indent_level -= 1;
@@ -169,10 +169,10 @@ impl Ruby {
                 | DotGhost => {
                     context_v.push(token.kind);
                 }
-                Heredoc { open: true, .. }
+                StrLit { depth: 1.., .. }
+                | SymbolLit { depth: 1.., .. }
                 | RegexpLit { depth: 1.., .. }
-                | StrLit { depth: 1.., .. }
-                | SymbolLit { depth: 1.., .. } => match tokens.peek().map(|t| t.kind) {
+                | Heredoc { open: true, .. } => match tokens.peek().map(|t| t.kind) {
                     Some(OpenExpansion { .. }) => (),
                     _ => context_v.push(token.kind),
                 },
@@ -277,13 +277,13 @@ impl Ruby {
             context_v.pop();
         }
         if let Some(
-            Comma { lf }
-            | Keyword { lf, .. }
-            | Op { lf }
-            | OpenBrace { lf }
+            OpenParen { lf }
             | OpenBracket { lf }
+            | OpenBrace { lf }
             | OpenExpansion { lf, .. }
-            | OpenParen { lf },
+            | Keyword { lf, .. }
+            | Comma { lf }
+            | Op { lf },
         ) = context_v.last_mut()
         {
             *lf = true;
