@@ -256,6 +256,11 @@ impl Editor {
                         self.state = State::Quitted;
                     }
                 }
+                Key::Char('h') => {
+                    self.buffer.mark_whole();
+                    self.minibuffer.set_message("Mark set");
+                    self.state = State::Default;
+                }
                 _ => {
                     self.minibuffer.set_message("");
                     self.state = State::Default;
