@@ -70,7 +70,7 @@ impl Canvas {
                 self.map_fg_color(Fg::Function, fg_color!(122, 166, 218));
                 self.map_fg_color(Fg::Macro, fg_color!(112, 192, 177));
                 self.map_fg_color(Fg::String, fg_color!(185, 202, 74));
-                self.map_fg_color(Fg::Number, fg_color!(234, 234, 234));
+                self.map_fg_color(Fg::Number, fg_color!(175, 215, 255));
                 self.map_fg_color(Fg::Comment, fg_color!(150, 152, 150));
                 self.map_fg_color(Fg::Prompt, fg_color!(122, 166, 218));
                 self.map_fg_color(Fg::Match, fg_color!(0, 0, 0));
@@ -90,7 +90,7 @@ impl Canvas {
                 self.map_fg_color(Fg::Function, fg_color256!(110));
                 self.map_fg_color(Fg::Macro, fg_color256!(115));
                 self.map_fg_color(Fg::String, fg_color256!(143));
-                self.map_fg_color(Fg::Number, fg_color256!(255));
+                self.map_fg_color(Fg::Number, fg_color256!(153));
                 self.map_fg_color(Fg::Comment, fg_color256!(246));
                 self.map_fg_color(Fg::Prompt, fg_color256!(110));
                 self.map_fg_color(Fg::Match, fg_color256!(16));
