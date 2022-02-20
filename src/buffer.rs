@@ -880,6 +880,26 @@ impl Buffer {
 }
 
 impl Buffer {
+    pub fn mark_whole(&mut self) {
+        let pos = self.rows.last_pos();
+        self.anchor = Some(pos);
+        self.cursor = pos;
+        let pos = Pos::new(0, 0);
+        self.highlight_region(pos);
+        self.cursor = pos;
+        self.saved_x = pos.x;
+        self.scroll();
+    }
+
+    pub fn goto_line(&mut self, num: usize) {
+        let y = num.saturating_sub(1);
+        let y = y.min(self.rows.last_pos().y);
+        let pos = Pos::new(0, y);
+        self.cursor = pos;
+        self.saved_x = pos.x;
+        self.scroll_center();
+    }
+
     pub fn save(&mut self) -> io::Result<()> {
         if let Some(filename) = self.filename.as_deref() {
             let file = File::create(filename)?;
@@ -902,25 +922,5 @@ impl Buffer {
             self.saved_eid = self.undo_list.last().map(|e| e.id());
         }
         Ok(())
-    }
-
-    pub fn go_to_line(&mut self, num: usize) {
-        let y = num.saturating_sub(1);
-        let y = y.min(self.rows.last_pos().y);
-        let pos = Pos::new(0, y);
-        self.cursor = pos;
-        self.saved_x = pos.x;
-        self.scroll_center();
-    }
-
-    pub fn mark_whole(&mut self) {
-        let pos = self.rows.last_pos();
-        self.anchor = Some(pos);
-        self.cursor = pos;
-        let pos = Pos::new(0, 0);
-        self.highlight_region(pos);
-        self.cursor = pos;
-        self.saved_x = pos.x;
-        self.scroll();
     }
 }
