@@ -288,8 +288,7 @@ impl Editor {
                 }
                 Key::Ctrl(b'J' | b'M') => {
                     let input = self.minibuffer.get_input();
-                    self.buffer.file_path = Some(input);
-                    self.buffer.save()?;
+                    self.buffer.save_as(&input)?;
                     self.minibuffer.set_message("");
                     self.state = State::Default;
                 }

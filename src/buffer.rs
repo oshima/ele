@@ -923,4 +923,9 @@ impl Buffer {
         }
         Ok(())
     }
+
+    pub fn save_as(&mut self, file_path: &str) -> io::Result<()> {
+        self.file_path = Some(String::from(file_path));
+        self.save()
+    }
 }
