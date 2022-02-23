@@ -87,7 +87,6 @@ impl Ruby {
         row.faces.clear();
         row.faces
             .resize(row.string.len(), (Fg::Default, Bg::Default));
-        row.trailing_bg = Bg::Default;
         row.indent_level = 0;
 
         while let Some(token) = tokens.next() {
