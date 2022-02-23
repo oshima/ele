@@ -880,6 +880,15 @@ impl Buffer {
 }
 
 impl Buffer {
+    pub fn goto_line(&mut self, num: usize) {
+        let y = num.saturating_sub(1);
+        let y = y.min(self.rows.last_pos().y);
+        let pos = Pos::new(0, y);
+        self.cursor = pos;
+        self.saved_x = pos.x;
+        self.scroll_center();
+    }
+
     pub fn mark_whole(&mut self) {
         let pos = self.rows.last_pos();
         self.anchor = Some(pos);
@@ -889,15 +898,6 @@ impl Buffer {
         self.cursor = pos;
         self.saved_x = pos.x;
         self.scroll();
-    }
-
-    pub fn goto_line(&mut self, num: usize) {
-        let y = num.saturating_sub(1);
-        let y = y.min(self.rows.last_pos().y);
-        let pos = Pos::new(0, y);
-        self.cursor = pos;
-        self.saved_x = pos.x;
-        self.scroll_center();
     }
 
     pub fn save(&mut self) -> io::Result<()> {

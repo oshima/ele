@@ -14,8 +14,8 @@ use crate::minibuffer::Minibuffer;
 enum State {
     Default,
     Search { backward: bool },
-    CtrlX,
     GotoLine,
+    CtrlX,
     Save,
     Quit,
     Quitted,
@@ -197,7 +197,7 @@ impl Editor {
                     self.state = State::Search { backward: false };
                 }
                 Key::Ctrl(b'X') => {
-                    self.minibuffer.set_message("C-x [C-s: save] [C-c: quit]");
+                    self.minibuffer.set_message("C-x");
                     self.state = State::CtrlX;
                 }
                 Key::Alt(b'g') => {
@@ -236,6 +236,21 @@ impl Editor {
                     }
                 }
             },
+            State::GotoLine => match key {
+                Key::Ctrl(b'G') => {
+                    self.minibuffer.set_message("");
+                    self.state = State::Default;
+                }
+                Key::Ctrl(b'J' | b'M') => {
+                    let input = self.minibuffer.get_input();
+                    if let Ok(num) = input.parse::<usize>() {
+                        self.buffer.goto_line(num);
+                        self.minibuffer.set_message("");
+                        self.state = State::Default;
+                    }
+                }
+                _ => self.minibuffer.process_key(key),
+            },
             State::CtrlX => match key {
                 Key::Ctrl(b'S') => {
                     if self.buffer.file_path.is_none() {
@@ -266,21 +281,6 @@ impl Editor {
                     self.state = State::Default;
                 }
             },
-            State::GotoLine => match key {
-                Key::Ctrl(b'G') => {
-                    self.minibuffer.set_message("");
-                    self.state = State::Default;
-                }
-                Key::Ctrl(b'J' | b'M') => {
-                    let input = self.minibuffer.get_input();
-                    if let Ok(num) = input.parse::<usize>() {
-                        self.buffer.goto_line(num);
-                        self.minibuffer.set_message("");
-                        self.state = State::Default;
-                    }
-                }
-                _ => self.minibuffer.process_key(key),
-            },
             State::Save => match key {
                 Key::Ctrl(b'G') => {
                     self.minibuffer.set_message("");
@@ -289,7 +289,7 @@ impl Editor {
                 Key::Ctrl(b'J' | b'M') => {
                     let input = self.minibuffer.get_input();
                     self.buffer.save_as(input)?;
-                    self.minibuffer.set_message("");
+                    self.minibuffer.set_message("Saved");
                     self.state = State::Default;
                 }
                 _ => self.minibuffer.process_key(key),
