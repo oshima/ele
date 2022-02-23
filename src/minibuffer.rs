@@ -49,8 +49,8 @@ impl Minibuffer {
         self.highlight();
     }
 
-    pub fn get_input(&self) -> String {
-        self.row.string[self.prompt_len..].to_string()
+    pub fn get_input(&self) -> &str {
+        self.row.read_str(self.prompt_len, self.row.last_x())
     }
 
     pub fn resize(&mut self, pos: Pos, size: Size) {

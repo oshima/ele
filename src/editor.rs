@@ -227,12 +227,12 @@ impl Editor {
                     self.buffer.next_match(true);
                 }
                 _ => {
-                    let prev_input = self.minibuffer.get_input();
+                    let prev_input = self.minibuffer.get_input().to_string();
                     self.minibuffer.process_key(key);
                     let input = self.minibuffer.get_input();
-                    if input != prev_input {
+                    if input != &prev_input {
                         self.buffer.clear_matches(true);
-                        self.buffer.search(&input, backward);
+                        self.buffer.search(input, backward);
                     }
                 }
             },
@@ -288,7 +288,7 @@ impl Editor {
                 }
                 Key::Ctrl(b'J' | b'M') => {
                     let input = self.minibuffer.get_input();
-                    self.buffer.save_as(&input)?;
+                    self.buffer.save_as(input)?;
                     self.minibuffer.set_message("");
                     self.state = State::Default;
                 }
