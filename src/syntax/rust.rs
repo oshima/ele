@@ -10,6 +10,10 @@ use crate::syntax::Syntax;
 pub struct Rust;
 
 impl Syntax for Rust {
+    fn matches(file_name: &str) -> bool {
+        file_name.ends_with(".rs")
+    }
+
     fn name(&self) -> &'static str {
         "Rust"
     }

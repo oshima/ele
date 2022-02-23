@@ -6,6 +6,10 @@ use crate::syntax::Syntax;
 pub struct Plain;
 
 impl Syntax for Plain {
+    fn matches(_file_name: &str) -> bool {
+        true
+    }
+
     fn name(&self) -> &'static str {
         "Plain"
     }

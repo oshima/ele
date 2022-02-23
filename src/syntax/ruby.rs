@@ -11,6 +11,17 @@ use crate::syntax::Syntax;
 pub struct Ruby;
 
 impl Syntax for Ruby {
+    fn matches(file_name: &str) -> bool {
+        file_name.ends_with(".rb")
+            || file_name.ends_with(".rake")
+            || file_name.ends_with(".ru")
+            || file_name.ends_with(".gemspec")
+            || file_name == "Rakefile"
+            || file_name == "Gemfile"
+            || file_name == ".irbrc"
+            || file_name == ".pryrc"
+    }
+
     fn name(&self) -> &'static str {
         "Ruby"
     }

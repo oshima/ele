@@ -29,6 +29,6 @@ fn main() -> io::Result<()> {
     let raw_mode = RawMode::new()?;
     raw_mode.enable()?;
 
-    let mut editor = Editor::new(args.get(1).cloned())?;
+    let mut editor = Editor::new(args.get(1).map(|s| s.as_str()))?;
     editor.run()
 }

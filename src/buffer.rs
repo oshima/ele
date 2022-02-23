@@ -13,8 +13,8 @@ use crate::syntax::Syntax;
 use crate::util::DrawRange;
 
 pub struct Buffer {
+    pub file_path: Option<String>,
     syntax: Box<dyn Syntax>,
-    pub filename: Option<String>,
     pos: Pos,
     size: Size,
     offset: Pos,
@@ -46,10 +46,10 @@ struct Match {
 }
 
 impl Buffer {
-    pub fn new(filename: Option<String>) -> io::Result<Self> {
+    pub fn new(file_path: Option<&str>) -> io::Result<Self> {
         let mut buffer = Self {
-            syntax: <dyn Syntax>::detect(filename.as_deref()),
-            filename,
+            file_path: file_path.map(|s| String::from(s)),
+            syntax: <dyn Syntax>::detect(file_path),
             pos: Pos::new(0, 0),
             size: Size::new(0, 0),
             offset: Pos::new(0, 0),
@@ -71,8 +71,8 @@ impl Buffer {
     }
 
     fn init(&mut self) -> io::Result<()> {
-        if let Some(filename) = self.filename.as_deref() {
-            let file = File::open(filename)?;
+        if let Some(file_path) = self.file_path.as_deref() {
+            let file = File::open(file_path)?;
             let mut reader = BufReader::new(file);
             let mut buf = String::new();
 
@@ -119,12 +119,12 @@ impl Buffer {
     }
 
     fn draw_status_bar(&self, canvas: &mut Canvas) -> io::Result<()> {
-        let filename = self.filename.as_deref().unwrap_or("newfile");
+        let file_path = self.file_path.as_deref().unwrap_or("newfile");
         let modified = if self.modified() { "+" } else { "" };
         let cursor = format!("{}, {}", self.cursor.y + 1, self.cursor.x + 1);
         let syntax = self.syntax.name();
 
-        let left_len = filename.len() + modified.len() + 2;
+        let left_len = file_path.len() + modified.len() + 2;
         let right_len = cursor.len() + syntax.len() + 4;
         let padding = self.size.w.saturating_sub(left_len + right_len);
 
@@ -134,7 +134,7 @@ impl Buffer {
 
         if left_len <= self.size.w {
             canvas.write(b" ")?;
-            canvas.write(filename.as_bytes())?;
+            canvas.write(file_path.as_bytes())?;
             canvas.write(b" ")?;
             canvas.write(modified.as_bytes())?;
             canvas.write(b"\x1b[K")?;
@@ -901,8 +901,8 @@ impl Buffer {
     }
 
     pub fn save(&mut self) -> io::Result<()> {
-        if let Some(filename) = self.filename.as_deref() {
-            let file = File::create(filename)?;
+        if let Some(file_path) = self.file_path.as_deref() {
+            let file = File::create(file_path)?;
             let mut writer = BufWriter::new(file);
             let len = self.rows.len();
 
@@ -914,7 +914,7 @@ impl Buffer {
                 row.context = None;
             }
 
-            self.syntax = <dyn Syntax>::detect(Some(filename));
+            self.syntax = <dyn Syntax>::detect(Some(file_path));
             self.anchor = None;
             self.last_key = None;
             self.syntax_update(0);

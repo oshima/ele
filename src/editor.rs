@@ -33,13 +33,13 @@ pub struct Editor {
 }
 
 impl Editor {
-    pub fn new(filename: Option<String>) -> io::Result<Self> {
+    pub fn new(file_path: Option<&str>) -> io::Result<Self> {
         let mut editor = Self {
             stdin: io::stdin(),
             stdout: io::stdout(),
             canvas: Canvas::new(),
             state: State::Default,
-            buffer: Buffer::new(filename)?,
+            buffer: Buffer::new(file_path)?,
             minibuffer: Minibuffer::new(),
             clipboard: String::new(),
             screen_resized: Arc::new(AtomicBool::new(true)),
@@ -238,7 +238,7 @@ impl Editor {
             },
             State::CtrlX => match key {
                 Key::Ctrl(b'S') => {
-                    if self.buffer.filename.is_none() {
+                    if self.buffer.file_path.is_none() {
                         self.minibuffer.set_prompt("Save as: ");
                         self.state = State::Save;
                     } else {
@@ -288,7 +288,7 @@ impl Editor {
                 }
                 Key::Ctrl(b'J' | b'M') => {
                     let input = self.minibuffer.get_input();
-                    self.buffer.filename = Some(input);
+                    self.buffer.file_path = Some(input);
                     self.buffer.save()?;
                     self.minibuffer.set_message("");
                     self.state = State::Default;
