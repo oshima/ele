@@ -884,6 +884,9 @@ impl Buffer {
         let y = num.saturating_sub(1);
         let y = y.min(self.rows.last_pos().y);
         let pos = Pos::new(0, y);
+        if self.anchor.is_some() {
+            self.highlight_region(pos);
+        }
         self.cursor = pos;
         self.saved_x = pos.x;
         self.scroll_center();
