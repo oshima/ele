@@ -895,6 +895,9 @@ impl Buffer {
     }
 
     pub fn mark_whole(&mut self) {
+        if let Some(anchor) = self.anchor {
+            self.unhighlight_region(anchor);
+        }
         let pos = self.rows.last_pos();
         self.anchor = Some(pos);
         self.cursor = pos;
