@@ -97,7 +97,7 @@ impl RowsMethods for Rows {
             let string = self[pos.y].split_off(pos.x);
             let mut rows = self.split_off(pos.y + 1);
             self[pos.y].push_str(strings[0]);
-            self.append(&mut strings[1..].iter().map(|&s| Row::new(s.into())).collect());
+            self.append(&mut strings[1..].iter().map(|&s| Row::new(s)).collect());
             let pos = self.last_pos();
             self[pos.y].push_str(&string);
             self.append(&mut rows);

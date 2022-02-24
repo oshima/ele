@@ -36,9 +36,9 @@ pub struct Row {
 }
 
 impl Row {
-    pub fn new(string: String) -> Self {
+    pub fn new(string: &str) -> Self {
         let mut row = Self {
-            string,
+            string: String::from(string),
             context: None,
             faces: Vec::new(),
             trailing_bg: Bg::Default,

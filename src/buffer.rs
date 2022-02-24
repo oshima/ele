@@ -80,16 +80,16 @@ impl Buffer {
             let mut ends_with_lf = false;
 
             while reader.read_line(&mut buf)? > 0 {
-                let string = buf.trim_end_matches(crlf).to_string();
+                let string = buf.trim_end_matches(crlf);
                 self.rows.push(Row::new(string));
                 ends_with_lf = buf.ends_with('\n');
                 buf.clear();
             }
             if self.rows.is_empty() || ends_with_lf {
-                self.rows.push(Row::new(String::new()));
+                self.rows.push(Row::new(""));
             }
         } else {
-            self.rows.push(Row::new(String::new()));
+            self.rows.push(Row::new(""));
         }
         self.syntax_update(0);
         self.draw_range.full_expand();

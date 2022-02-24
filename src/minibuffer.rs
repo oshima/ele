@@ -24,7 +24,7 @@ impl Minibuffer {
             offset: 0,
             cursor: 0,
             prompt_len: 0,
-            row: Row::new(String::new()),
+            row: Row::new(""),
             draw: true,
         }
     }
