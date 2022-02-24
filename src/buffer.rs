@@ -35,7 +35,7 @@ pub struct Buffer {
 #[derive(Default)]
 struct Search {
     matches: Vec<Match>,
-    match_idx: usize,
+    index: usize,
     orig_offset: Pos,
     orig_cursor: Pos,
 }
@@ -781,24 +781,26 @@ impl Buffer {
             for (idx, _) in row.string.match_indices(query) {
                 let pos = Pos::new(row.idx_to_x(idx), y);
                 let mut faces = vec![(Fg::Match, Bg::Match); query.len()];
-                faces.swap_with_slice(&mut row.faces[idx..(idx + query.len())]);
+                row.faces[idx..(idx + query.len())].swap_with_slice(&mut faces);
                 self.search.matches.push(Match { pos, faces });
             }
         }
-
         if self.search.matches.is_empty() {
             return;
         }
-
-        let mut matches = self.search.matches.iter();
-        self.search.match_idx = if backward {
-            matches
+        self.search.index = if backward {
+            self.search
+                .matches
+                .iter()
                 .rposition(|m| m.pos < self.cursor)
                 .unwrap_or(self.search.matches.len() - 1)
         } else {
-            matches.position(|m| m.pos >= self.cursor).unwrap_or(0)
+            self.search
+                .matches
+                .iter()
+                .position(|m| m.pos >= self.cursor)
+                .unwrap_or(0)
         };
-
         self.search.orig_offset = self.offset;
         self.search.orig_cursor = self.cursor;
 
@@ -815,15 +817,15 @@ impl Buffer {
 
         self.highlight_match(false);
 
-        self.search.match_idx = if backward {
-            if self.search.match_idx > 0 {
-                self.search.match_idx - 1
+        self.search.index = if backward {
+            if self.search.index > 0 {
+                self.search.index - 1
             } else {
                 self.search.matches.len() - 1
             }
         } else {
-            if self.search.match_idx < self.search.matches.len() - 1 {
-                self.search.match_idx + 1
+            if self.search.index < self.search.matches.len() - 1 {
+                self.search.index + 1
             } else {
                 0
             }
@@ -839,10 +841,10 @@ impl Buffer {
             return;
         }
 
-        for mat in self.search.matches.iter_mut() {
-            let row = &mut self.rows[mat.pos.y];
-            let idx = row.x_to_idx(mat.pos.x);
-            row.faces[idx..(idx + mat.faces.len())].swap_with_slice(&mut mat.faces);
+        for m in self.search.matches.iter_mut() {
+            let row = &mut self.rows[m.pos.y];
+            let idx = row.x_to_idx(m.pos.x);
+            row.faces[idx..(idx + m.faces.len())].swap_with_slice(&mut m.faces);
         }
         self.search.matches.clear();
 
@@ -859,21 +861,21 @@ impl Buffer {
     }
 
     fn move_to_match(&mut self) {
-        let mat = &self.search.matches[self.search.match_idx];
-        self.cursor = mat.pos;
+        let m = &self.search.matches[self.search.index];
+        self.cursor = m.pos;
         self.scroll_center();
     }
 
     fn highlight_match(&mut self, current: bool) {
-        let mat = &self.search.matches[self.search.match_idx];
-        let row = &mut self.rows[mat.pos.y];
-        let idx = row.x_to_idx(mat.pos.x);
+        let m = &self.search.matches[self.search.index];
+        let row = &mut self.rows[m.pos.y];
+        let idx = row.x_to_idx(m.pos.x);
         let face = if current {
             (Fg::CurrentMatch, Bg::CurrentMatch)
         } else {
             (Fg::Match, Bg::Match)
         };
-        for i in idx..(idx + mat.faces.len()) {
+        for i in idx..(idx + m.faces.len()) {
             row.faces[i] = face;
         }
     }
