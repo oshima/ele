@@ -166,6 +166,8 @@ impl Buffer {
 
     #[allow(clippy::collapsible_else_if)]
     pub fn process_key(&mut self, key: Key, clipboard: &mut String) -> &str {
+        let mut save_key = true;
+
         let message = match key {
             Key::ArrowLeft | Key::Ctrl(b'B') => {
                 if let Some(pos) = self.rows.prev_pos(self.cursor) {
@@ -274,6 +276,7 @@ impl Buffer {
                 if let Some(anchor) = self.anchor {
                     self.remove_region(anchor);
                     self.anchor = None;
+                    save_key = false;
                 } else if let Some(pos) = self.rows.prev_pos(self.cursor) {
                     let event = Event::Remove(self.eid(), pos, self.cursor, true);
                     let event = self.process_event(event);
@@ -290,6 +293,7 @@ impl Buffer {
                 if let Some(anchor) = self.anchor {
                     self.remove_region(anchor);
                     self.anchor = None;
+                    save_key = false;
                 } else if let Some(pos) = self.rows.next_pos(self.cursor) {
                     let event = Event::Remove(self.eid(), self.cursor, pos, false);
                     let event = self.process_event(event);
@@ -411,7 +415,7 @@ impl Buffer {
                 ""
             }
             Key::Ctrl(b'L') => {
-                self.offset.y = if matches!(self.last_key, Some(Key::Ctrl(b'L'))) {
+                self.offset.y = if let Some(Key::Ctrl(b'L')) = self.last_key {
                     if self.offset.y == self.cursor.y.saturating_sub(self.size.h / 2) {
                         self.cursor.y
                     } else if self.offset.y == self.cursor.y {
@@ -587,7 +591,7 @@ impl Buffer {
             _ => "",
         };
 
-        self.last_key = Some(key);
+        self.last_key = save_key.then(|| key);
 
         message
     }

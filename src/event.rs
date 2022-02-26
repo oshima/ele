@@ -11,14 +11,11 @@ impl Event {
     #[rustfmt::skip]
     pub fn merge(self, other: Self) -> Self {
         match (self, other) {
-            (Insert(id, pos, str1, _), Insert(_, _, str2, false)) => {
-                Insert(id, pos, str1 + &str2, false)
+            (Insert(id, pos1, str1, false), Insert(_, _, str2, false)) => {
+                Insert(id, pos1, str1 + &str2, false)
             }
-            (Insert(id, _, str1, _), Insert(_, pos, str2, true)) => {
-                Insert(id, pos, str2 + &str1, true)
-            }
-            (Remove(id, pos1, _, false), Remove(_, _, pos2, false)) => {
-                Remove(id, pos1, pos2, false)
+            (Insert(id, _, str1, true), Insert(_, pos2, str2, true)) => {
+                Insert(id, pos2, str2 + &str1, true)
             }
             (Remove(id, pos1, _, true), Remove(_, _, pos2, true)) => {
                 Remove(id, pos1, pos2, true)
