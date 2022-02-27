@@ -254,9 +254,12 @@ impl Editor {
                     if self.buffer.file_path.is_none() {
                         self.minibuffer.set_prompt("Save as: ");
                         self.state = State::Save;
-                    } else {
+                    } else if self.buffer.modified() {
                         self.buffer.save()?;
                         self.minibuffer.set_message("Saved");
+                        self.state = State::Default;
+                    } else {
+                        self.minibuffer.set_message("(No changes need to be saved)");
                         self.state = State::Default;
                     }
                 }
