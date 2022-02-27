@@ -1,3 +1,6 @@
+extern crate clipboard;
+
+use clipboard::{ClipboardContext, ClipboardProvider};
 use std::cmp;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
@@ -29,6 +32,7 @@ pub struct Buffer {
     time: usize,
     saved_time: Option<usize>,
     last_key: Option<Key>,
+    clipboard: ClipboardContext,
     search: Search,
 }
 
@@ -64,6 +68,7 @@ impl Buffer {
             time: 0,
             saved_time: None,
             last_key: None,
+            clipboard: ClipboardProvider::new().unwrap(),
             search: Default::default(),
         };
         buffer.init()?;
@@ -165,7 +170,7 @@ impl Buffer {
     }
 
     #[allow(clippy::collapsible_else_if)]
-    pub fn process_key(&mut self, key: Key, clipboard: &mut String) -> &str {
+    pub fn process_key(&mut self, key: Key) -> &str {
         let mut save_key = true;
 
         let message = match key {
@@ -407,8 +412,9 @@ impl Buffer {
                     self.anchor = None;
                 }
                 let pos = Pos::new(self.rows[self.cursor.y].last_x(), self.cursor.y);
-                clipboard.clear();
-                clipboard.push_str(&self.rows.read_str(self.cursor, pos));
+                self.clipboard
+                    .set_contents(self.rows.read_str(self.cursor, pos))
+                    .unwrap_or(());
                 let edit = Edit::remove(self.time(), self.cursor, pos, false);
                 let edit = self.process_edit(edit);
                 self.push_edit(edit);
@@ -435,8 +441,9 @@ impl Buffer {
                     self.anchor = None;
                 }
                 let pos = Pos::new(0, self.cursor.y);
-                clipboard.clear();
-                clipboard.push_str(&self.rows.read_str(pos, self.cursor));
+                self.clipboard
+                    .set_contents(self.rows.read_str(pos, self.cursor))
+                    .unwrap_or(());
                 let edit = Edit::remove(self.time(), pos, self.cursor, true);
                 let edit = self.process_edit(edit);
                 self.push_edit(edit);
@@ -445,8 +452,9 @@ impl Buffer {
             }
             Key::Ctrl(b'W') => {
                 if let Some(anchor) = self.anchor {
-                    clipboard.clear();
-                    clipboard.push_str(&self.read_region(anchor));
+                    self.clipboard
+                        .set_contents(self.read_region(anchor))
+                        .unwrap_or(());
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
@@ -457,10 +465,13 @@ impl Buffer {
                     self.remove_region(anchor);
                     self.anchor = None;
                 }
-                let edit = Edit::insert(self.time(), self.cursor, clipboard.clone(), true);
-                let edit = self.process_edit(edit);
-                self.push_edit(edit);
-                self.scroll();
+                let string = self.clipboard.get_contents().unwrap_or("".into());
+                if !string.is_empty() {
+                    let edit = Edit::insert(self.time(), self.cursor, string, true);
+                    let edit = self.process_edit(edit);
+                    self.push_edit(edit);
+                    self.scroll();
+                }
                 ""
             }
             Key::Ctrl(b'_') => {
@@ -566,8 +577,9 @@ impl Buffer {
             }
             Key::Alt(b'w') => {
                 if let Some(anchor) = self.anchor {
-                    clipboard.clear();
-                    clipboard.push_str(&self.read_region(anchor));
+                    self.clipboard
+                        .set_contents(self.read_region(anchor))
+                        .unwrap_or(());
                     self.unhighlight_region(anchor);
                     self.anchor = None;
                 }
@@ -682,7 +694,10 @@ impl Buffer {
             }
         };
 
-        Edit { time: edit.time, kind }
+        Edit {
+            time: edit.time,
+            kind,
+        }
     }
 
     fn push_edit(&mut self, edit: Edit) {
@@ -773,11 +788,14 @@ impl Buffer {
     fn remove_region(&mut self, anchor: Pos) {
         let pos1 = self.cursor.min(anchor);
         let pos2 = self.cursor.max(anchor);
-        let edit = Edit::remove(self.time(), pos1, pos2, self.cursor > anchor);
-        let edit = self.process_edit(edit);
-        self.push_edit(edit);
-        self.scroll();
-        self.rows[pos1.y].trailing_bg = Bg::Default;
+
+        if pos1 != pos2 {
+            let edit = Edit::remove(self.time(), pos1, pos2, self.cursor > anchor);
+            let edit = self.process_edit(edit);
+            self.push_edit(edit);
+            self.scroll();
+            self.rows[pos1.y].trailing_bg = Bg::Default;
+        }
     }
 }
 

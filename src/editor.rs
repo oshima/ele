@@ -28,7 +28,6 @@ pub struct Editor {
     state: State,
     buffer: Buffer,
     minibuffer: Minibuffer,
-    clipboard: String,
     screen_resized: Arc<AtomicBool>,
 }
 
@@ -41,7 +40,6 @@ impl Editor {
             state: State::Default,
             buffer: Buffer::new(file_path)?,
             minibuffer: Minibuffer::new(),
-            clipboard: String::new(),
             screen_resized: Arc::new(AtomicBool::new(true)),
         };
 
@@ -205,7 +203,7 @@ impl Editor {
                     self.state = State::GotoLine;
                 }
                 _ => {
-                    let message = self.buffer.process_key(key, &mut self.clipboard);
+                    let message = self.buffer.process_key(key);
                     self.minibuffer.set_message(message);
                 }
             },
